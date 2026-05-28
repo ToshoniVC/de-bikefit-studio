@@ -1,0 +1,887 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Brand Design System — De Bikefit Studio</title>
+    <meta name="description" content="The design system, foundations, and components powering De Bikefit Studio.">
+    <link rel="icon" type="image/svg+xml" href="logo.svg">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* ===== Design system page-specific styles ===== */
+        .ds-toc {
+            background: #fff;
+            border-bottom: 1px solid var(--color-line);
+            position: sticky;
+            top: 0;
+            z-index: 90;
+        }
+        .ds-toc__inner {
+            max-width: var(--max-width);
+            margin: 0 auto;
+            padding: 14px var(--gutter);
+            display: flex;
+            gap: 24px;
+            overflow-x: auto;
+            font-family: var(--font-display);
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            font-size: 12px;
+        }
+        .ds-toc a {
+            color: var(--color-ink-soft);
+            white-space: nowrap;
+            padding: 4px 0;
+            border-bottom: 1px solid transparent;
+        }
+        .ds-toc a:hover { color: var(--color-ink); border-bottom-color: var(--color-ink); }
+
+        .ds-section { padding: 80px var(--gutter); border-bottom: 1px solid var(--color-line); }
+        .ds-section__inner { max-width: var(--max-width); margin: 0 auto; }
+        .ds-section__head { margin-bottom: 48px; max-width: 80ch; }
+        .ds-section__num {
+            font-family: var(--font-display);
+            font-weight: 600;
+            font-size: 12px;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--color-ink-mute);
+            display: inline-block;
+            padding-top: 12px;
+            padding-right: 24px;
+            border-top: 1px solid var(--color-line-strong);
+            margin-bottom: 16px;
+        }
+        .ds-section__title {
+            font-family: var(--font-display);
+            font-weight: 700;
+            text-transform: uppercase;
+            line-height: 1;
+            font-size: clamp(32px, 4.4vw, 56px);
+            margin-bottom: 16px;
+        }
+        .ds-section__lede {
+            font-size: 17px;
+            color: var(--color-ink-soft);
+            max-width: 60ch;
+            line-height: 1.6;
+        }
+
+        .ds-grid {
+            display: grid;
+            gap: 24px;
+        }
+        .ds-grid--2 { grid-template-columns: repeat(2, 1fr); }
+        .ds-grid--3 { grid-template-columns: repeat(3, 1fr); }
+        .ds-grid--4 { grid-template-columns: repeat(4, 1fr); }
+        .ds-grid--6 { grid-template-columns: repeat(6, 1fr); }
+        @media (max-width: 900px) {
+            .ds-grid--3, .ds-grid--4, .ds-grid--6 { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 560px) {
+            .ds-grid--2, .ds-grid--3, .ds-grid--4, .ds-grid--6 { grid-template-columns: 1fr; }
+        }
+
+        /* Swatches */
+        .swatch { display: flex; flex-direction: column; gap: 8px; }
+        .swatch__chip {
+            aspect-ratio: 4 / 3;
+            border: 1px solid var(--color-line);
+        }
+        .swatch__name {
+            font-family: var(--font-display);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 13px;
+            letter-spacing: 0.08em;
+        }
+        .swatch__token { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--color-ink-soft); }
+        .swatch__hex   { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--color-ink-mute); }
+
+        /* Type specimens */
+        .type-row {
+            display: grid;
+            grid-template-columns: 200px 1fr;
+            gap: 32px;
+            padding: 24px 0;
+            border-top: 1px solid var(--color-line);
+            align-items: baseline;
+        }
+        .type-row__meta { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--color-ink-mute); line-height: 1.6; }
+        .type-spec {
+            font-family: var(--font-display);
+            font-weight: 700;
+            text-transform: uppercase;
+            line-height: 0.95;
+            color: var(--color-ink);
+        }
+        .type-spec--display-1 { font-size: clamp(48px, 7vw, 96px); letter-spacing: -0.005em; font-weight: 700; }
+        .type-spec--display-2 { font-size: clamp(40px, 5.5vw, 72px); letter-spacing: -0.005em; font-weight: 700; }
+        .type-spec--h1        { font-size: 56px; }
+        .type-spec--h2        { font-size: 40px; font-weight: 700; }
+        .type-spec--h3        { font-size: 24px; font-weight: 600; letter-spacing: 0.02em; }
+        .type-spec--eyebrow   { font-size: 13px; font-weight: 600; letter-spacing: 0.22em; color: var(--color-ink-mute); }
+        .type-spec--body, .type-spec--lede, .type-spec--small {
+            font-family: var(--font-body);
+            text-transform: none;
+            font-weight: 400;
+            color: var(--color-ink);
+            line-height: 1.6;
+        }
+        .type-spec--lede  { font-size: 18px; color: var(--color-ink-soft); }
+        .type-spec--body  { font-size: 16px; }
+        .type-spec--small { font-size: 14px; color: var(--color-ink-soft); }
+        @media (max-width: 700px) {
+            .type-row { grid-template-columns: 1fr; gap: 8px; }
+        }
+
+        /* Spacing scale */
+        .scale {
+            display: grid;
+            grid-template-columns: 80px 80px 1fr;
+            gap: 16px;
+            align-items: center;
+            padding: 12px 0;
+            border-top: 1px solid var(--color-line);
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 13px;
+        }
+        .scale__bar { height: 12px; background: var(--color-ink); }
+
+        /* Component demo blocks */
+        .demo {
+            border: 1px solid var(--color-line);
+            background: #fff;
+            margin-bottom: 16px;
+        }
+        .demo__pad { padding: 32px; }
+        .demo__pad--gray { background: var(--color-surface); }
+        .demo__pad--dark { background: var(--color-ink); color: #fff; }
+        .demo__label {
+            font-family: var(--font-display);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            letter-spacing: 0.22em;
+            color: var(--color-ink-mute);
+            padding: 12px 16px;
+            border-top: 1px solid var(--color-line);
+            background: var(--color-surface);
+        }
+
+        /* Logo display tile */
+        .logo-tile {
+            border: 1px solid var(--color-line);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 32px;
+            min-height: 240px;
+        }
+        .logo-tile--dark { background: var(--color-ink); }
+        .logo-tile--gray { background: var(--color-surface); }
+        .logo-tile img { max-width: 100%; height: auto; }
+
+        /* Code chip */
+        code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 13px;
+            background: var(--color-surface);
+            padding: 2px 6px;
+            border: 1px solid var(--color-line);
+        }
+
+        /* Principles list */
+        .principles {
+            list-style: none;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1px;
+            background: var(--color-line);
+            border: 1px solid var(--color-line);
+        }
+        .principles li {
+            background: #fff;
+            padding: 24px;
+        }
+        .principles strong {
+            display: block;
+            font-family: var(--font-display);
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 16px;
+            letter-spacing: 0.04em;
+            margin-bottom: 8px;
+        }
+        .principles span { color: var(--color-ink-soft); font-size: 14px; line-height: 1.6; }
+
+        .voice-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1px;
+            background: var(--color-line);
+            border: 1px solid var(--color-line);
+        }
+        .voice-grid > div { background: #fff; padding: 24px; }
+        .voice-grid h4 {
+            font-family: var(--font-display);
+            text-transform: uppercase;
+            font-size: 12px;
+            letter-spacing: 0.22em;
+            margin-bottom: 12px;
+            color: var(--color-ink-mute);
+        }
+        .voice-grid ul { list-style: none; }
+        .voice-grid li { padding: 6px 0; color: var(--color-ink-soft); border-top: 1px solid var(--color-line); font-size: 14px; }
+        .voice-grid li:first-child { border-top: 0; }
+        @media (max-width: 560px) { .voice-grid { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+
+<div class="utility-bar">
+    <div class="utility-bar__inner">
+        <a href="design-system.html">Design system</a>
+        <span style="color:#888;">v1.0</span>
+        <span style="color:#888;">Updated 2026-05-10</span>
+    </div>
+</div>
+
+<header class="site-header">
+    <nav class="nav">
+        <a href="design-system.html" class="nav__logo" aria-label="Design system home">
+            <img src="logo.svg" alt="De Bikefit Studio" height="56">
+        </a>
+        <ul class="nav__menu">
+            <li><a href="#principles">Foundations</a></li>
+            <li><a href="#components">Components</a></li>
+            <li><a href="#patterns">Patterns</a></li>
+            <li><a href="#tokens">Tokens</a></li>
+        </ul>
+        <a href="#" class="btn btn--primary nav__cta">v1.0</a>
+    </nav>
+</header>
+
+<section class="page-head">
+    <div class="page-head__inner">
+        <div class="page-head__crumb">Brand &middot; Design system</div>
+        <h1 class="page-head__title">De Bikefit Studio — Design System</h1>
+        <p class="page-head__lede">
+            The foundations, components and patterns that make up the De Bikefit Studio brand. Quiet, calm, deliberate. Black, white, and grey — never shouty.
+        </p>
+    </div>
+</section>
+
+<nav class="ds-toc" aria-label="Design system contents">
+    <div class="ds-toc__inner">
+        <a href="#principles">01 Principles</a>
+        <a href="#voice">02 Voice</a>
+        <a href="#logo">03 Logo</a>
+        <a href="#color">04 Color</a>
+        <a href="#typography">05 Typography</a>
+        <a href="#spacing">06 Spacing &amp; layout</a>
+        <a href="#components">07 Components</a>
+        <a href="#patterns">08 Patterns</a>
+        <a href="#imagery">09 Imagery</a>
+        <a href="#tokens">10 Tokens</a>
+    </div>
+</nav>
+
+<!-- ===== 01 Principles ===== -->
+<section class="ds-section" id="principles">
+    <div class="ds-section__inner">
+        <div class="ds-section__head">
+            <div class="ds-section__num">01 / Principles</div>
+            <h2 class="ds-section__title">Calm, considered, on character</h2>
+            <p class="ds-section__lede">
+                Every design decision should make a recreational cyclist feel welcome and unhurried. We dress the brand in restraint, not performance.
+            </p>
+        </div>
+
+        <ul class="principles">
+            <li><strong>Quiet</strong><span>Use white space. Avoid loud colors and dense layouts. The reader sets the pace.</span></li>
+            <li><strong>Personal</strong><span>No copy-paste. Show that the studio sees the rider, not the segment.</span></li>
+            <li><strong>Low-threshold</strong><span>Never intimidate. No jargon, no judgement, no big claims.</span></li>
+            <li><strong>Step by step</strong><span>Lead the eye in clear stages. One thought per block, then a pause.</span></li>
+            <li><strong>Substantive</strong><span>Bold display type for what matters. Plain body type for everything else.</span></li>
+            <li><strong>Honest</strong><span>Photography over render, statement over claim, monochrome over fashion.</span></li>
+        </ul>
+    </div>
+</section>
+
+<!-- ===== 02 Voice ===== -->
+<section class="ds-section" id="voice">
+    <div class="ds-section__inner">
+        <div class="ds-section__head">
+            <div class="ds-section__num">02 / Voice &amp; tone</div>
+            <h2 class="ds-section__title">Talk like a person, not a brochure</h2>
+            <p class="ds-section__lede">
+                Dutch first, written for a reader who isn't a cyclist yet. Short sentences. Concrete words. Warm, but never cute.
+            </p>
+        </div>
+
+        <div class="voice-grid">
+            <div>
+                <h4>Do</h4>
+                <ul>
+                    <li>"Fiets zonder pijn."</li>
+                    <li>"Simpel, rustig en stap voor stap."</li>
+                    <li>"Iedereen heeft een andere aanpak nodig."</li>
+                    <li>"Kinderen mogen mee."</li>
+                    <li>"Op jouw tempo."</li>
+                </ul>
+            </div>
+            <div>
+                <h4>Don't</h4>
+                <ul>
+                    <li>"Optimize your biomechanical efficiency."</li>
+                    <li>"Unlock peak performance!"</li>
+                    <li>"Industry-leading bikefit experience."</li>
+                    <li>"Schedule your consultation today!!!"</li>
+                    <li>Excessive exclamation marks or capslock.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== 03 Logo ===== -->
+<section class="ds-section" id="logo">
+    <div class="ds-section__inner">
+        <div class="ds-section__head">
+            <div class="ds-section__num">03 / Logo</div>
+            <h2 class="ds-section__title">A bike, measured</h2>
+            <p class="ds-section__lede">
+                The mark is a side-profile bicycle with a dashed measurement overlay — a quiet visual nod to what a bikefit actually is. Wordmark in Montserrat 800; subtitle widely tracked.
+            </p>
+        </div>
+
+        <div class="ds-grid ds-grid--3">
+            <div>
+                <div class="logo-tile">
+                    <img src="logo.svg" alt="De Bikefit Studio logo on white" style="height:160px;">
+                </div>
+                <p class="swatch__name" style="margin-top:12px;">Primary — on white</p>
+                <p class="swatch__token">Default usage. Use wherever possible.</p>
+            </div>
+            <div>
+                <div class="logo-tile logo-tile--gray">
+                    <img src="logo.svg" alt="De Bikefit Studio logo on grey" style="height:160px;">
+                </div>
+                <p class="swatch__name" style="margin-top:12px;">On surface</p>
+                <p class="swatch__token">For utility bars, page-head, secondary surfaces.</p>
+            </div>
+            <div>
+                <div class="logo-tile logo-tile--dark">
+                    <img src="logo.svg" alt="De Bikefit Studio logo on dark — invert when production assets are ready" style="height:160px; filter: invert(1);">
+                </div>
+                <p class="swatch__name" style="margin-top:12px;">On ink (inverted)</p>
+                <p class="swatch__token">For dark callouts &amp; footer. Production-ready inverted asset to follow.</p>
+            </div>
+        </div>
+
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin:48px 0 12px; font-size:18px;">Clear space &amp; usage</h3>
+        <ul class="rich" style="list-style:none; padding-left:0;">
+            <li class="rich" style="padding-left:0;">Minimum clear space around the mark: equal to the cap height of the wordmark on every side.</li>
+            <li>Minimum digital height: <code>40px</code>. Below this, set the wordmark on its own line without the icon.</li>
+            <li>Don't recolor. Don't add shadows. Don't outline. Don't rotate. Don't stretch.</li>
+            <li>The dashed "fit-line" overlay is part of the mark — it never appears on its own as a graphic device.</li>
+        </ul>
+    </div>
+</section>
+
+<!-- ===== 04 Color ===== -->
+<section class="ds-section" id="color">
+    <div class="ds-section__inner">
+        <div class="ds-section__head">
+            <div class="ds-section__num">04 / Color</div>
+            <h2 class="ds-section__title">Black, white, and the greys between</h2>
+            <p class="ds-section__lede">
+                The palette is intentionally restrained. No accent color. Hierarchy comes from contrast, scale, and white space — not from hue.
+            </p>
+        </div>
+
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:16px; font-size:18px;">Core</h3>
+        <div class="ds-grid ds-grid--4" style="margin-bottom:48px;">
+            <div class="swatch">
+                <div class="swatch__chip" style="background:#1f1f1f;"></div>
+                <span class="swatch__name">Ink</span>
+                <span class="swatch__token">--color-ink</span>
+                <span class="swatch__hex">#1F1F1F</span>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background:#565656;"></div>
+                <span class="swatch__name">Ink soft</span>
+                <span class="swatch__token">--color-ink-soft</span>
+                <span class="swatch__hex">#565656</span>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background:#888888;"></div>
+                <span class="swatch__name">Ink mute</span>
+                <span class="swatch__token">--color-ink-mute</span>
+                <span class="swatch__hex">#888888</span>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background:#ffffff;"></div>
+                <span class="swatch__name">Background</span>
+                <span class="swatch__token">--color-bg</span>
+                <span class="swatch__hex">#FFFFFF</span>
+            </div>
+        </div>
+
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:16px; font-size:18px;">Surfaces &amp; lines</h3>
+        <div class="ds-grid ds-grid--4">
+            <div class="swatch">
+                <div class="swatch__chip" style="background:#f4f4f4;"></div>
+                <span class="swatch__name">Surface</span>
+                <span class="swatch__token">--color-surface</span>
+                <span class="swatch__hex">#F4F4F4</span>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background:#ebebeb;"></div>
+                <span class="swatch__name">Surface 2</span>
+                <span class="swatch__token">--color-surface-2</span>
+                <span class="swatch__hex">#EBEBEB</span>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background:#e6e6e6;"></div>
+                <span class="swatch__name">Line</span>
+                <span class="swatch__token">--color-line</span>
+                <span class="swatch__hex">#E6E6E6</span>
+            </div>
+            <div class="swatch">
+                <div class="swatch__chip" style="background:#c8c8c8;"></div>
+                <span class="swatch__name">Line strong</span>
+                <span class="swatch__token">--color-line-strong</span>
+                <span class="swatch__hex">#C8C8C8</span>
+            </div>
+        </div>
+
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin:48px 0 16px; font-size:18px;">Usage rules</h3>
+        <ul class="rich" style="list-style:none; padding-left:0;">
+            <li>Body text on white uses <strong>Ink</strong>. Secondary text uses <strong>Ink soft</strong>. Captions and meta data use <strong>Ink mute</strong>.</li>
+            <li>Section dividers and card borders use <strong>Line</strong>. Heavier framing or eyebrow rules use <strong>Line strong</strong>.</li>
+            <li>Dark sections invert: <strong>Ink</strong> as background, white as primary, <code>#cfcfcf</code> as body text.</li>
+            <li>No accent color is permitted in marketing surfaces. Reserved space exists in the system if a future accent is ever introduced.</li>
+        </ul>
+    </div>
+</section>
+
+<!-- ===== 05 Typography ===== -->
+<section class="ds-section" id="typography">
+    <div class="ds-section__inner">
+        <div class="ds-section__head">
+            <div class="ds-section__num">05 / Typography</div>
+            <h2 class="ds-section__title">Two faces, one voice</h2>
+            <p class="ds-section__lede">
+                Display work is set in <strong>Barlow Condensed</strong>, uppercase, with weights 600–700. Body is <strong>Inter</strong>, sentence case, weights 400–500. The mark itself uses Montserrat for legacy reasons.
+            </p>
+        </div>
+
+        <div class="type-row">
+            <div class="type-row__meta">
+                Display 1<br>Barlow Condensed 700<br>clamp(48px, 7vw, 96px)<br>line-height: 0.95
+            </div>
+            <div class="type-spec type-spec--display-1">Fiets zonder pijn.</div>
+        </div>
+        <div class="type-row">
+            <div class="type-row__meta">
+                Display 2<br>Barlow Condensed 700<br>clamp(40px, 5.5vw, 72px)
+            </div>
+            <div class="type-spec type-spec--display-2">Rij op karakter.</div>
+        </div>
+        <div class="type-row">
+            <div class="type-row__meta">
+                Heading 1<br>Barlow Condensed 700<br>56px / line-height 1
+            </div>
+            <div class="type-spec type-spec--h1">Begeleiding op maat</div>
+        </div>
+        <div class="type-row">
+            <div class="type-row__meta">
+                Heading 2<br>Barlow Condensed 700<br>40px
+            </div>
+            <div class="type-spec type-spec--h2">Onze werkwijze</div>
+        </div>
+        <div class="type-row">
+            <div class="type-row__meta">
+                Heading 3<br>Barlow Condensed 600<br>24px / tracking 0.02em
+            </div>
+            <div class="type-spec type-spec--h3">Zadelpositie</div>
+        </div>
+        <div class="type-row">
+            <div class="type-row__meta">
+                Eyebrow<br>Barlow Condensed 600<br>13px / tracking 0.22em<br>uppercase, ink-mute
+            </div>
+            <div class="type-spec type-spec--eyebrow">Voor wie</div>
+        </div>
+        <div class="type-row">
+            <div class="type-row__meta">
+                Lede<br>Inter 400<br>18px / line-height 1.6
+            </div>
+            <div class="type-spec type-spec--lede">Een bikefit op maat voor beginnende en recreatieve fietsers — geen copy-paste, wel een persoonlijke aanpak.</div>
+        </div>
+        <div class="type-row">
+            <div class="type-row__meta">
+                Body<br>Inter 400<br>16px / line-height 1.6
+            </div>
+            <div class="type-spec type-spec--body">Hoe je op de fiets zit bepaalt veel: comfort, kracht, en hoe lang je het volhoudt zonder klachten. Tijdens de bikefit kijken we daar in alle rust naar.</div>
+        </div>
+        <div class="type-row">
+            <div class="type-row__meta">
+                Small<br>Inter 400<br>14px
+            </div>
+            <div class="type-spec type-spec--small">Kinderen mogen mee. Geen geregel met opvang.</div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== 06 Spacing ===== -->
+<section class="ds-section" id="spacing">
+    <div class="ds-section__inner">
+        <div class="ds-section__head">
+            <div class="ds-section__num">06 / Spacing &amp; layout</div>
+            <h2 class="ds-section__title">A 4-pixel rhythm</h2>
+            <p class="ds-section__lede">
+                Use multiples of 4. Sections breathe at 80–100px. The container caps at 1400px with a 24px gutter; never let content kiss the viewport edges.
+            </p>
+        </div>
+
+        <div style="margin-bottom:48px;">
+            <div class="scale"><span>4 px</span><div class="scale__bar" style="width:4px;"></div><span>spacer-1 — micro detail / pixel rule</span></div>
+            <div class="scale"><span>8 px</span><div class="scale__bar" style="width:8px;"></div><span>spacer-2 — caption to label</span></div>
+            <div class="scale"><span>12 px</span><div class="scale__bar" style="width:12px;"></div><span>spacer-3 — eyebrow to title</span></div>
+            <div class="scale"><span>16 px</span><div class="scale__bar" style="width:16px;"></div><span>spacer-4 — body paragraph spacing</span></div>
+            <div class="scale"><span>24 px</span><div class="scale__bar" style="width:24px;"></div><span>spacer-5 — title to lede / gutter</span></div>
+            <div class="scale"><span>32 px</span><div class="scale__bar" style="width:32px;"></div><span>spacer-6 — card padding</span></div>
+            <div class="scale"><span>48 px</span><div class="scale__bar" style="width:48px;"></div><span>spacer-7 — block spacing inside a section</span></div>
+            <div class="scale"><span>64 px</span><div class="scale__bar" style="width:64px;"></div><span>spacer-8 — major split column gap</span></div>
+            <div class="scale"><span>80 px</span><div class="scale__bar" style="width:80px;"></div><span>spacer-9 — vertical section padding (mobile / dense)</span></div>
+            <div class="scale"><span>100 px</span><div class="scale__bar" style="width:100px;"></div><span>spacer-10 — vertical section padding (desktop default)</span></div>
+        </div>
+
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:16px; font-size:18px;">Container</h3>
+        <ul class="rich" style="list-style:none; padding-left:0;">
+            <li>Max width: <code>1400px</code> (<code>--max-width</code>).</li>
+            <li>Horizontal gutter: <code>24px</code> (<code>--gutter</code>). Halves to <code>16px</code> below 560px viewports.</li>
+            <li>Section vertical rhythm: <code>100px</code> desktop, <code>64px</code> mobile.</li>
+            <li>Body line-length: hard cap at <code>70ch</code> for paragraphs, <code>60ch</code> for ledes, <code>22ch</code> for display titles.</li>
+        </ul>
+    </div>
+</section>
+
+<!-- ===== 07 Components ===== -->
+<section class="ds-section" id="components">
+    <div class="ds-section__inner">
+        <div class="ds-section__head">
+            <div class="ds-section__num">07 / Components</div>
+            <h2 class="ds-section__title">The building blocks</h2>
+            <p class="ds-section__lede">
+                Each component is a small, named unit you can drop in. Keep variants minimal — if a new variant is needed, propose it and update this page first.
+            </p>
+        </div>
+
+        <!-- Buttons -->
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin:0 0 16px; font-size:18px;">Buttons</h3>
+        <div class="demo">
+            <div class="demo__pad" style="display:flex; gap:16px; flex-wrap:wrap;">
+                <a href="#" class="btn btn--primary">Boek nu <span class="btn__arrow">&rarr;</span></a>
+                <a href="#" class="btn btn--ghost">Lees meer</a>
+                <a href="#" class="btn btn--outline">Outline</a>
+                <a href="#" class="btn btn--dark">Donker</a>
+            </div>
+            <div class="demo__label">Primary, ghost, outline, dark — on white</div>
+        </div>
+        <div class="demo">
+            <div class="demo__pad demo__pad--dark" style="display:flex; gap:16px; flex-wrap:wrap;">
+                <a href="#" class="btn btn--primary" style="background:#fff; color:var(--color-ink); border-color:#fff;">Inverted primary</a>
+                <a href="#" class="btn btn--ghost btn--ghost-on-dark">Ghost on dark <span class="btn__arrow">&rarr;</span></a>
+            </div>
+            <div class="demo__label">On ink (dark) surface</div>
+        </div>
+        <p class="rich" style="margin-top:8px;">Buttons use display type, uppercase, letter-spacing 0.08em, and a 14/28 padding. The arrow glyph nudges 4px right on hover. Don't add icons beyond the arrow.</p>
+
+        <!-- Eyebrow + title -->
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin:48px 0 16px; font-size:18px;">Section header</h3>
+        <div class="demo">
+            <div class="demo__pad">
+                <div class="section__eyebrow">Voor wie</div>
+                <h2 class="section__title">Iedereen op de fiets, zonder drempel</h2>
+                <p class="section__lede" style="margin-bottom:0;">A short lede that explains the section in plain language. One or two sentences, never more.</p>
+            </div>
+            <div class="demo__label">Eyebrow + section title + lede</div>
+        </div>
+
+        <!-- Feature card -->
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin:48px 0 16px; font-size:18px;">Feature grid</h3>
+        <div class="demo">
+            <div class="demo__pad" style="padding:0;">
+                <div class="feature-grid">
+                    <article class="feature">
+                        <div class="feature__num">01 / Houding</div>
+                        <h3 class="feature__title">Je rijhouding</h3>
+                        <p class="feature__body">How the rider sits on the bike — the foundation everything else builds on.</p>
+                    </article>
+                    <article class="feature">
+                        <div class="feature__num">02 / Zadel</div>
+                        <h3 class="feature__title">Zadelpositie</h3>
+                        <p class="feature__body">Height, angle, and fore/aft. Three millimeters can change a ride.</p>
+                    </article>
+                    <article class="feature">
+                        <div class="feature__num">03 / Beweging</div>
+                        <h3 class="feature__title">Bewegingspatroon</h3>
+                        <p class="feature__body">How the hips, knees and feet move under load.</p>
+                    </article>
+                </div>
+            </div>
+            <div class="demo__label">.feature-grid &gt; .feature</div>
+        </div>
+
+        <!-- Steps -->
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin:48px 0 16px; font-size:18px;">Steps</h3>
+        <div class="demo">
+            <div class="demo__pad">
+                <div class="steps">
+                    <div class="step">
+                        <div class="step__num">01</div>
+                        <h3 class="step__title">Intake</h3>
+                        <p class="step__body">We listen first.</p>
+                    </div>
+                    <div class="step">
+                        <div class="step__num">02</div>
+                        <h3 class="step__title">Analyse</h3>
+                        <p class="step__body">We observe.</p>
+                    </div>
+                    <div class="step">
+                        <div class="step__num">03</div>
+                        <h3 class="step__title">Aanpassing</h3>
+                        <p class="step__body">We adjust, in small steps.</p>
+                    </div>
+                    <div class="step">
+                        <div class="step__num">04</div>
+                        <h3 class="step__title">Opvolging</h3>
+                        <p class="step__body">We follow up.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="demo__label">.steps &gt; .step</div>
+        </div>
+
+        <!-- Audience cards -->
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin:48px 0 16px; font-size:18px;">Audience cards</h3>
+        <div class="demo">
+            <div class="demo__pad">
+                <div class="audience">
+                    <article class="audience__card">
+                        <h3>Beginnende fietsers</h3>
+                        <p>Net gestart? We zorgen dat je positie vanaf dag één klopt.</p>
+                    </article>
+                    <article class="audience__card">
+                        <h3>Recreatieve fietsers</h3>
+                        <p>Last tijdens of na het rijden? We brengen alles in balans.</p>
+                    </article>
+                    <article class="audience__card">
+                        <h3>Jeugd</h3>
+                        <p>Een aparte jeugd-bikefit: betaalbaar, duidelijk en op maat.</p>
+                    </article>
+                </div>
+            </div>
+            <div class="demo__label">.audience &gt; .audience__card</div>
+        </div>
+
+        <!-- Blockquote -->
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin:48px 0 16px; font-size:18px;">Pull quote</h3>
+        <div class="demo">
+            <div class="demo__pad">
+                <div class="rich">
+                    <blockquote>"Iedereen heeft een andere aanpak nodig — daarom doen wij niet aan copy-paste."</blockquote>
+                </div>
+            </div>
+            <div class="demo__label">.rich blockquote</div>
+        </div>
+
+        <!-- FAQ -->
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin:48px 0 16px; font-size:18px;">FAQ</h3>
+        <div class="demo">
+            <div class="demo__pad">
+                <div class="faq">
+                    <div class="faq__item">
+                        <div class="faq__q">Hoe lang duurt een afspraak?</div>
+                        <p class="faq__a">Reken op voldoende tijd — geen haastwerk.</p>
+                    </div>
+                    <div class="faq__item">
+                        <div class="faq__q">Mag ik mijn kinderen meebrengen?</div>
+                        <p class="faq__a">Zeker. Geen geregel met opvang nodig.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="demo__label">.faq &gt; .faq__item</div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== 08 Patterns ===== -->
+<section class="ds-section" id="patterns">
+    <div class="ds-section__inner">
+        <div class="ds-section__head">
+            <div class="ds-section__num">08 / Patterns</div>
+            <h2 class="ds-section__title">How blocks combine</h2>
+            <p class="ds-section__lede">
+                Patterns are reusable arrangements of components. Use them as the default — only depart from them with a documented reason.
+            </p>
+        </div>
+
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin:0 0 16px; font-size:18px;">Hero</h3>
+        <ul class="rich" style="list-style:none; padding-left:0; margin-bottom:32px;">
+            <li>Light surface (<code>--color-surface</code>). One sentence headline. One sentence sub. Max two buttons.</li>
+            <li>Eyebrow above the headline, separated by a thin top rule.</li>
+            <li>Min height: <code>72vh</code>. Content aligns bottom-left. Hero should never feel busy.</li>
+        </ul>
+
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin:0 0 16px; font-size:18px;">Split</h3>
+        <div class="demo">
+            <div class="demo__pad">
+                <div class="split">
+                    <div class="rich">
+                        <div class="section__eyebrow">Onze aanpak</div>
+                        <h2>Geen copy-paste. Wel karakter.</h2>
+                        <p>Use a split when the message benefits from a paired visual. Visual on the right by default; alternate with <code>.split--reverse</code> for rhythm across a long page.</p>
+                    </div>
+                    <div class="split__visual" aria-hidden="true"></div>
+                </div>
+            </div>
+            <div class="demo__label">.split &gt; .rich + .split__visual</div>
+        </div>
+
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin:48px 0 16px; font-size:18px;">Callout strip</h3>
+        <div class="demo">
+            <div style="padding:0;">
+                <section class="callout">
+                    <div class="callout__inner">
+                        <h2 class="callout__title">Klaar voor een fiets die bij jou past?</h2>
+                        <a href="#" class="btn btn--primary" style="background:#fff; color:var(--color-ink); border-color:#fff;">Boek je bikefit</a>
+                    </div>
+                </section>
+            </div>
+            <div class="demo__label">.callout — full-bleed dark CTA strip</div>
+        </div>
+
+        <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin:48px 0 16px; font-size:18px;">Page header</h3>
+        <ul class="rich" style="list-style:none; padding-left:0;">
+            <li>Use the page header (<code>.page-head</code>) on every page except the home page.</li>
+            <li>Crumb on top, large title, optional lede. Bottom border = thin line, never a thick rule.</li>
+        </ul>
+    </div>
+</section>
+
+<!-- ===== 09 Imagery ===== -->
+<section class="ds-section" id="imagery">
+    <div class="ds-section__inner">
+        <div class="ds-section__head">
+            <div class="ds-section__num">09 / Imagery &amp; iconography</div>
+            <h2 class="ds-section__title">Documentary, not heroic</h2>
+            <p class="ds-section__lede">
+                Photography is candid, natural-light, and human. Riders look like riders — not athletes mid-podium. Bikes look used, not staged.
+            </p>
+        </div>
+
+        <div class="ds-grid ds-grid--2">
+            <div>
+                <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:12px; font-size:18px;">Photography</h3>
+                <ul class="rich" style="list-style:none; padding-left:0;">
+                    <li>Natural light. No filters that crush blacks or saturate skin tones.</li>
+                    <li>Studio interiors, hands-on moments, side profiles of bikes — not raceday action.</li>
+                    <li>People comfortable, neutral expressions. No forced smiles.</li>
+                    <li>Crop tight. Negative space matters more than the subject filling the frame.</li>
+                </ul>
+            </div>
+            <div>
+                <h3 style="font-family:var(--font-display); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:12px; font-size:18px;">Iconography</h3>
+                <ul class="rich" style="list-style:none; padding-left:0;">
+                    <li>Line icons only. <code>1.5px</code> stroke, rounded caps and joins.</li>
+                    <li>Monochrome — Ink on light, white on dark.</li>
+                    <li>Match the dashed "fit-line" idiom of the logo when an icon represents measurement or analysis.</li>
+                    <li>Don't use filled symbols, gradients, or color-coded states.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ===== 10 Tokens ===== -->
+<section class="ds-section" id="tokens">
+    <div class="ds-section__inner">
+        <div class="ds-section__head">
+            <div class="ds-section__num">10 / Tokens</div>
+            <h2 class="ds-section__title">CSS custom properties</h2>
+            <p class="ds-section__lede">
+                The single source of truth lives in <code>styles.css</code> on <code>:root</code>. Always reference tokens — never hard-code colors or fonts in components.
+            </p>
+        </div>
+
+        <div style="background:var(--color-surface); border:1px solid var(--color-line); padding:24px; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:13px; line-height:1.7; overflow-x:auto;">
+<span style="color:var(--color-ink-mute);">/* Color */</span><br>
+--color-bg:           #ffffff;<br>
+--color-ink:          #1f1f1f;<br>
+--color-ink-soft:     #565656;<br>
+--color-ink-mute:     #888888;<br>
+--color-line:         #e6e6e6;<br>
+--color-line-strong:  #c8c8c8;<br>
+--color-surface:      #f4f4f4;<br>
+--color-surface-2:    #ebebeb;<br>
+<br>
+<span style="color:var(--color-ink-mute);">/* Type */</span><br>
+--font-display: 'Barlow Condensed', 'Helvetica Neue', Arial, sans-serif;<br>
+--font-body:    'Inter', 'Helvetica Neue', Arial, sans-serif;<br>
+<br>
+<span style="color:var(--color-ink-mute);">/* Layout */</span><br>
+--max-width: 1400px;<br>
+--gutter:    24px;<br>
+        </div>
+
+        <p class="rich" style="margin-top:24px;">When the system grows: add the token first, document it on this page in the matching section, and only then use it in a component. New tokens require a short rationale in the PR description.</p>
+    </div>
+</section>
+
+<footer class="site-footer">
+    <div class="footer__grid">
+        <div class="footer__col footer__brand">
+            <img src="logo.svg" alt="De Bikefit Studio" height="56">
+            <p>Brand design system &middot; v1.0 &middot; Maintained alongside the site, not in a separate repo.</p>
+        </div>
+        <div class="footer__col">
+            <h4>Foundations</h4>
+            <ul>
+                <li><a href="#principles">Principles</a></li>
+                <li><a href="#voice">Voice</a></li>
+                <li><a href="#logo">Logo</a></li>
+                <li><a href="#color">Color</a></li>
+                <li><a href="#typography">Typography</a></li>
+            </ul>
+        </div>
+        <div class="footer__col">
+            <h4>System</h4>
+            <ul>
+                <li><a href="#spacing">Spacing</a></li>
+                <li><a href="#components">Components</a></li>
+                <li><a href="#patterns">Patterns</a></li>
+                <li><a href="#imagery">Imagery</a></li>
+                <li><a href="#tokens">Tokens</a></li>
+            </ul>
+        </div>
+        <div class="footer__col">
+            <h4>Owners</h4>
+            <ul>
+                <li>brand@debikefitstudio.be</li>
+                <li>Updated 2026-05-10</li>
+                <li>Version 1.0</li>
+            </ul>
+        </div>
+    </div>
+    <div class="footer__bottom">
+        <span>&copy; 2026 DE BIKEFIT STUDIO</span>
+        <span>DESIGN SYSTEM v1.0</span>
+    </div>
+</footer>
+
+</body>
+</html>
