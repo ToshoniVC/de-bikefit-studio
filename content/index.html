@@ -3,241 +3,128 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Content &amp; Copywriting — De Bikefit Studio</title>
-    <meta name="description" content="Content & copywriting workspace for De Bikefit Studio. Placeholder.">
-    <link rel="icon" type="image/svg+xml" href="../logo.svg">
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
-
-        :root {
-            --ink: #1f1f1f;
-            --ink-soft: #565656;
-            --ink-mute: #888888;
-            --line: #e6e6e6;
-            --line-strong: #c8c8c8;
-            --surface: #f4f4f4;
-            --font-display: 'Barlow Condensed', 'Helvetica Neue', Arial, sans-serif;
-            --font-body: 'Inter', 'Helvetica Neue', Arial, sans-serif;
-        }
-
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: var(--font-body);
-            font-size: 16px;
-            line-height: 1.6;
-            color: var(--ink);
-            background: #fff;
-            -webkit-font-smoothing: antialiased;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        a { color: inherit; text-decoration: none; }
-        img { display: block; max-width: 100%; }
-
-        .topbar {
-            background: var(--ink);
-            color: #cfcfcf;
-            font-size: 12px;
-            letter-spacing: 0.04em;
-        }
-        .topbar__inner {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 8px 24px;
-            display: flex;
-            justify-content: space-between;
-            gap: 16px;
-        }
-        .topbar a:hover { color: #fff; }
-        .topbar__right { display: flex; gap: 24px; }
-
-        .head {
-            padding: 40px 24px 24px;
-            border-bottom: 1px solid var(--line);
-        }
-        .head__inner {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 24px;
-        }
-        .head__brand img { height: 56px; }
-        .head__meta {
-            font-family: var(--font-display);
-            text-transform: uppercase;
-            letter-spacing: 0.22em;
-            font-size: 12px;
-            color: var(--ink-mute);
-        }
-
-        .body {
-            flex-grow: 1;
-            padding: 80px 24px;
-        }
-        .body__inner {
-            max-width: 760px;
-            margin: 0 auto;
-            text-align: center;
-        }
-        .eyebrow {
-            font-family: var(--font-display);
-            text-transform: uppercase;
-            letter-spacing: 0.22em;
-            font-size: 12px;
-            color: var(--ink-mute);
-            padding-top: 12px;
-            border-top: 1px solid var(--line-strong);
-            display: inline-block;
-            padding-right: 24px;
-            margin-bottom: 24px;
-        }
-        h1 {
-            font-family: var(--font-display);
-            font-weight: 700;
-            text-transform: uppercase;
-            line-height: 1;
-            font-size: clamp(40px, 6vw, 72px);
-            letter-spacing: -0.005em;
-            margin-bottom: 24px;
-        }
-        .lede {
-            font-size: 18px;
-            line-height: 1.6;
-            color: var(--ink-soft);
-            margin-bottom: 40px;
-        }
-
-        .placeholder {
-            border: 1px dashed var(--line-strong);
-            background: var(--surface);
-            padding: 48px 32px;
-            text-align: left;
-        }
-        .placeholder h2 {
-            font-family: var(--font-display);
-            font-weight: 700;
-            text-transform: uppercase;
-            font-size: 20px;
-            letter-spacing: 0.04em;
-            margin-bottom: 12px;
-            color: var(--ink);
-        }
-        .placeholder ul {
-            margin-top: 16px;
-            list-style: none;
-        }
-        .placeholder ul li {
-            padding-left: 24px;
-            position: relative;
-            margin-bottom: 10px;
-            color: var(--ink-soft);
-        }
-        .placeholder ul li::before {
-            content: "";
-            position: absolute;
-            left: 0;
-            top: 12px;
-            width: 14px;
-            height: 1px;
-            background: var(--ink-mute);
-        }
-        .placeholder p { color: var(--ink-soft); }
-
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            padding: 14px 28px;
-            font-family: var(--font-display);
-            font-size: 14px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            border: 2px solid var(--ink);
-            background: transparent;
-            color: var(--ink);
-            margin-top: 32px;
-            transition: background .2s ease, color .2s ease;
-        }
-        .btn:hover { background: var(--ink); color: #fff; }
-
-        .foot {
-            margin-top: auto;
-            background: var(--ink);
-            color: #b8b8b8;
-            padding: 32px 24px;
-            font-size: 12px;
-            letter-spacing: 0.06em;
-        }
-        .foot__inner {
-            max-width: 1200px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 16px;
-        }
-
-        @media (max-width: 700px) {
-            .head__inner { flex-direction: column; align-items: flex-start; }
-            .placeholder { padding: 32px 24px; }
-        }
-    </style>
+    <title>Landing page — Content draft — De Bikefit Studio</title>
+    <link rel="stylesheet" href="content.css">
 </head>
 <body>
 
-<div class="topbar">
-    <div class="topbar__inner">
-        <a href="../">&larr; Project hub</a>
-        <div class="topbar__right">
-            <span>Content &amp; copywriting</span>
-            <span>Draft</span>
-        </div>
-    </div>
-</div>
-
-<header class="head">
-    <div class="head__inner">
-        <a href="../" class="head__brand">
-            <img src="../logo.svg" alt="De Bikefit Studio">
-        </a>
-        <div class="head__meta">02 &middot; Content</div>
-    </div>
+<header class="doc-head">
+    <nav class="doc-head__nav">
+        <a href="index.html" class="active">Landing</a>
+        <a href="about.html">About</a>
+        <a href="booking.html">Booking</a>
+    </nav>
+    <a href="../">&larr; Project hub</a>
 </header>
 
-<main class="body">
-    <div class="body__inner">
-        <span class="eyebrow">Placeholder</span>
-        <h1>Content &amp; Copywriting</h1>
-        <p class="lede">
-            This is the workspace for information architecture, navigation, page-by-page copy, voice and tone. Coming soon.
+<div class="doc-meta">Page 01 &middot; Landing &middot; Content draft v0.1</div>
+<h1>Landing page</h1>
+
+<p>
+    The landing page is the first thing a visitor sees. Its job is to land the promise in one line, show that this studio is for them (whoever they are), and let them hear from people who already came through the door.
+</p>
+
+<!-- ============================================== -->
+<h2>1. Hero — catchphrase</h2>
+
+<p class="tagline">
+    Ride with comfort. Life's too short to bike with pain.
+</p>
+
+<p>
+    One line, no subtitle. The whole point of the brand sits here. The button under it leads to the booking page.
+</p>
+
+<!-- ============================================== -->
+<h2>2. Who it's for — personas</h2>
+
+<p>
+    A horizontal row of five personas, each with a short pitch. The first one (children) gets a little more — it's the one most parents are uncertain about.
+</p>
+
+<div class="persona-row">
+
+    <div class="persona">
+        <h3>01 &middot; Young riders</h3>
+        <p>
+            Kids grow fast — a bike that fits today is off by next season, and a growing body learns whatever you put it through. For junior racers already clocking real hours in the saddle, a poor fit doesn't just cost watts on race day; it locks in habits that follow them into adulthood.
         </p>
-
-        <div class="placeholder">
-            <h2>What will live here</h2>
-            <p>This surface keeps content separate from design so we can shape the message before we polish the pixels.</p>
-            <ul>
-                <li>Sitemap and navigation structure</li>
-                <li>Page-by-page copy (headings, body, CTAs)</li>
-                <li>Voice &amp; tone notes</li>
-                <li>Microcopy library (buttons, form labels, error messages)</li>
-                <li>SEO meta and social cards</li>
-                <li>Translation status (NL primary, future EN/FR)</li>
-            </ul>
-        </div>
-
-        <a href="../" class="btn">&larr; Back to project hub</a>
+        <p>
+            We track the fit as they grow. Affordable, clear, on their terms.
+        </p>
     </div>
-</main>
 
-<footer class="foot">
-    <div class="foot__inner">
-        <span>&copy; 2026 DE BIKEFIT STUDIO</span>
-        <span>CONTENT &amp; COPYWRITING &middot; DRAFT</span>
+    <div class="persona">
+        <h3>02 &middot; Touring cyclists</h3>
+        <p class="tag">
+            Long days, heavy bags, distant horizons — a fit you trust at kilometre 200 makes the trip what it should be.
+        </p>
     </div>
+
+    <div class="persona">
+        <h3>03 &middot; Recreational riders</h3>
+        <p class="tag">
+            For weekend rides that should leave you fresh, not aching the next morning.
+        </p>
+    </div>
+
+    <div class="persona">
+        <h3>04 &middot; Daily commuters</h3>
+        <p class="tag">
+            Five days a week, rain or shine. A fit that holds up to the daily grind — and the cold hands and the wet seat.
+        </p>
+    </div>
+
+    <div class="persona">
+        <h3>05 &middot; Family pack</h3>
+        <p class="tag">
+            Mum, dad, kids — one studio session, every bike fitted. Everyone rides home better.
+        </p>
+    </div>
+
+</div>
+
+<!-- ============================================== -->
+<h2>3. Success stories &middot; reviews</h2>
+
+<p>
+    A short block of real voices. Three to five reviews, rotating. Each one names the kind of rider (recreational, commuter, racer, parent of junior, etc.) so a visitor sees themselves.
+</p>
+
+<div class="placeholder-note">
+    Reviews below are placeholder copy. Replace with real client testimonials before launch — ideally with first name, age, and the type of riding they do. Keep them short (one paragraph max).
+</div>
+
+<div class="review">
+    <p>"Three years of nagging back pain on every Sunday ride. One session at the studio and I'm doing 80 km without thinking about my back. I should have done this five years ago."</p>
+    <div class="by">Anna, 42 &middot; recreational rider</div>
+</div>
+
+<div class="review">
+    <p>"Richard adjusted my saddle and bars between two races. Felt the difference in the first sprint. My coach noticed too."</p>
+    <div class="by">Tom, 14 &middot; junior racer</div>
+</div>
+
+<div class="review">
+    <p>"Forty kilometres a day, every day. My hands used to go numb by the time I parked at work. Not anymore."</p>
+    <div class="by">Pieter, 38 &middot; commuter</div>
+</div>
+
+<div class="review">
+    <p>"We brought all four bikes. Kids included. We left with bikes that finally feel like ours — and no eye-rolls from the teenager."</p>
+    <div class="by">Mieke &amp; Jan &middot; family fit</div>
+</div>
+
+<!-- ============================================== -->
+<h2>4. Closing CTA</h2>
+
+<p>
+    One final button at the bottom of the page, same destination as the hero: <strong>Book your fit</strong>. Short line above it tying back to the catchphrase — e.g. <em>"Comfort is a choice. Make it."</em>
+</p>
+
+<footer class="doc-foot">
+    <span>Content workspace &middot; structure-first, no design</span>
+    <a href="../">&larr; Back to project hub</a>
 </footer>
 
 </body>
