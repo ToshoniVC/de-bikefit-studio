@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" width="100%" height="100%">
+    <defs>
+        <style>
+            .frame {
+                fill: none;
+                stroke: #111111;
+                stroke-width: 10;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .wheel {
+                fill: none;
+                stroke: #CCCCCC;
+                stroke-width: 10;
+            }
+            .wheel-inner {
+                fill: none;
+                stroke: #E8E8E8;
+                stroke-width: 2;
+            }
+            .fit-line {
+                fill: none;
+                stroke: #888888;
+                stroke-width: 3;
+                stroke-dasharray: 6 6;
+                stroke-linecap: round;
+                stroke-linejoin: round;
+            }
+            .fit-accent {
+                fill: none;
+                stroke: #AAAAAA;
+                stroke-width: 1.5;
+                stroke-dasharray: 3 3;
+            }
+            .fit-dot {
+                fill: #FFFFFF;
+                stroke: #111111;
+                stroke-width: 3;
+            }
+            .title {
+                font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                font-weight: 800;
+                font-size: 52px;
+                fill: #111111;
+                letter-spacing: 2px;
+            }
+            .subtitle {
+                font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                font-weight: 400;
+                font-size: 24px;
+                fill: #777777;
+                letter-spacing: 14px;
+            }
+        </style>
+    </defs>
+
+    <rect width="100%" height="100%" fill="#ffffff" />
+
+    <g transform="translate(0, 60)">
+
+        <circle cx="260" cy="280" r="75" class="wheel" />
+        <circle cx="540" cy="280" r="75" class="wheel" />
+        <circle cx="260" cy="280" r="63" class="wheel-inner" />
+        <circle cx="540" cy="280" r="63" class="wheel-inner" />
+
+        <path d="M 260 280 L 380 290 L 335 135 Z" class="frame" />
+        <path d="M 380 290 L 480 90 L 335 135 Z" class="frame" />
+        <path d="M 480 90 L 540 280" class="frame" />
+
+        <circle cx="380" cy="290" r="18" class="frame" stroke-width="4" />
+        <line x1="380" y1="290" x2="415" y2="325" class="frame" stroke-width="8" />
+
+        <line x1="335" y1="135" x2="320" y2="85" class="frame" stroke-width="8" />
+        <path d="M 290 85 Q 320 90 345 80" class="frame" stroke-width="12" />
+
+        <line x1="480" y1="90" x2="505" y2="80" class="frame" stroke-width="8" />
+        <path d="M 495 80 C 525 75, 535 105, 510 115" class="frame" stroke-width="8" />
+
+        <circle cx="260" cy="280" r="4" fill="#111111" />
+        <circle cx="540" cy="280" r="4" fill="#111111" />
+        <circle cx="380" cy="290" r="6" fill="#111111" />
+
+        <path d="M 415 325 L 405 185 L 325 70 L 425 -10 L 470 55 L 510 80" class="fit-line" />
+
+        <line x1="325" y1="70" x2="385" y2="70" class="fit-accent" />
+        <path d="M 365 70 A 40 40 0 0 0 356 45" class="fit-accent" stroke-dasharray="none" />
+        <text x="370" y="58" font-family="sans-serif" font-size="12" fill="#888888" font-weight="bold">51°</text>
+
+        <circle cx="405" cy="185" r="15" class="fit-accent" />
+        <line x1="405" y1="185" x2="405" y2="340" class="fit-accent" stroke-dasharray="4 4" />
+
+        <circle cx="415" cy="325" r="6" class="fit-dot" /> <circle cx="405" cy="185" r="6" class="fit-dot" /> <circle cx="325" cy="70" r="6" class="fit-dot" /> <circle cx="425" cy="-10" r="6" class="fit-dot" /> <circle cx="470" cy="55" r="6" class="fit-dot" /> <circle cx="510" cy="80" r="6" class="fit-dot" /> <line x1="180" y1="365" x2="620" y2="365" stroke="#F0F0F0" stroke-width="3" stroke-linecap="round" />
+
+    </g>
+
+    <text x="401" y="490" class="title" text-anchor="middle">DE BIKEFIT</text>
+    <text x="407" y="535" class="subtitle" text-anchor="middle">STUDIO</text>
+
+</svg>
