@@ -1,10 +1,9 @@
 import Link from 'next/link';
 import { mainNav } from '@/lib/nav';
 import { MobileNav } from './mobile-nav';
-import { HeaderAuth } from './header-auth';
 import { CartSheet } from '@/components/shop/cart-sheet';
 
-export function SiteHeader({ hasAuth }: { hasAuth: boolean }) {
+export function SiteHeader() {
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-6 px-4 sm:px-6">
@@ -31,7 +30,6 @@ export function SiteHeader({ hasAuth }: { hasAuth: boolean }) {
         </nav>
 
         <div className="flex items-center gap-1">
-          {hasAuth ? <HeaderAuth /> : null}
           <CartSheet />
         </div>
       </div>

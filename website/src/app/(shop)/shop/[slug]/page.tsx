@@ -3,11 +3,11 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Bike, ChevronLeft } from 'lucide-react';
 import { AddToCartButton } from '@/components/shop/add-to-cart-button';
-import { getProductBySlug, getActiveProducts } from '@/db/queries';
+import { getProductBySlug, getProducts } from '@/lib/shopify';
 import { formatPrice } from '@/lib/format';
 
 export async function generateStaticParams() {
-  const products = await getActiveProducts();
+  const products = await getProducts();
   return products.map((p) => ({ slug: p.slug }));
 }
 
@@ -31,7 +31,7 @@ export default async function ProductPage({
   const product = await getProductBySlug(slug);
   if (!product) notFound();
 
-  const inStock = product.stockCount > 0;
+  const inStock = product.availableForSale && Boolean(product.variantId);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -66,15 +66,15 @@ export default async function ProductPage({
             </h1>
           </div>
 
-          <p className="text-2xl font-semibold tabular-nums">{formatPrice(product.price)}</p>
+          <p className="text-2xl font-semibold tabular-nums">
+            {formatPrice(product.price, product.currencyCode)}
+          </p>
 
           <p className="text-muted-foreground">{product.description}</p>
 
           <p className="text-sm">
             {inStock ? (
-              <span className="text-foreground">
-                In stock — {product.stockCount} available
-              </span>
+              <span className="text-foreground">In stock</span>
             ) : (
               <span className="text-muted-foreground">Currently sold out</span>
             )}
@@ -83,13 +83,18 @@ export default async function ProductPage({
           <AddToCartButton
             className="font-display uppercase tracking-wide sm:w-64"
             inStock={inStock}
-            item={{
-              productId: product.id,
-              slug: product.slug,
-              name: product.name,
-              price: product.price,
-              imageUrl: product.imageUrl,
-            }}
+            item={
+              product.variantId
+                ? {
+                    variantId: product.variantId,
+                    productId: product.id,
+                    slug: product.slug,
+                    name: product.name,
+                    price: product.price,
+                    imageUrl: product.imageUrl,
+                  }
+                : null
+            }
           />
         </div>
       </div>

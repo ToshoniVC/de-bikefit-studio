@@ -2,11 +2,11 @@ import Link from 'next/link';
 import { ArrowRight, Wrench, Truck, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ProductCard } from '@/components/shop/product-card';
-import { getActiveProducts } from '@/db/queries';
+import { getProducts } from '@/lib/shopify';
 import { shopCategories } from '@/lib/nav';
 
 export default async function HomePage() {
-  const products = await getActiveProducts();
+  const products = await getProducts();
   const featured = products.slice(0, 3);
 
   return (

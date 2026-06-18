@@ -1,15 +1,12 @@
 import { NextResponse } from 'next/server';
-import type Stripe from 'stripe';
 import { z } from 'zod';
-import { stripe } from '@/lib/stripe';
-import { getProductBySlug } from '@/db/queries';
-import { env } from '@/lib/env';
+import { createCartCheckoutUrl, isShopifyConfigured } from '@/lib/shopify';
 
 const bodySchema = z.object({
   items: z
     .array(
       z.object({
-        slug: z.string().min(1),
+        variantId: z.string().min(1),
         quantity: z.number().int().positive().max(99),
       }),
     )
@@ -17,13 +14,14 @@ const bodySchema = z.object({
 });
 
 /**
- * Create a Stripe Checkout session. Prices are recomputed from the database —
- * the client-submitted cart only contributes slugs and quantities, never money.
+ * Build a Shopify cart from the submitted lines and return its hosted checkout
+ * URL. Pricing, tax, shipping and payment are all handled by Shopify Checkout —
+ * the client only contributes variant ids and quantities.
  */
 export async function POST(request: Request) {
-  if (!stripe) {
+  if (!isShopifyConfigured) {
     return NextResponse.json(
-      { error: 'Payments are not configured yet. Add STRIPE_SECRET_KEY to enable checkout.' },
+      { error: 'The shop is not connected yet. Add your Shopify credentials to enable checkout.' },
       { status: 501 },
     );
   }
@@ -33,31 +31,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid cart.' }, { status: 400 });
   }
 
-  const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
-  for (const item of parsed.data.items) {
-    const product = await getProductBySlug(item.slug);
-    if (!product || !product.isActive || product.stockCount < item.quantity) continue;
-    lineItems.push({
-      quantity: item.quantity,
-      price_data: {
-        currency: 'eur',
-        unit_amount: Math.round(Number(product.price) * 100),
-        product_data: { name: product.name },
-      },
-    });
+  try {
+    const url = await createCartCheckoutUrl(parsed.data.items);
+    if (!url) {
+      return NextResponse.json({ error: 'Could not create a checkout.' }, { status: 502 });
+    }
+    return NextResponse.json({ url });
+  } catch {
+    return NextResponse.json({ error: 'Checkout failed. Please try again.' }, { status: 502 });
   }
-
-  if (lineItems.length === 0) {
-    return NextResponse.json({ error: 'No purchasable items in cart.' }, { status: 400 });
-  }
-
-  const origin = env.NEXT_PUBLIC_APP_URL ?? request.headers.get('origin') ?? '';
-  const session = await stripe.checkout.sessions.create({
-    mode: 'payment',
-    line_items: lineItems,
-    success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${origin}/checkout`,
-  });
-
-  return NextResponse.json({ url: session.url });
 }

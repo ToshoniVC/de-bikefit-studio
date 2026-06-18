@@ -1,10 +1,9 @@
-import type { Product } from '@/db/schema';
+import type { Product } from './types';
 
 /**
- * Development seed / fallback catalog. Mirrors the `products` table shape so it
- * can be served by the data layer before Neon is provisioned, and reused as
- * seed data once it is. Images are intentionally null — the UI renders a
- * branded icon placeholder rather than a stock photo.
+ * Development fallback catalog, used only until Shopify is configured. Mirrors
+ * the normalized `Product` shape. Images are null so the UI renders a branded
+ * icon placeholder rather than a stock photo.
  */
 export const sampleProducts: Product[] = [
   {
@@ -14,11 +13,11 @@ export const sampleProducts: Product[] = [
     description:
       'A wind-tunnel-shaped carbon race frame built for the rider who measures every watt. Integrated cockpit, electronic groupset ready.',
     price: '4299.00',
-    stockCount: 4,
-    category: 'road',
+    currencyCode: 'EUR',
     imageUrl: null,
-    isActive: true,
-    createdAt: new Date('2026-01-15T09:00:00Z'),
+    category: 'road',
+    availableForSale: true,
+    variantId: 'sample-variant-aero-rs',
   },
   {
     id: 'sample-gravel-1',
@@ -27,11 +26,11 @@ export const sampleProducts: Product[] = [
     description:
       'One bike for the commute, the bikepacking trip and the Sunday gravel grind. Clearance for 50mm tyres and mounts everywhere.',
     price: '3199.00',
-    stockCount: 7,
-    category: 'gravel',
+    currencyCode: 'EUR',
     imageUrl: null,
-    isActive: true,
-    createdAt: new Date('2026-02-02T09:00:00Z'),
+    category: 'gravel',
+    availableForSale: true,
+    variantId: 'sample-variant-gravel-x',
   },
   {
     id: 'sample-road-endurance-1',
@@ -40,11 +39,11 @@ export const sampleProducts: Product[] = [
     description:
       'Endurance geometry tuned for long days in the saddle. Compliant rear triangle, hidden mudguard mounts, all-road tyre clearance.',
     price: '2799.00',
-    stockCount: 0,
-    category: 'road',
+    currencyCode: 'EUR',
     imageUrl: null,
-    isActive: true,
-    createdAt: new Date('2026-02-20T09:00:00Z'),
+    category: 'road',
+    availableForSale: false,
+    variantId: 'sample-variant-endure',
   },
   {
     id: 'sample-accessory-helmet-1',
@@ -53,11 +52,11 @@ export const sampleProducts: Product[] = [
     description:
       'Featherweight aero road helmet with adjustable venting. MIPS protection, 270g, dialled-in fit system.',
     price: '189.00',
-    stockCount: 23,
-    category: 'accessory',
+    currencyCode: 'EUR',
     imageUrl: null,
-    isActive: true,
-    createdAt: new Date('2026-03-05T09:00:00Z'),
+    category: 'accessory',
+    availableForSale: true,
+    variantId: 'sample-variant-helmet',
   },
   {
     id: 'sample-accessory-bottle-1',
@@ -66,10 +65,10 @@ export const sampleProducts: Product[] = [
     description:
       'BPA-free 650ml bidons with a high-flow valve and the Qarakter mark. Sold as a pair.',
     price: '24.00',
-    stockCount: 120,
-    category: 'accessory',
+    currencyCode: 'EUR',
     imageUrl: null,
-    isActive: true,
-    createdAt: new Date('2026-03-18T09:00:00Z'),
+    category: 'accessory',
+    availableForSale: true,
+    variantId: 'sample-variant-bidon',
   },
 ];

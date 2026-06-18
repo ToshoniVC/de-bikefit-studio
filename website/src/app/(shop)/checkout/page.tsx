@@ -21,7 +21,7 @@ export default function CheckoutPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: items.map((i) => ({ slug: i.slug, quantity: i.quantity })),
+          items: items.map((i) => ({ variantId: i.variantId, quantity: i.quantity })),
         }),
       });
       const data = (await res.json()) as { url?: string; error?: string };
@@ -58,7 +58,7 @@ export default function CheckoutPage() {
 
       <ul className="mt-6 divide-y rounded-lg border">
         {items.map((item) => (
-          <li key={item.productId} className="flex items-center justify-between p-4">
+          <li key={item.variantId} className="flex items-center justify-between p-4">
             <span className="text-sm">
               {item.name} <span className="text-muted-foreground">× {item.quantity}</span>
             </span>
@@ -86,7 +86,8 @@ export default function CheckoutPage() {
       </Button>
 
       <p className="mt-3 text-center text-xs text-muted-foreground">
-        Card via Stripe · Bancontact &amp; iDEAL via Mollie. Prices are re-verified server-side.
+        Secure checkout powered by Shopify — cards, Bancontact &amp; iDEAL. You&apos;ll be
+        redirected to complete payment.
       </p>
     </div>
   );

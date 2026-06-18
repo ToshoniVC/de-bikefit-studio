@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
 export const metadata: Metadata = {
   title: 'About',
@@ -23,7 +24,7 @@ export default function AboutPage() {
         <h2>Visit us</h2>
         <p>
           Drop by for a coffee and a chat about your next build, or browse the full range in our{' '}
-          <a href="/shop">shop</a>.
+          <Link href="/shop">shop</Link>.
         </p>
       </article>
     </div>

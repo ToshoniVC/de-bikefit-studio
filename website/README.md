@@ -1,83 +1,78 @@
-# Qarakter — Bike Webshop
+# Qarakter — Bike Webshop (Shopify headless)
 
-A serverless, edge-friendly e-commerce site for the Qarakter boutique bike store:
-shop + cart + checkout, Clerk auth, and an MDX-driven content/blog engine.
+A custom Next.js website for the Qarakter boutique bike store, with **Shopify
+headless** powering commerce. Your site is the whole experience — homepage,
+content, blog, brand — and Shopify handles products, cart, checkout, payments,
+tax and orders.
 
 ## Stack
 
-| Concern   | Choice                                                        |
-| --------- | ------------------------------------------------------------ |
-| Framework | **Next.js 16** (App Router, RSC-first, strict TypeScript)    |
-| Styling   | **Tailwind CSS v4** + **shadcn/ui** (Base UI, `base-nova`)   |
-| Database  | **Neon** serverless Postgres via **Drizzle ORM** (neon-http) |
-| Auth      | **Clerk** (`@clerk/nextjs`)                                  |
-| Payments  | **Stripe** (cards) + **Mollie** (Bancontact / iDEAL)        |
-| Content   | **MDX** via `next-mdx-remote` (RSC)                          |
-| Deploy    | **Vercel**                                                   |
+| Concern        | Choice                                                       |
+| -------------- | ----------------------------------------------------------- |
+| Framework      | **Next.js 16** (App Router, RSC-first, strict TypeScript)   |
+| Styling        | **Tailwind CSS v4** + **shadcn/ui** (Base UI, `base-nova`)  |
+| Commerce       | **Shopify** via the **Storefront API** (headless)           |
+| Checkout       | **Shopify Checkout** (hosted — PCI, tax, shipping, payments)|
+| Content / blog | **MDX** (`next-mdx-remote`); optional Shopify metaobjects   |
+| Deploy         | **Vercel** (Pro — required for commercial use)              |
 
-> **Deviations from the original spec:** it called for Next.js 15 and Tailwind v3
-> with a `tailwind.config.ts`. The current toolchain ships **Next 16** and
-> **Tailwind v4** (CSS-based config in `globals.css`, no JS config file). The
-> architecture (RSC, neon-http, route groups) is unchanged. shadcn's current
-> default style (`base-nova`) is built on **Base UI**, so components use a
-> `render={<El />}` prop instead of Radix's `asChild`.
+What Shopify owns: products, inventory, cart, checkout, payments (cards +
+Bancontact/iDEAL), tax, shipping, orders, the admin UI. What this repo owns:
+the entire storefront UI, brand, content and routing.
 
 ## Getting started
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in as you wire up each service
+cp .env.example .env.local   # add Shopify creds when ready
 npm run dev
 ```
 
-The app **runs with no environment variables**. Without them it:
+The site **runs with no environment variables**, serving the catalog from
+`src/lib/sample-products.ts` so you can build the UI before the store exists.
+Add Shopify creds to `.env.local` to switch to live data; checkout returns `501`
+until then.
 
-- serves the catalog from `src/lib/sample-products.ts` (no DB needed),
-- hides auth UI and makes `middleware.ts` a pass-through,
-- returns `501` from checkout / webhook endpoints.
+## Connecting Shopify
 
-Add credentials to `.env.local` to switch each integration on — see `.env.example`.
-
-## Database
-
-```bash
-npm run db:generate   # generate SQL migrations from src/db/schema.ts
-npm run db:push       # push the schema to Neon (needs DATABASE_URL)
-npm run db:studio     # browse data in Drizzle Studio
-```
-
-Schema lives in [`src/db/schema.ts`](src/db/schema.ts); read access goes through
-[`src/db/queries.ts`](src/db/queries.ts), which falls back to sample data when
-`DATABASE_URL` is unset.
+1. Create the store, then a **custom app** (Settings → Apps → Develop apps).
+2. Enable **Storefront API** access → copy the public access token.
+3. Put it in `.env.local`:
+   ```
+   SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
+   SHOPIFY_STOREFRONT_API_TOKEN=...
+   ```
+4. (To bulk-load products) enable **Admin API** `write_products`, copy that
+   token to `SHOPIFY_ADMIN_API_TOKEN`, edit `products.csv`, then:
+   ```bash
+   npm run shopify:sync            # dry run
+   npm run shopify:sync -- --commit  # write to Shopify
+   ```
 
 ## Project layout
 
 ```
 src/
 ├── app/
-│   ├── (auth)/          # Clerk sign-in / sign-up (catch-all routes)
 │   ├── (shop)/          # shop listing, product pages, checkout
 │   ├── (content)/       # blog (MDX), about, policies
-│   ├── account/         # protected account page
-│   ├── api/             # checkout + Clerk/Stripe webhooks
-│   ├── layout.tsx       # root layout (conditional ClerkProvider, brand fonts)
+│   ├── api/checkout/    # creates a Shopify cart, returns hosted checkout URL
+│   ├── layout.tsx       # root layout (brand fonts, header/footer)
 │   └── page.tsx         # landing page
 ├── components/
 │   ├── ui/              # shadcn/ui (Base UI) primitives
 │   ├── shop/            # ProductCard, CartSheet, AddToCartButton
-│   └── layout/          # Header, Footer, MobileNav, HeaderAuth
-├── db/                  # Drizzle schema, neon-http client, queries
+│   └── layout/          # Header, Footer, MobileNav
 ├── content/blog/        # .mdx blog posts
-└── lib/                 # env (zod), stripe, mollie, cart store, mdx, format
+└── lib/                 # shopify (Storefront client), cart store, types, mdx
+products.csv             # catalog source of truth for shopify:sync
+scripts/shopify-sync.mts # pushes products.csv → Shopify Admin API
 ```
 
-## Webhooks
+## Notes
 
-- **Clerk → Neon** user sync: `POST /api/webhooks/clerk` (set `CLERK_WEBHOOK_SECRET`).
-- **Stripe → Neon** order status: `POST /api/webhooks/stripe` (set `STRIPE_WEBHOOK_SECRET`).
-
-## Status
-
-Phase 1 (foundation + schema + styling) is complete and runnable. Phases 2–4
-(auth, payments, content) are scaffolded with working code paths that activate
-once their credentials are present.
+- **Next 16 / Tailwind v4** (CSS config in `globals.css`, no `tailwind.config.ts`).
+  shadcn's `base-nova` style uses **Base UI** → components take `render={<El/>}`,
+  not Radix `asChild`.
+- No database, no custom auth, no custom payment integration — Shopify owns all
+  of that. Customer accounts can be added later via Shopify customer accounts.

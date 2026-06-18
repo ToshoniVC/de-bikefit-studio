@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { ShoppingBag, Plus, Minus, Trash2, Bike } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -17,10 +17,16 @@ import { useCart, selectTotalItems, selectTotalPrice } from '@/lib/cart-store';
 import { formatPrice } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
+// false during SSR and the first client render, true afterwards — lets us avoid
+// a hydration mismatch from the localStorage-persisted cart without setState.
+const emptySubscribe = () => () => {};
+
 export function CartSheet() {
-  // Avoid a hydration mismatch: the persisted cart only exists on the client.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
 
   const items = useCart((s) => s.items);
   const totalItems = useCart(selectTotalItems);
@@ -54,7 +60,7 @@ export function CartSheet() {
         ) : (
           <ul className="flex-1 space-y-4 overflow-y-auto px-4">
             {items.map((item) => (
-              <li key={item.productId} className="flex gap-3">
+              <li key={item.variantId} className="flex gap-3">
                 <div className="flex size-16 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
                   <Bike className="size-6" />
                 </div>
@@ -68,7 +74,7 @@ export function CartSheet() {
                       variant="outline"
                       size="icon"
                       className="size-7"
-                      onClick={() => setQuantity(item.productId, item.quantity - 1)}
+                      onClick={() => setQuantity(item.variantId, item.quantity - 1)}
                       aria-label="Decrease quantity"
                     >
                       <Minus className="size-3" />
@@ -78,7 +84,7 @@ export function CartSheet() {
                       variant="outline"
                       size="icon"
                       className="size-7"
-                      onClick={() => setQuantity(item.productId, item.quantity + 1)}
+                      onClick={() => setQuantity(item.variantId, item.quantity + 1)}
                       aria-label="Increase quantity"
                     >
                       <Plus className="size-3" />
@@ -87,7 +93,7 @@ export function CartSheet() {
                       variant="ghost"
                       size="icon"
                       className="ml-auto size-7 text-muted-foreground"
-                      onClick={() => removeItem(item.productId)}
+                      onClick={() => removeItem(item.variantId)}
                       aria-label="Remove item"
                     >
                       <Trash2 className="size-4" />

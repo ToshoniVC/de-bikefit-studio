@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, Barlow_Condensed } from 'next/font/google';
-import { ClerkProvider } from '@clerk/nextjs';
 import './globals.css';
 import { SiteHeader } from '@/components/layout/header';
 import { SiteFooter } from '@/components/layout/footer';
@@ -17,9 +16,6 @@ const barlow = Barlow_Condensed({
   variable: '--font-barlow',
   display: 'swap',
 });
-
-// Auth UI is only mounted once Clerk is configured, so the app runs key-free.
-const hasClerk = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
 
 export const metadata: Metadata = {
   title: {
@@ -42,7 +38,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
       suppressHydrationWarning
     >
       <body className="min-h-full flex flex-col">
-        <SiteHeader hasAuth={hasClerk} />
+        <SiteHeader />
         <main className="flex-1">{children}</main>
         <SiteFooter />
       </body>
@@ -51,6 +47,5 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const shell = <RootShell>{children}</RootShell>;
-  return hasClerk ? <ClerkProvider>{shell}</ClerkProvider> : shell;
+  return <RootShell>{children}</RootShell>;
 }

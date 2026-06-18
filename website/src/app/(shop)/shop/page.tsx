@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { ProductCard } from '@/components/shop/product-card';
-import { getActiveProducts } from '@/db/queries';
+import { getProducts } from '@/lib/shopify';
 import { shopCategories } from '@/lib/nav';
 import { cn } from '@/lib/utils';
 
@@ -16,7 +16,7 @@ export default async function ShopPage({
   searchParams: Promise<{ category?: string }>;
 }) {
   const { category } = await searchParams;
-  const all = await getActiveProducts();
+  const all = await getProducts();
   const products = category ? all.filter((p) => p.category === category) : all;
 
   return (
