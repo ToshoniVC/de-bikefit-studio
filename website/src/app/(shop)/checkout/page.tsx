@@ -86,7 +86,7 @@ export default function CheckoutPage() {
       </Button>
 
       <p className="mt-3 text-center text-xs text-muted-foreground">
-        Card via Stripe · Bancontact &amp; iDEAL via Mollie. Prices are re-verified server-side.
+        Dev mode: payment is auto-approved (no real charge). Real Stripe checkout comes later.
       </p>
     </div>
   );

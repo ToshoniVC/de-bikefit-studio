@@ -1,10 +1,14 @@
 import Link from 'next/link';
 import { mainNav } from '@/lib/nav';
 import { MobileNav } from './mobile-nav';
-import { HeaderAuth } from './header-auth';
 import { CartSheet } from '@/components/shop/cart-sheet';
+import { Button } from '@/components/ui/button';
+import { getSession } from '@/lib/session';
+import { signOut } from '@/lib/auth-actions';
 
-export function SiteHeader({ hasAuth }: { hasAuth: boolean }) {
+export async function SiteHeader() {
+  const session = await getSession();
+
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-6 px-4 sm:px-6">
@@ -31,7 +35,37 @@ export function SiteHeader({ hasAuth }: { hasAuth: boolean }) {
         </nav>
 
         <div className="flex items-center gap-1">
-          {hasAuth ? <HeaderAuth /> : null}
+          {session ? (
+            <>
+              <Button
+                render={<Link href="/account" />}
+                variant="ghost"
+                size="sm"
+                className="font-display uppercase tracking-wide"
+              >
+                Account
+              </Button>
+              <form action={signOut}>
+                <Button
+                  type="submit"
+                  variant="ghost"
+                  size="sm"
+                  className="font-display uppercase tracking-wide"
+                >
+                  Sign out
+                </Button>
+              </form>
+            </>
+          ) : (
+            <Button
+              render={<Link href="/sign-in" />}
+              variant="ghost"
+              size="sm"
+              className="font-display uppercase tracking-wide"
+            >
+              Sign in
+            </Button>
+          )}
           <CartSheet />
         </div>
       </div>
