@@ -48,7 +48,7 @@ SITE_GATE_USER=...
 SITE_GATE_PASSWORD=...
 ```
 
-- [ ] Add those to `website/.env.local` (so I can test the gate locally), and
+- [x] Add those to `website/.env.local` (so I can test the gate locally), and
 - [ ] Add the same two to the **Vercel → Staging** environment (NOT Production —
       prod must stay public). I can generate a strong password if you'd like.
 

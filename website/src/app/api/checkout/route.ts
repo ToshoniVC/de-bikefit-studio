@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import type Stripe from 'stripe';
 import { z } from 'zod';
-import { stripe } from '@/lib/stripe';
-import { getProductBySlug } from '@/db/queries';
-import { env } from '@/lib/env';
+import { inArray } from 'drizzle-orm';
+import { requireDb } from '@/db';
+import { products, orders, orderItems } from '@/db/schema';
+import { getSession } from '@/lib/session';
 
 const bodySchema = z.object({
   items: z
@@ -17,47 +17,49 @@ const bodySchema = z.object({
 });
 
 /**
- * Create a Stripe Checkout session. Prices are recomputed from the database —
- * the client-submitted cart only contributes slugs and quantities, never money.
+ * TEMPORARY "approve-all" checkout: recomputes prices from the DB, records a
+ * PAID order, and returns the success URL — no real payment. Replaced by Stripe
+ * Checkout in Phase 2. Prices are still recomputed server-side so the flow
+ * mirrors the real one.
  */
 export async function POST(request: Request) {
-  if (!stripe) {
-    return NextResponse.json(
-      { error: 'Payments are not configured yet. Add STRIPE_SECRET_KEY to enable checkout.' },
-      { status: 501 },
-    );
-  }
-
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ error: 'Invalid cart.' }, { status: 400 });
   }
 
-  const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+  const db = requireDb();
+  const slugs = parsed.data.items.map((i) => i.slug);
+  const found = await db.select().from(products).where(inArray(products.slug, slugs));
+  const bySlug = new Map(found.map((p) => [p.slug, p]));
+
+  let total = 0;
+  const lines: { productId: string; quantity: number; priceAtPurchase: string }[] = [];
   for (const item of parsed.data.items) {
-    const product = await getProductBySlug(item.slug);
-    if (!product || !product.isActive || product.stockCount < item.quantity) continue;
-    lineItems.push({
+    const product = bySlug.get(item.slug);
+    if (!product || !product.isActive) continue;
+    total += Number(product.price) * item.quantity;
+    lines.push({
+      productId: product.id,
       quantity: item.quantity,
-      price_data: {
-        currency: 'eur',
-        unit_amount: Math.round(Number(product.price) * 100),
-        product_data: { name: product.name },
-      },
+      priceAtPurchase: product.price,
     });
   }
 
-  if (lineItems.length === 0) {
+  if (lines.length === 0) {
     return NextResponse.json({ error: 'No purchasable items in cart.' }, { status: 400 });
   }
 
-  const origin = env.NEXT_PUBLIC_APP_URL ?? request.headers.get('origin') ?? '';
-  const session = await stripe.checkout.sessions.create({
-    mode: 'payment',
-    line_items: lineItems,
-    success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${origin}/checkout`,
+  const session = await getSession();
+  const orderId = crypto.randomUUID();
+  await db.insert(orders).values({
+    id: orderId,
+    userId: session?.userId ?? null,
+    totalAmount: total.toFixed(2),
+    status: 'paid', // stub: auto-approved
+    shippingAddress: 'STUB CHECKOUT — no address collected',
   });
+  await db.insert(orderItems).values(lines.map((l) => ({ orderId, ...l })));
 
-  return NextResponse.json({ url: session.url });
+  return NextResponse.json({ url: '/checkout/success' });
 }
