@@ -60,6 +60,16 @@
         overflow-wrap: anywhere;
     }
 
+    /* The hamburger is a shipping navigation control, not dev chrome. It sits
+       here rather than in design-system/components.css only because that
+       folder is shared with the brand book and stayed out of scope for this
+       change; DESIGN-SYSTEM.md's "adding a component" rule would eventually
+       move it there. Hidden at every width until the container query below
+       puts it on screen.                                                     */
+    .nav__toggle {
+        display: none;
+    }
+
     /* ---- ≤900px: the tablet / large-phone step -------------------------- */
     @container page (max-width: 900px) {
 
@@ -77,32 +87,106 @@
         }
 
         /* NAV — the design system hides the menu outright below 900px. Here it
-           reflows instead: logo + CTA keep row one, the menu wraps onto its own
-           full-width row. No JS, no disclosure widget, nothing to miss with a
-           keyboard or a screen reader.                                        */
+           becomes a hamburger disclosure: row one is logo + burger + CTA, and
+           the menu drops below as a full-width list of 48px rows. Six items
+           wrapped onto two cramped rows at phone width, which is what this
+           replaces.                                                          */
         .nav {
             flex-wrap: wrap;
+            justify-content: flex-start;
             column-gap: var(--ds-space-sm);
             row-gap: var(--ds-space-2xs);
             padding: var(--ds-space-xs) var(--ds-gutter);
+        }
+        /* Pushes the burger and the CTA to the far edge. */
+        .nav__logo {
+            margin-inline-end: auto;
         }
         .nav__logo img {
             height: var(--ds-scale-40);
             width: auto;
         }
+
+        html[data-nav="enhanced"] .nav__toggle {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            /* Same 48px tap target as the menu rows it opens. */
+            width: var(--ds-space-2xl);
+            height: var(--ds-space-2xl);
+            padding: var(--ds-scale-0);
+            background: var(--ds-transparent);
+            color: var(--ds-color-fg);
+            border: var(--ds-border-width-hairline) solid var(--ds-color-border-strong);
+            border-radius: var(--ds-radius-control);
+            cursor: pointer;
+        }
+        .nav__toggle:hover {
+            border-color: var(--ds-color-accent);
+            color: var(--ds-color-accent);
+        }
+        .nav__toggle:focus-visible {
+            outline: var(--ds-border-width-thick) solid var(--ds-color-accent);
+            outline-offset: var(--ds-space-4xs);
+        }
+        /* Three bars out of one element: the span is the middle bar, its two
+           pseudo-elements are the outer ones. Open, they cross into an X. */
+        .nav__toggle-bars {
+            position: relative;
+            display: block;
+            width: var(--ds-scale-24);
+            height: var(--ds-border-width-thick);
+            background: currentColor;
+            transition: background var(--ds-transition-fast);
+        }
+        .nav__toggle-bars::before,
+        .nav__toggle-bars::after {
+            content: "";
+            position: absolute;
+            left: var(--ds-scale-0);
+            width: 100%;
+            height: 100%;
+            background: currentColor;
+            transition: transform var(--ds-transition-fast);
+        }
+        .nav__toggle-bars::before {
+            transform: translateY(calc(var(--ds-scale-6) * -1));
+        }
+        .nav__toggle-bars::after {
+            transform: translateY(var(--ds-scale-6));
+        }
+        .nav__toggle[aria-expanded="true"] .nav__toggle-bars {
+            background: var(--ds-transparent);
+        }
+        .nav__toggle[aria-expanded="true"] .nav__toggle-bars::before {
+            transform: rotate(45deg);
+        }
+        .nav__toggle[aria-expanded="true"] .nav__toggle-bars::after {
+            transform: rotate(-45deg);
+        }
+
+        /* The panel. Collapsed only when the burger is actually on screen —
+           without JavaScript html[data-nav] is never set, the button stays
+           hidden and the menu keeps its old wrapping rows rather than
+           becoming unreachable.                                              */
         .nav__menu {
             display: flex;
-            order: 3;
+            order: 1;
             flex-basis: 100%;
-            flex-wrap: wrap;
-            column-gap: var(--ds-space-md);
-            row-gap: var(--ds-scale-0);
+            flex-direction: column;
+            gap: var(--ds-scale-0);
+            border-top: var(--ds-border-width-hairline) solid var(--ds-color-border);
+        }
+        html[data-nav="enhanced"] .nav__toggle[aria-expanded="false"] + .nav__menu {
+            display: none;
+        }
+        .nav__menu li + li {
             border-top: var(--ds-border-width-hairline) solid var(--ds-color-border);
         }
         /* 48px tap targets (the token scale's nearest step above the 44px
            minimum).                                                           */
         .nav__menu a {
-            display: inline-flex;
+            display: flex;
             align-items: center;
             min-height: var(--ds-space-2xl);
             padding: var(--ds-space-3xs) var(--ds-scale-0);

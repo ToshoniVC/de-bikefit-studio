@@ -7,6 +7,10 @@
     <meta name="description" content="Fiets met comfort. Het leven is te kort voor pijn op de fiets. Persoonlijke bikefit in Ninove voor jonge fietsers, wielertoeristen, recreanten, pendelaars en gezinnen.">
     <link rel="icon" type="image/svg+xml" href="logo.svg">
     <link rel="stylesheet" href="styles.css">
+    <!-- Marks the document script-enabled before first paint, so the nav can
+         collapse behind the hamburger with no flash of an open menu, and can
+         leave the menu visible when scripting is unavailable. -->
+    <script>document.documentElement.dataset.nav = 'enhanced';</script>
 </head>
 <body>
 
@@ -25,7 +29,11 @@
         <a href="index.html" class="nav__logo" aria-label="De Bikefit Studio home">
             <img src="logo.svg" alt="De Bikefit Studio" height="56">
         </a>
-        <ul class="nav__menu">
+        <button type="button" class="nav__toggle" id="nav-toggle"
+                aria-controls="nav-menu" aria-expanded="false" aria-label="Menu">
+            <span class="nav__toggle-bars" aria-hidden="true"></span>
+        </button>
+        <ul class="nav__menu" id="nav-menu">
             <li><a href="index.html" class="active">Home</a></li>
             <li><a href="bikefit.html">Bikefit</a></li>
             <li><a href="#werkwijze">Werkwijze</a></li>
@@ -229,6 +237,32 @@
 </footer>
 
 </div><!-- /.page-shell -->
+
+<!-- Mobile navigation disclosure. Ships with the site. -->
+<script>
+(function () {
+    var toggle = document.getElementById('nav-toggle');
+    var menu = document.getElementById('nav-menu');
+    if (!toggle || !menu) { return; }
+    function setOpen(open) {
+        toggle.setAttribute('aria-expanded', String(open));
+    }
+    toggle.addEventListener('click', function () {
+        setOpen(toggle.getAttribute('aria-expanded') !== 'true');
+    });
+    /* Most items are in-page anchors: without this the panel would stay open
+       over the section it just jumped to. */
+    menu.addEventListener('click', function (event) {
+        if (event.target.closest('a')) { setOpen(false); }
+    });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape' && toggle.getAttribute('aria-expanded') === 'true') {
+            setOpen(false);
+            toggle.focus();
+        }
+    });
+}());
+</script>
 
 <!-- ============================================================
      DEV-ONLY viewport preview switch. Not part of the site UI:
