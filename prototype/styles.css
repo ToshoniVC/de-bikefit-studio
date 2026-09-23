@@ -227,14 +227,19 @@
    and the matching <div class="devbar"> + <script> in the two pages before
    production. It never changes the default (Desktop) rendering.
 
-   Literals used here, and why: the 390px frame width is the device width the
-   preview imitates and has no token (the width scale stops at 520/320); the
-   1px hairline and all colours still come from tokens.
+   Literals used here, and why: the frame is a real device viewport — 390x844,
+   the logical screen of an iPhone 14/15/16 — and the token scale has nothing
+   for it (the width scale stops at 520/320). The radius and the bezel are
+   physical properties of a handset, not brand values. Every colour still
+   comes from a token.
    ========================================================================== */
 @layer devtools {
 
     :root {
         --preview-frame-width: 390px;
+        --preview-frame-height: 844px;
+        --preview-frame-radius: 44px;
+        --preview-frame-bezel: 12px;
     }
 
     .devbar {
@@ -285,16 +290,54 @@
         outline-offset: var(--ds-space-4xs);
     }
 
-    /* The preview frame itself. Only active once "Mobiel" is pressed. */
+    /* ---- The preview frame. Only active once "Mobiel" is pressed. -------
+       The point is a HANDSET, not a narrow column: the frame is a fixed
+       390x844 device screen held in the middle of the window, and the page
+       scrolls INSIDE it exactly as it does on the phone. So the window itself
+       must not scroll — without the overflow lock below, the browser scrolls
+       the whole document and the "screen" is just a tall strip.            */
+    html[data-preview="mobile"],
     html[data-preview="mobile"] body {
+        height: 100%;
+        overflow: hidden;
+    }
+    html[data-preview="mobile"] body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: var(--ds-space-sm);
         background: var(--ds-color-surface-alt);
     }
+
     html[data-preview="mobile"] .page-shell {
-        max-width: var(--preview-frame-width);
-        margin-inline: auto;
-        min-height: 100vh;
+        /* Viewport-relative sizes in the design system read the BROWSER
+           window, which is not the device. Pin the hero to the screen it is
+           actually being previewed on.                                     */
+        --ds-hero-min-height: calc(var(--preview-frame-height) * 0.72);
+        --ds-hero-min-height-compact: calc(var(--preview-frame-height) * 0.70);
+
+        flex: none;
+        width: var(--preview-frame-width);
+        height: var(--preview-frame-height);
+        /* Shrink to fit a short window rather than spilling out of it. */
+        max-height: calc(100% - 2 * var(--preview-frame-bezel));
+        overflow-y: auto;
+        overflow-x: hidden;
+        overscroll-behavior: contain;
         background: var(--ds-color-bg);
-        outline: var(--ds-border-width-hairline) solid var(--ds-color-border-strong);
+        border-radius: var(--preview-frame-radius);
+        /* The bezel is a spread shadow, not a border: a border would eat into
+           the 390px and the screen would no longer be device width. */
+        box-shadow:
+            var(--ds-scale-0) var(--ds-scale-0) var(--ds-scale-0) var(--preview-frame-bezel) var(--ds-color-fg),
+            var(--ds-scale-0) var(--ds-space-2xs) var(--ds-space-xl)
+                color-mix(in srgb, var(--ds-color-fg) 28%, transparent);
+        /* iOS uses overlay scrollbars; a gutter here would misreport the
+           usable width. */
+        scrollbar-width: none;
+    }
+    html[data-preview="mobile"] .page-shell::-webkit-scrollbar {
+        display: none;
     }
 
     /* Keep the switch clear of the footer on small screens. */
