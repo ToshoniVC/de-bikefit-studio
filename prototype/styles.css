@@ -1,15 +1,23 @@
 /* ============================================
    DE BIKEFIT STUDIO — stylesheet entry point
    --------------------------------------------
-   This file loads the design system and nothing else. All values live in
-   design-system/tokens.css; all component rules live in
+   This file loads the design system, then adds two local layers that the
+   design system does not own:
+
+     responsive  narrow-viewport behaviour, expressed as container queries so
+                 the same rules fire for a real phone AND for the dev preview
+                 frame (see below).
+     devtools    the "Desktop / Mobiel" development preview switch.
+
+   All values come from design-system/tokens.css; all component rules live in
    design-system/components.css. See design-system/DESIGN-SYSTEM.md.
    ============================================ */
 
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
 
-/* Cascade order: tokens < base < components — later layers win regardless of
-   selector specificity. The order is established by the import order below.
+/* Cascade order: tokens < base < components < responsive < devtools — later
+   layers win regardless of selector specificity. The order is established by
+   the import order below plus the statement underneath them.
    NOTE: the `@layer` statement has to sit AFTER the imports. Chrome drops any
    @import that follows a @layer statement which itself follows an @import
    (verified headless), so a statement placed between the font import and these
@@ -18,4 +26,282 @@
 @import url('design-system/base.css') layer(base);
 @import url('design-system/components.css') layer(components);
 
-@layer tokens, base, components;
+@layer tokens, base, components, responsive, devtools;
+
+
+/* ============================================================================
+   @layer responsive
+   ----------------------------------------------------------------------------
+   Why container queries instead of media queries: the dev preview switch
+   renders the page inside a ~390px frame on a wide window. A media query can
+   only see the viewport, so it would stay in desktop mode inside that frame.
+   `.page-shell` is declared a size container, so every rule below fires from
+   the SHELL's width — identical behaviour on a real 360px phone and in the
+   preview frame. The design system's own @media blocks still fire on real
+   narrow viewports; the rules below restate (and, for the nav, override) them
+   so both paths agree.
+   ========================================================================== */
+@layer responsive {
+
+    /* The single size container. Everything on the page lives inside it; only
+       the dev switch sits outside so it can stay fixed to the viewport.       */
+    .page-shell {
+        container-type: inline-size;
+        container-name: page;
+    }
+
+    /* Long Dutch compounds, URLs and phone numbers must never push a line
+       past the edge.                                                          */
+    .page-shell {
+        overflow-wrap: break-word;
+    }
+    .footer__col li,
+    .utility-bar__inner {
+        overflow-wrap: anywhere;
+    }
+
+    /* ---- ≤900px: the tablet / large-phone step -------------------------- */
+    @container page (max-width: 900px) {
+
+        /* Ring motif: keep the compact crop (the design system does this in a
+           @media block, which cannot fire inside the preview frame).          */
+        .hero__media::after,
+        .callout::after,
+        .page-head::after,
+        .split__visual::after,
+        .ds-ring::after {
+            --ds-ring-size: var(--ds-ring-size-compact);
+            --ds-ring-thickness: var(--ds-ring-thickness-compact);
+            --ds-ring-offset-inline: var(--ds-ring-offset-block-compact);
+            --ds-ring-offset-block: var(--ds-ring-offset-block-compact);
+        }
+
+        /* NAV — the design system hides the menu outright below 900px. Here it
+           reflows instead: logo + CTA keep row one, the menu wraps onto its own
+           full-width row. No JS, no disclosure widget, nothing to miss with a
+           keyboard or a screen reader.                                        */
+        .nav {
+            flex-wrap: wrap;
+            column-gap: var(--ds-space-sm);
+            row-gap: var(--ds-space-2xs);
+            padding: var(--ds-space-xs) var(--ds-gutter);
+        }
+        .nav__logo img {
+            height: var(--ds-scale-40);
+            width: auto;
+        }
+        .nav__menu {
+            display: flex;
+            order: 3;
+            flex-basis: 100%;
+            flex-wrap: wrap;
+            column-gap: var(--ds-space-md);
+            row-gap: var(--ds-scale-0);
+            border-top: var(--ds-border-width-hairline) solid var(--ds-color-border);
+        }
+        /* 48px tap targets (the token scale's nearest step above the 44px
+           minimum).                                                           */
+        .nav__menu a {
+            display: inline-flex;
+            align-items: center;
+            min-height: var(--ds-space-2xl);
+            padding: var(--ds-space-3xs) var(--ds-scale-0);
+        }
+        .nav__cta {
+            padding: var(--ds-scale-12) var(--ds-space-sm);
+        }
+
+        /* Rhythm + stacking, mirroring the design system's own 900px step. */
+        .section {
+            padding: var(--ds-section-padding-block-compact) var(--ds-gutter);
+        }
+        .hero {
+            min-height: var(--ds-hero-min-height-compact);
+        }
+        .hero__content {
+            padding: var(--ds-hero-padding-block-compact) var(--ds-gutter);
+        }
+        .page-head {
+            padding: var(--ds-space-3xl) var(--ds-gutter) var(--ds-space-2xl);
+        }
+        .split {
+            grid-template-columns: 1fr;
+            gap: var(--ds-space-xl);
+        }
+        .split--reverse > :first-child {
+            order: 0;
+        }
+        /* A full-width 4:5 panel is a screen of empty gradient on a phone. */
+        .split__visual {
+            aspect-ratio: 3 / 2;
+        }
+        .footer__grid {
+            grid-template-columns: 1fr 1fr;
+            gap: var(--ds-space-lg);
+        }
+
+        /* Display type is sized in vw, which still reads the viewport inside
+           the preview frame. Cap it against the container width instead.      */
+        .hero__title {
+            font-size: min(var(--ds-text-hero), 11cqw);
+        }
+        .page-head__title {
+            font-size: min(var(--ds-text-page-title), 10cqw);
+        }
+        .section__title {
+            font-size: min(var(--ds-text-display), 8cqw);
+        }
+        .callout__title {
+            font-size: min(var(--ds-text-callout), 7cqw);
+        }
+        .rich h2 {
+            font-size: min(var(--ds-text-prose-title), 7cqw);
+        }
+    }
+
+    /* ---- ≤560px: the phone step ----------------------------------------- */
+    @container page (max-width: 560px) {
+
+        /* The design system hides the utility bar here. Keep it: on a phone the
+           tap-to-call number is the most useful control on the page.          */
+        .utility-bar__inner {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            column-gap: var(--ds-space-sm);
+            row-gap: var(--ds-scale-0);
+            padding: var(--ds-scale-0) var(--ds-gutter);
+        }
+        .utility-bar__inner > * {
+            display: inline-flex;
+            align-items: center;
+            min-height: var(--ds-space-2xl);
+        }
+
+        /* Every grid to a single column, regardless of its auto-fit minimum. */
+        .feature-grid,
+        .audience,
+        .steps,
+        .footer__grid {
+            grid-template-columns: 1fr;
+        }
+
+        /* Full-width stacked CTAs — no two-button row to overflow. */
+        .hero__actions {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .hero__actions .btn,
+        .callout__inner .btn,
+        .ds-stack-lg .btn {
+            justify-content: center;
+            text-align: center;
+        }
+        .callout__inner {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .callout__title {
+            max-width: none;
+        }
+
+        /* Cards and steps breathe a little less. */
+        .feature {
+            padding: var(--ds-space-lg) var(--ds-space-md);
+        }
+        .audience__card {
+            padding: var(--ds-space-md);
+        }
+        .footer__bottom {
+            flex-direction: column;
+            gap: var(--ds-space-2xs);
+        }
+    }
+}
+
+
+/* ============================================================================
+   @layer devtools
+   ----------------------------------------------------------------------------
+   DEVELOPMENT ONLY — the "Desktop / Mobiel" preview switch. Delete this layer
+   and the matching <div class="devbar"> + <script> in the two pages before
+   production. It never changes the default (Desktop) rendering.
+
+   Literals used here, and why: the 390px frame width is the device width the
+   preview imitates and has no token (the width scale stops at 520/320); the
+   1px hairline and all colours still come from tokens.
+   ========================================================================== */
+@layer devtools {
+
+    :root {
+        --preview-frame-width: 390px;
+    }
+
+    .devbar {
+        position: fixed;
+        right: var(--ds-space-sm);
+        bottom: var(--ds-space-sm);
+        z-index: calc(var(--ds-z-header) + var(--ds-z-1));
+        display: flex;
+        align-items: center;
+        gap: var(--ds-space-4xs);
+        padding: var(--ds-space-4xs);
+        background: var(--ds-color-surface-inverse);
+        color: var(--ds-color-fg-inverse-muted);
+        border: var(--ds-border-width-hairline) solid var(--ds-color-border-inverse-subtle);
+        font-family: var(--ds-font-display);
+        font-size: var(--ds-text-meta);
+        line-height: var(--ds-leading-body);
+        text-transform: uppercase;
+        letter-spacing: var(--ds-tracking-nav);
+    }
+    .devbar__label {
+        padding: var(--ds-scale-0) var(--ds-space-2xs);
+        color: var(--ds-color-fg-inverse-subtle);
+    }
+    .devbar__btn {
+        font: inherit;
+        letter-spacing: inherit;
+        text-transform: inherit;
+        /* 12px * 1.6 + 2 * 12px padding + 2px border ≈ 45px tap target. */
+        padding: var(--ds-scale-12) var(--ds-scale-10);
+        background: var(--ds-transparent);
+        color: var(--ds-color-fg-inverse);
+        border: var(--ds-border-width-hairline) solid var(--ds-color-border-inverse-subtle);
+        border-radius: var(--ds-radius-control);
+        cursor: pointer;
+        transition: background var(--ds-transition-fast), color var(--ds-transition-fast);
+    }
+    .devbar__btn:hover {
+        background: var(--ds-color-surface-inverse-raised-hover);
+    }
+    .devbar__btn[aria-pressed="true"] {
+        background: var(--ds-color-interactive-inverse);
+        color: var(--ds-color-interactive-inverse-fg);
+        border-color: var(--ds-color-interactive-inverse);
+    }
+    .devbar__btn:focus-visible {
+        outline: var(--ds-border-width-thick) solid var(--ds-color-fg-inverse);
+        outline-offset: var(--ds-space-4xs);
+    }
+
+    /* The preview frame itself. Only active once "Mobiel" is pressed. */
+    html[data-preview="mobile"] body {
+        background: var(--ds-color-surface-alt);
+    }
+    html[data-preview="mobile"] .page-shell {
+        max-width: var(--preview-frame-width);
+        margin-inline: auto;
+        min-height: 100vh;
+        background: var(--ds-color-bg);
+        outline: var(--ds-border-width-hairline) solid var(--ds-color-border-strong);
+    }
+
+    /* Keep the switch clear of the footer on small screens. */
+    @media (max-width: 560px) {
+        .devbar {
+            right: var(--ds-space-2xs);
+            bottom: var(--ds-space-2xs);
+        }
+    }
+}
