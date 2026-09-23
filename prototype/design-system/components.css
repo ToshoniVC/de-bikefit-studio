@@ -1,0 +1,607 @@
+/* ============================================================================
+   DE BIKEFIT STUDIO — COMPONENTS
+   ----------------------------------------------------------------------------
+   Every component of the Studio site, in one layer. Rules here may reference
+   ONLY semantic tokens (--ds-color-*, --ds-space-*, --ds-text-* ...) or, for
+   genuine one-off values, a primitive --ds-scale-* / --ds-width-*.
+   There are no raw colour, size, spacing or timing literals in this file.
+
+   Inventory
+   ---------
+   utility bar · header/nav · buttons · hero · sections · feature grid · split ·
+   callout · steps · audience · faq · footer · page head · rich text · responsive
+   ========================================================================== */
+
+/* ====== TOP UTILITY BAR ======
+   The reference ground, full-bleed, as the first band of the page.            */
+.utility-bar {
+    background: var(--ds-color-surface-inverse);
+    color: var(--ds-color-fg-inverse-muted);
+    font-size: var(--ds-text-meta);
+    letter-spacing: var(--ds-tracking-meta);
+}
+.utility-bar__inner {
+    padding: var(--ds-space-2xs) var(--ds-gutter);
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--ds-space-md);
+}
+.utility-bar a {
+    transition: color var(--ds-transition-fast);
+}
+.utility-bar a:hover {
+    color: var(--ds-color-fg-inverse);
+}
+
+/* ====== HEADER / NAV ====== */
+.site-header {
+    position: sticky;
+    top: var(--ds-scale-0);
+    background: var(--ds-color-bg);
+    border-bottom: var(--ds-border-width-hairline) solid var(--ds-color-border);
+    z-index: var(--ds-z-header);
+}
+.nav {
+    padding: var(--ds-scale-18) var(--ds-gutter);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ds-space-lg);
+}
+.nav__logo {
+    display: flex;
+    align-items: center;
+    gap: var(--ds-space-xs);
+}
+.nav__logo svg { height: var(--ds-scale-40); width: auto; }
+.nav__menu {
+    display: flex;
+    gap: var(--ds-space-lg);
+    list-style: none;
+    font-family: var(--ds-font-display);
+    text-transform: uppercase;
+    font-weight: var(--ds-font-weight-semibold);
+    letter-spacing: var(--ds-tracking-nav);
+    font-size: var(--ds-text-nav);
+}
+.nav__menu a {
+    padding: var(--ds-space-3xs) var(--ds-scale-0);
+    border-bottom: var(--ds-border-width-thick) solid var(--ds-transparent);
+    transition: border-color var(--ds-transition-fast), color var(--ds-transition-fast);
+}
+.nav__menu a:hover,
+.nav__menu a.active {
+    color: var(--ds-color-accent);
+    border-bottom-color: var(--ds-color-accent);
+}
+.nav__cta {
+    font-family: var(--ds-font-display);
+    text-transform: uppercase;
+    font-weight: var(--ds-font-weight-bold);
+    letter-spacing: var(--ds-tracking-nav);
+}
+
+/* ====== BUTTONS ====== */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--ds-scale-10);
+    padding: var(--ds-scale-14) var(--ds-scale-28);
+    font-family: var(--ds-font-display);
+    font-size: var(--ds-text-body);
+    font-weight: var(--ds-font-weight-bold);
+    text-transform: uppercase;
+    letter-spacing: var(--ds-tracking-button);
+    border: var(--ds-border-width-thick) solid var(--ds-transparent);
+    border-radius: var(--ds-radius-control);
+    cursor: pointer;
+    transition: background var(--ds-transition-fast), color var(--ds-transition-fast), border-color var(--ds-transition-fast);
+}
+/* Primary — burgundy fill, cream label. The one loud control per view.        */
+.btn--primary {
+    background: var(--ds-color-interactive);
+    color: var(--ds-color-interactive-fg);
+    border-color: var(--ds-color-interactive);
+}
+.btn--primary:hover {
+    background: var(--ds-color-interactive-hover);
+    border-color: var(--ds-color-interactive-hover);
+}
+/* Outline — burgundy rule, fills on hover.                                    */
+.btn--outline {
+    background: var(--ds-transparent);
+    color: var(--ds-color-accent);
+    border-color: var(--ds-color-accent);
+}
+.btn--outline:hover {
+    background: var(--ds-color-interactive);
+    color: var(--ds-color-interactive-fg);
+}
+/* Ghost — quiet rule on light; fills burgundy on hover.                       */
+.btn--ghost {
+    background: var(--ds-transparent);
+    color: var(--ds-color-fg);
+    border-color: var(--ds-color-border-strong);
+}
+.btn--ghost:hover {
+    background: var(--ds-color-interactive);
+    color: var(--ds-color-interactive-fg);
+    border-color: var(--ds-color-interactive);
+}
+/* Ghost on burgundy — cream rule, inverts to a cream fill on hover.           */
+.btn--ghost-on-dark {
+    color: var(--ds-color-fg-inverse);
+    border-color: var(--ds-color-border-inverse);
+}
+.btn--ghost-on-dark:hover {
+    background: var(--ds-color-interactive-inverse);
+    color: var(--ds-color-interactive-inverse-fg);
+    border-color: var(--ds-color-interactive-inverse);
+}
+/* Solid on burgundy — cream fill, burgundy label (used in the callout strip). */
+.btn--dark {
+    background: var(--ds-color-interactive-inverse);
+    color: var(--ds-color-interactive-inverse-fg);
+    border-color: var(--ds-color-interactive-inverse);
+}
+.btn--dark:hover {
+    background: var(--ds-color-interactive-inverse-hover);
+    border-color: var(--ds-color-interactive-inverse-hover);
+}
+.btn__arrow {
+    font-weight: var(--ds-font-weight-extrabold);
+    transition: transform var(--ds-transition-fast);
+}
+.btn:hover .btn__arrow { transform: translateX(var(--ds-scale-4)); }
+
+/* ====== HERO ====== */
+.hero {
+    position: relative;
+    min-height: var(--ds-hero-min-height);
+    display: flex;
+    align-items: flex-end;
+    color: var(--ds-color-fg);
+    overflow: hidden;
+    background: var(--ds-color-surface);
+    border-bottom: var(--ds-border-width-hairline) solid var(--ds-color-border);
+}
+.hero__media {
+    position: absolute;
+    inset: var(--ds-scale-0);
+    overflow: hidden;
+    background:
+        linear-gradient(180deg, var(--ds-color-wash-veil-start) 0%, var(--ds-color-wash-veil-end) 100%),
+        radial-gradient(ellipse at 70% 30%, var(--ds-color-wash-light-start) 0%, var(--ds-color-wash-light-end) 70%);
+}
+/* Ring motif — cropped off the top-right of the hero wash.                    */
+.hero__media::after {
+    content: "";
+    position: absolute;
+    top: var(--ds-ring-offset-block);
+    right: var(--ds-ring-offset-inline);
+    width: var(--ds-ring-size);
+    height: var(--ds-ring-size);
+    border: var(--ds-ring-thickness) solid var(--ds-ring-color-on-light);
+    border-radius: var(--ds-radius-ring);
+    pointer-events: none;
+}
+.hero__content {
+    position: relative;
+    z-index: var(--ds-z-raised);
+    width: 100%;
+    padding: var(--ds-hero-padding-block) var(--ds-gutter);
+}
+.hero__eyebrow {
+    font-weight: var(--ds-font-weight-strapline);
+    letter-spacing: var(--ds-tracking-eyebrow);
+    padding: var(--ds-space-3xs) var(--ds-scale-0);
+    color: var(--ds-color-fg-muted);
+    border-top: var(--ds-border-width-hairline) solid var(--ds-color-accent);
+    margin-bottom: var(--ds-space-md);
+}
+.hero__title {
+    font-weight: var(--ds-font-weight-wordmark);
+    line-height: var(--ds-leading-hero);
+    font-size: var(--ds-text-hero);
+    letter-spacing: var(--ds-tracking-display);
+    max-width: var(--ds-measure-hero);
+    margin-bottom: var(--ds-space-md);
+    color: var(--ds-color-fg);
+}
+/* The tagline accent inside the wordmark line: italic, one tone back.         */
+.hero__title em {
+    font-style: var(--ds-font-style-tagline);
+    color: var(--ds-color-fg-subtle);
+}
+.hero__sub {
+    max-width: var(--ds-measure-lede-tight);
+    margin-bottom: var(--ds-scale-36);
+}
+.hero__actions {
+    display: flex;
+    gap: var(--ds-space-sm);
+    flex-wrap: wrap;
+}
+
+/* ====== SECTIONS ====== */
+.section {
+    padding: var(--ds-section-padding-block) var(--ds-gutter);
+}
+.section--dark {
+    background: var(--ds-color-surface-inverse);
+    color: var(--ds-color-fg-inverse-soft);
+}
+.section--dark .section__title { color: var(--ds-color-fg-inverse); }
+.section--gray { background: var(--ds-color-surface); }
+.section__eyebrow {
+    font-weight: var(--ds-font-weight-strapline);
+    letter-spacing: var(--ds-tracking-eyebrow-wide);
+    color: var(--ds-color-fg-subtle);
+    margin-bottom: var(--ds-space-sm);
+    padding-top: var(--ds-space-xs);
+    padding-right: var(--ds-space-md);
+    border-top: var(--ds-border-width-hairline) solid var(--ds-color-border-strong);
+}
+.section--dark .section__eyebrow {
+    color: var(--ds-color-fg-inverse-subtle);
+    border-top-color: var(--ds-color-border-inverse-subtle);
+}
+.section__title {
+    line-height: var(--ds-leading-display);
+    font-size: var(--ds-text-display);
+    letter-spacing: var(--ds-tracking-display);
+    margin-bottom: var(--ds-space-md);
+    max-width: var(--ds-measure-heading);
+}
+.section__lede {
+    max-width: var(--ds-measure-lede);
+    margin-bottom: var(--ds-space-2xl);
+}
+.section--dark .section__lede { color: var(--ds-color-fg-inverse-muted); }
+
+/* ====== FEATURE GRID ======
+   A 1px token-coloured gap does the ruling; cards sit on top of it.           */
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(var(--ds-grid-min-card), 1fr));
+    gap: var(--ds-border-width-hairline);
+    background: var(--ds-color-border);
+    border: var(--ds-border-width-hairline) solid var(--ds-color-border);
+}
+.section--dark .feature-grid {
+    background: var(--ds-color-border-inverse-strong);
+    border-color: var(--ds-color-border-inverse-strong);
+}
+.feature {
+    background: var(--ds-color-surface-raised);
+    padding: var(--ds-space-xl) var(--ds-space-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-sm);
+    transition: background var(--ds-transition-fast);
+}
+.feature:hover { background: var(--ds-color-surface-raised-hover); }
+.section--dark .feature { background: var(--ds-color-surface-inverse-raised); }
+.section--dark .feature:hover { background: var(--ds-color-surface-inverse-raised-hover); }
+.feature__num {
+    font-family: var(--ds-font-display);
+    font-weight: var(--ds-font-weight-strapline);
+    font-size: var(--ds-text-micro);
+    letter-spacing: var(--ds-tracking-eyebrow-wide);
+    text-transform: uppercase;
+    color: var(--ds-color-fg-subtle);
+}
+.section--dark .feature__num { color: var(--ds-color-fg-inverse-subtle); }
+.feature__title {
+    font-size: var(--ds-text-heading-sm);
+    line-height: var(--ds-leading-heading);
+}
+.section--dark .feature__title { color: var(--ds-color-fg-inverse); }
+.feature__body { color: var(--ds-color-fg-muted); }
+.section--dark .feature__body { color: var(--ds-color-fg-inverse-muted); }
+
+/* ====== TWO-COLUMN SPLIT ====== */
+.split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--ds-space-4xl);
+    align-items: center;
+}
+.split--reverse > :first-child { order: 2; }
+.split__visual {
+    aspect-ratio: 4 / 5;
+    background:
+        linear-gradient(135deg, var(--ds-color-visual-sheen-on-dark), var(--ds-transparent) 60%),
+        linear-gradient(180deg, var(--ds-color-visual-dark-start), var(--ds-color-visual-dark-end));
+    position: relative;
+    overflow: hidden;
+}
+/* Ring motif on the visual panel — smaller, cropped off the top-right.        */
+.split__visual::after {
+    content: "";
+    position: absolute;
+    top: var(--ds-ring-offset-block-compact);
+    right: var(--ds-ring-offset-block-compact);
+    width: var(--ds-ring-size-compact);
+    height: var(--ds-ring-size-compact);
+    border: var(--ds-ring-thickness-compact) solid var(--ds-ring-color-on-dark);
+    border-radius: var(--ds-radius-ring);
+    pointer-events: none;
+}
+.split__visual--alt {
+    background:
+        linear-gradient(135deg, var(--ds-color-visual-sheen-on-light), var(--ds-transparent) 60%),
+        linear-gradient(180deg, var(--ds-color-visual-light-start), var(--ds-color-visual-light-end));
+}
+.split__visual--alt::after {
+    border-color: var(--ds-ring-color-on-light);
+}
+.split p { margin-bottom: var(--ds-space-sm); }
+.split p:last-child { margin-bottom: var(--ds-scale-0); }
+
+/* ====== CALLOUT STRIP ====== */
+.callout {
+    position: relative;
+    overflow: hidden;
+    background: var(--ds-color-surface-inverse);
+    color: var(--ds-color-fg-inverse);
+    padding: var(--ds-callout-padding-block) var(--ds-gutter);
+    border-top: var(--ds-border-width-hairline) solid var(--ds-color-border-inverse-subtle);
+}
+/* Ring motif — cropped off the top-right of the strip.                        */
+.callout::after {
+    content: "";
+    position: absolute;
+    top: var(--ds-ring-offset-block);
+    right: var(--ds-ring-offset-inline);
+    width: var(--ds-ring-size);
+    height: var(--ds-ring-size);
+    border: var(--ds-ring-thickness) solid var(--ds-ring-color-on-dark);
+    border-radius: var(--ds-radius-ring);
+    pointer-events: none;
+}
+.callout__inner {
+    position: relative;
+    z-index: var(--ds-z-raised);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ds-space-lg);
+    flex-wrap: wrap;
+}
+.callout__title {
+    font-weight: var(--ds-font-weight-wordmark);
+    line-height: var(--ds-leading-display);
+    font-size: var(--ds-text-callout);
+    max-width: var(--ds-measure-heading);
+    letter-spacing: var(--ds-tracking-callout);
+    color: var(--ds-color-fg-inverse);
+}
+
+/* ====== PROCESS / STEPS ====== */
+.steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(var(--ds-grid-min-step), 1fr));
+    gap: var(--ds-space-md);
+    counter-reset: step;
+}
+.step {
+    border-top: var(--ds-border-width-hairline) solid var(--ds-color-accent);
+    padding-top: var(--ds-space-md);
+}
+.section--dark .step { border-top-color: var(--ds-color-border-inverse); }
+.step__num {
+    font-family: var(--ds-font-display);
+    font-weight: var(--ds-font-weight-semibold);
+    font-size: var(--ds-text-numeral);
+    line-height: var(--ds-leading-display);
+    color: var(--ds-color-fg-subtle);
+    margin-bottom: var(--ds-space-xs);
+}
+.section--dark .step__num { color: var(--ds-color-fg-inverse-subtle); }
+.step__title {
+    font-size: var(--ds-text-heading-xs);
+    margin-bottom: var(--ds-space-2xs);
+}
+.section--dark .step__title { color: var(--ds-color-fg-inverse); }
+.step__body { color: var(--ds-color-fg-muted); font-size: var(--ds-text-nav); }
+.section--dark .step__body { color: var(--ds-color-fg-inverse-muted); }
+
+/* ====== AUDIENCE LIST ====== */
+.audience {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(var(--ds-grid-min-card), 1fr));
+    gap: var(--ds-space-lg);
+}
+.audience__card {
+    background: var(--ds-color-surface-raised);
+    border: var(--ds-border-width-hairline) solid var(--ds-color-border);
+    padding: var(--ds-space-lg);
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-xs);
+}
+.audience__card h3 {
+    font-size: var(--ds-text-heading-sm);
+}
+.audience__card p { color: var(--ds-color-fg-muted); }
+
+/* ====== FAQ ====== */
+.faq { max-width: var(--ds-container-narrow); }
+.faq__item {
+    border-bottom: var(--ds-border-width-hairline) solid var(--ds-color-border);
+    padding: var(--ds-space-md) var(--ds-scale-0);
+}
+.faq__q {
+    font-size: var(--ds-text-heading-xs);
+    margin-bottom: var(--ds-space-2xs);
+    color: var(--ds-color-fg);
+}
+.faq__a { color: var(--ds-color-fg-muted); }
+
+/* ====== FOOTER ======
+   The deepest burgundy step. logo.svg is dark ink on light, so the brand
+   column carries the CSS wordmark (.ds-wordmark) instead.                     */
+.site-footer {
+    background: var(--ds-color-surface-footer);
+    color: var(--ds-color-fg-inverse-muted);
+    padding: var(--ds-space-3xl) var(--ds-gutter) var(--ds-space-lg);
+}
+.footer__grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: var(--ds-space-xl);
+    padding-bottom: var(--ds-space-2xl);
+    border-bottom: var(--ds-border-width-hairline) solid var(--ds-color-border-footer);
+}
+.footer__col h4 {
+    font-family: var(--ds-font-display);
+    font-weight: var(--ds-font-weight-bold);
+    text-transform: uppercase;
+    font-size: var(--ds-text-small);
+    letter-spacing: var(--ds-tracking-label);
+    color: var(--ds-color-fg-inverse);
+    margin-bottom: var(--ds-space-sm);
+}
+.footer__col ul { list-style: none; }
+.footer__col li { margin-bottom: var(--ds-space-2xs); font-size: var(--ds-text-small); }
+.footer__col a {
+    transition: color var(--ds-transition-fast);
+}
+.footer__col a:hover { color: var(--ds-color-fg-inverse); }
+.footer__brand p {
+    font-size: var(--ds-text-small);
+    max-width: var(--ds-measure-caption);
+    margin-top: var(--ds-space-sm);
+}
+.footer__bottom {
+    margin-top: var(--ds-space-md);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--ds-space-sm);
+    font-size: var(--ds-text-meta);
+    letter-spacing: var(--ds-tracking-nav);
+}
+
+/* ====== PAGE HEADER (for inner pages) ====== */
+.page-head {
+    position: relative;
+    overflow: hidden;
+    background: var(--ds-color-surface);
+    color: var(--ds-color-fg);
+    padding: var(--ds-page-head-padding-top) var(--ds-gutter) var(--ds-page-head-padding-bottom);
+    border-bottom: var(--ds-border-width-hairline) solid var(--ds-color-border);
+}
+/* Ring motif — same placement as the hero so inner pages read as siblings.    */
+.page-head::after {
+    content: "";
+    position: absolute;
+    top: var(--ds-ring-offset-block);
+    right: var(--ds-ring-offset-inline);
+    width: var(--ds-ring-size);
+    height: var(--ds-ring-size);
+    border: var(--ds-ring-thickness) solid var(--ds-ring-color-on-light);
+    border-radius: var(--ds-radius-ring);
+    pointer-events: none;
+}
+.page-head__inner {
+    position: relative;
+    z-index: var(--ds-z-raised);
+}
+.page-head__crumb {
+    letter-spacing: var(--ds-tracking-eyebrow-wide);
+    color: var(--ds-color-fg-subtle);
+    margin-bottom: var(--ds-space-md);
+    padding-top: var(--ds-space-xs);
+    padding-right: var(--ds-space-md);
+    border-top: var(--ds-border-width-hairline) solid var(--ds-color-border-strong);
+}
+.page-head__title {
+    font-weight: var(--ds-font-weight-wordmark);
+    line-height: var(--ds-leading-wordmark);
+    font-size: var(--ds-text-page-title);
+    letter-spacing: var(--ds-tracking-display);
+    max-width: var(--ds-measure-page-title);
+}
+.page-head__lede {
+    margin-top: var(--ds-space-md);
+    max-width: var(--ds-measure-lede);
+}
+
+/* ====== RICH CONTENT ====== */
+.rich h2 {
+    font-size: var(--ds-text-prose-title);
+    line-height: var(--ds-leading-prose-title);
+    margin: var(--ds-space-md) var(--ds-scale-0) var(--ds-space-sm);
+    letter-spacing: var(--ds-tracking-flat);
+}
+.rich h3 {
+    font-size: var(--ds-text-heading-sm);
+    margin: var(--ds-space-lg) var(--ds-scale-0) var(--ds-space-xs);
+}
+.rich p { margin-bottom: var(--ds-space-sm); max-width: var(--ds-measure-prose); }
+.rich ul {
+    margin: var(--ds-space-sm) var(--ds-scale-0) var(--ds-space-md);
+    padding-left: var(--ds-scale-0);
+    list-style: none;
+    max-width: var(--ds-measure-prose);
+}
+.rich ul li {
+    padding-left: var(--ds-scale-28);
+    position: relative;
+    margin-bottom: var(--ds-space-xs);
+}
+.rich ul li::before {
+    content: "";
+    position: absolute;
+    left: var(--ds-scale-0);
+    top: var(--ds-space-xs);
+    width: var(--ds-scale-14);
+    height: var(--ds-border-width-hairline);
+    background: var(--ds-color-accent);
+}
+/* Pull quote carries the reference's italic tagline voice (see .ds-tagline).  */
+.rich blockquote {
+    border-left: var(--ds-border-width-thick) solid var(--ds-color-accent);
+    padding: var(--ds-space-3xs) var(--ds-scale-0) var(--ds-space-3xs) var(--ds-space-md);
+    margin: var(--ds-space-lg) var(--ds-scale-0);
+    max-width: var(--ds-measure-quote);
+    color: var(--ds-color-fg-muted);
+}
+.rich--invert { color: var(--ds-color-fg-inverse-soft); }
+.rich--invert h2 { color: var(--ds-color-fg-inverse); }
+.rich--invert h3 { color: var(--ds-color-fg-inverse); }
+.rich--invert p { color: var(--ds-color-fg-inverse-soft); }
+.rich--invert strong { color: var(--ds-color-fg-inverse); }
+.rich--invert ul li::before { background: var(--ds-color-border-inverse); }
+.rich--invert blockquote {
+    color: var(--ds-color-fg-inverse-muted);
+    border-left-color: var(--ds-color-border-inverse);
+}
+
+/* ====== RESPONSIVE ====== */
+@media (max-width: 900px) {
+    /* Ring scales down so it stays a crop, not a blob.                        */
+    .hero__media::after,
+    .callout::after,
+    .page-head::after,
+    .ds-ring::after {
+        --ds-ring-size: var(--ds-ring-size-compact);
+        --ds-ring-thickness: var(--ds-ring-thickness-compact);
+        --ds-ring-offset-inline: var(--ds-ring-offset-block-compact);
+        --ds-ring-offset-block: var(--ds-ring-offset-block-compact);
+    }
+    .nav__menu { display: none; }
+    .split { grid-template-columns: 1fr; gap: var(--ds-space-xl); }
+    .split--reverse > :first-child { order: 0; }
+    .footer__grid { grid-template-columns: 1fr 1fr; }
+    .section { padding: var(--ds-section-padding-block-compact) var(--ds-gutter); }
+    .hero { min-height: var(--ds-hero-min-height-compact); }
+    .hero__content { padding: var(--ds-hero-padding-block-compact) var(--ds-gutter); }
+}
+@media (max-width: 560px) {
+    .footer__grid { grid-template-columns: 1fr; }
+    .utility-bar__inner { display: none; }
+    .callout__inner { flex-direction: column; align-items: flex-start; }
+}

@@ -1,0 +1,188 @@
+/* ============================================================================
+   DE BIKEFIT STUDIO — BASE LAYER
+   ----------------------------------------------------------------------------
+   Reset, element defaults, and the handful of typography/layout primitives that
+   more than one component needs. Loaded into @layer base, so ANY rule in
+   components.css wins over anything here regardless of specificity.
+
+   ADOPTER LISTS
+   -------------
+   Each primitive below is declared once and its selector list also names the
+   existing component classes that share those exact declarations. That keeps a
+   single source of truth without touching markup.
+
+   For NEW markup use the `.ds-*` class directly (e.g. <div class="ds-eyebrow">)
+   and do not extend the adopter list — the list exists only to carry the mock's
+   pre-existing BEM classes.
+
+   A primitive is only introduced when at least two rules share it, or when it
+   carries a named brand role from the reference (wordmark, strapline, tagline,
+   ring).
+   ========================================================================== */
+
+/* ====== RESET ====== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* ====== DOCUMENT ====== */
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: var(--ds-font-body);
+    font-size: var(--ds-text-body);
+    line-height: var(--ds-leading-body);
+    color: var(--ds-color-fg);
+    background: var(--ds-color-bg);
+    -webkit-font-smoothing: antialiased;
+}
+
+img {
+    max-width: 100%;
+    display: block;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+
+/* ============================================================================
+   PRIMITIVES
+   ========================================================================== */
+
+/* ---- .ds-container ---------------------------------------------------------
+   Centred page-width wrapper. Width overrides (e.g. .faq -> narrow measure) and
+   any vertical margin belong to the component.                                */
+.ds-container,
+.utility-bar__inner,
+.nav,
+.hero__content,
+.section__inner,
+.callout__inner,
+.footer__grid,
+.footer__bottom,
+.page-head__inner,
+.faq {
+    max-width: var(--ds-container-max);
+    margin-left: auto;
+    margin-right: auto;
+}
+
+/* ---- .ds-eyebrow / strapline -----------------------------------------------
+   The reference "PROFESSIONELE BIKEFIT · NINOVE" role: condensed, regular
+   weight, uppercase, wide positive tracking. Colour, rule and spacing vary per
+   placement and stay in the component.                                        */
+.ds-eyebrow,
+.hero__eyebrow,
+.section__eyebrow,
+.page-head__crumb {
+    display: inline-block;
+    font-family: var(--ds-font-display);
+    font-size: var(--ds-text-eyebrow);
+    font-weight: var(--ds-font-weight-strapline);
+    text-transform: uppercase;
+}
+
+/* ---- .ds-display -----------------------------------------------------------
+   Large condensed uppercase title. Size, weight, leading, tracking and measure
+   are set per component because each title sits at a different level.         */
+.ds-display,
+.hero__title,
+.section__title,
+.callout__title,
+.page-head__title,
+.rich h2 {
+    font-family: var(--ds-font-display);
+    font-weight: var(--ds-font-weight-bold);
+    text-transform: uppercase;
+}
+
+/* ---- .ds-wordmark ----------------------------------------------------------
+   The reference lockup rendered as text: condensed, 800, uppercase, tight
+   tracking and tight leading so the two lines nearly touch. Used where the
+   dark-ink logo.svg cannot go (the burgundy footer).                          */
+.ds-wordmark {
+    font-family: var(--ds-font-display);
+    font-weight: var(--ds-font-weight-wordmark);
+    font-size: var(--ds-text-wordmark);
+    line-height: var(--ds-leading-wordmark);
+    letter-spacing: var(--ds-tracking-wordmark);
+    text-transform: uppercase;
+    color: var(--ds-color-fg-inverse);
+    display: block;
+}
+
+/* ---- .ds-heading -----------------------------------------------------------
+   Small condensed uppercase heading used inside cards, steps, FAQ and prose.  */
+.ds-heading,
+.feature__title,
+.step__title,
+.audience__card h3,
+.faq__q,
+.rich h3 {
+    font-family: var(--ds-font-display);
+    font-weight: var(--ds-font-weight-semibold);
+    text-transform: uppercase;
+    letter-spacing: var(--ds-tracking-heading);
+}
+
+/* ---- .ds-lede --------------------------------------------------------------
+   Intro paragraph under a title. Measure and surrounding space per component;
+   inverted surfaces override the colour.                                      */
+.ds-lede,
+.hero__sub,
+.section__lede,
+.page-head__lede {
+    font-size: var(--ds-text-lede);
+    line-height: var(--ds-leading-body);
+    color: var(--ds-color-fg-muted);
+}
+
+/* ---- .ds-tagline -----------------------------------------------------------
+   The reference "Pijnvrij fietsen / begint hier" voice: body face, italic,
+   regular weight, sentence case. Hierarchy level 3 — below the display and
+   bold emphasis, above the strapline.                                         */
+.ds-tagline,
+.rich blockquote {
+    font-family: var(--ds-font-tagline);
+    font-style: var(--ds-font-style-tagline);
+    font-weight: var(--ds-font-weight-tagline);
+    font-size: var(--ds-text-tagline);
+    line-height: var(--ds-leading-tagline);
+    letter-spacing: var(--ds-tracking-flat);
+    text-transform: none;
+}
+
+/* ---- .ds-ring --------------------------------------------------------------
+   The reference's decorative ring: a thick circular outline, barely lighter
+   than its surface, cropped off an edge. Purely decorative — it is drawn in a
+   pseudo-element, never affects layout, and is not exposed to screen readers.
+   Apply to a positioned, overflow-hidden ancestor.                            */
+.ds-ring {
+    position: relative;
+    overflow: hidden;
+}
+
+.ds-ring::after {
+    content: "";
+    position: absolute;
+    top: var(--ds-ring-offset-block);
+    right: var(--ds-ring-offset-inline);
+    width: var(--ds-ring-size);
+    height: var(--ds-ring-size);
+    border: var(--ds-ring-thickness) solid var(--ds-ring-color-on-light);
+    border-radius: var(--ds-radius-ring);
+    pointer-events: none;
+}
+
+/* ---- Spacing utilities -----------------------------------------------------
+   Deliberately tiny: just enough to keep layout intent out of inline styles.  */
+.ds-stack-lg {
+    margin-top: var(--ds-space-lg);
+}

@@ -1,0 +1,387 @@
+/* ============================================================================
+   DE BIKEFIT STUDIO — DESIGN TOKENS
+   ----------------------------------------------------------------------------
+   SOURCE OF TRUTH: the brand banner reference
+   "WhatsApp Image 2026-09-22 at 21.45.35.jpeg"
+   sha256 1e48e4ed415a9eda30b31aff4036f8f13b7716f3469c895f7ec8ef11082d9c0b
+
+   Every colour below is either sampled from that reference or derived from a
+   sampled value by a documented step. The reference gives five inks —
+   burgundy #3E1420 (ground), ring tint #481E28, cream #EDD5B9, rose-tan
+   #C19E8B, mauve #8C6A5A — plus a condensed-800 wordmark, a spaced-caps
+   strapline and an italic tagline. Everything else is a scale built around
+   those anchors.
+
+   Tiers
+   -----
+   1. PRIMITIVE  --ds-<category>-<raw>     raw, meaningless-on-its-own values.
+                                           e.g. --ds-burgundy-700, --ds-scale-24
+   2. SEMANTIC   --ds-<role>-<variant>     intent-revealing; references primitives.
+                                           e.g. --ds-color-fg, --ds-space-md
+   3. ALIAS      --color-*, --font-*, ...  legacy names kept alive for back-compat.
+
+   Rule: components.css and base.css may ONLY reference tier 2 (or tier 1 for
+   genuine one-off values that have no shared meaning). No raw colour, font,
+   size, spacing or timing literals outside this file.
+   ========================================================================== */
+
+:root {
+    /* =====================================================================
+       1. PRIMITIVES
+       ===================================================================== */
+
+    --ds-white: #ffffff;
+    --ds-transparent: transparent;
+
+    /* ---- Palette: burgundy (brand ground; 700 is the sampled reference) ---- */
+    --ds-burgundy-900: #2c0e17; /* footer bed — deepest step                  */
+    --ds-burgundy-800: #35111b; /* pressed / hover on burgundy                */
+    --ds-burgundy-700: #3e1420; /* REFERENCE ground: utility bar, dark, callout */
+    --ds-burgundy-600: #481e28; /* REFERENCE ring tint; raised card on dark   */
+    --ds-burgundy-500: #56272f; /* raised hover on dark; hairline on dark     */
+
+    /* ---- Palette: warm inks (burgundy-tinted darks for light surfaces) ---- */
+    --ds-ink-900: #2a1219;      /* headings + body on light                   */
+    --ds-ink-700: #5a3f44;      /* secondary copy on light                    */
+    --ds-ink-500: #7a6063;      /* tertiary copy / numerals on light          */
+
+    /* ---- Palette: cream / rose (text and marks on burgundy) ---- */
+    --ds-cream-300: #edd5b9;    /* REFERENCE wordmark cream                   */
+    --ds-cream-250: #e0c7ac;    /* body copy on burgundy                      */
+    --ds-rose-400: #c19e8b;     /* REFERENCE italic tagline                   */
+    --ds-mauve-400: #a88372;    /* tertiary copy on burgundy (AA at 4.6:1)    */
+    --ds-mauve-500: #8c6a5a;    /* REFERENCE strapline — hairline rules on dark */
+
+    /* ---- Palette: bone (light surfaces, desaturated from the cream) ---- */
+    --ds-bone-50: #fdfbf7;      /* page ground                                */
+    --ds-bone-75: #fffdf9;      /* raised card on light                       */
+    --ds-bone-100: #f7f1e8;     /* default surface                            */
+    --ds-bone-200: #efe6d9;     /* alternate surface / one step darker        */
+    --ds-bone-250: #e8dccc;     /* default rule on light; ring on light       */
+    --ds-bone-300: #ded0bc;     /* light visual gradient end                  */
+    --ds-bone-400: #d8c6af;     /* strong rule on light                       */
+
+    /* ---- Palette: translucent overlays (used inside gradients) ---- */
+    --ds-alpha-white-00: rgba(255, 255, 255, 0);
+    --ds-alpha-white-04: rgba(255, 255, 255, 0.04);
+    --ds-alpha-white-45: rgba(255, 255, 255, 0.45);
+    --ds-alpha-black-05: rgba(0, 0, 0, 0.05);
+
+    /* ---- Font stacks ---- */
+    --ds-font-family-condensed: 'Barlow Condensed', 'Helvetica Neue', Arial, sans-serif;
+    --ds-font-family-sans: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+
+    /* ---- Font weights ---- */
+    --ds-weight-400: 400;
+    --ds-weight-500: 500;
+    --ds-weight-600: 600;
+    --ds-weight-700: 700;
+    --ds-weight-800: 800;
+
+    /* ---- Font styles ---- */
+    --ds-style-italic: italic;
+
+    /* ---- Spacing scale (name == px value; no invented steps) ---- */
+    --ds-scale-0: 0;
+    --ds-scale-1: 1px;
+    --ds-scale-2: 2px;
+    --ds-scale-4: 4px;
+    --ds-scale-6: 6px;
+    --ds-scale-8: 8px;
+    --ds-scale-10: 10px;
+    --ds-scale-12: 12px;
+    --ds-scale-14: 14px;
+    --ds-scale-16: 16px;
+    --ds-scale-18: 18px;
+    --ds-scale-24: 24px;
+    --ds-scale-28: 28px;
+    --ds-scale-30: 30px;
+    --ds-scale-32: 32px;
+    --ds-scale-36: 36px;
+    --ds-scale-40: 40px;
+    --ds-scale-48: 48px;
+    --ds-scale-56: 56px;
+    --ds-scale-60: 60px;
+    --ds-scale-64: 64px;
+    --ds-scale-72: 72px;
+    --ds-scale-80: 80px;
+    --ds-scale-96: 96px;
+    --ds-scale-100: 100px;
+
+    /* ---- Negative offsets (decorative placement only) ---- */
+    --ds-scale-neg-64: -64px;
+    --ds-scale-neg-100: -100px;
+    --ds-scale-neg-140: -140px;
+
+    /* ---- Type scale: static steps (name == px value) ---- */
+    --ds-font-size-12: 12px;
+    --ds-font-size-13: 13px;
+    --ds-font-size-14: 14px;
+    --ds-font-size-15: 15px;
+    --ds-font-size-16: 16px;
+    --ds-font-size-18: 18px;
+    --ds-font-size-20: 20px;
+    --ds-font-size-22: 22px;
+    --ds-font-size-26: 26px;
+    --ds-font-size-48: 48px;
+
+    /* ---- Type scale: fluid steps (clamp: min, preferred, max) ---- */
+    --ds-font-size-fluid-3xl: clamp(44px, 7vw, 104px);
+    --ds-font-size-fluid-2xl: clamp(40px, 6vw, 84px);
+    --ds-font-size-fluid-xl: clamp(32px, 4.4vw, 60px);
+    --ds-font-size-fluid-lg: clamp(26px, 3vw, 42px);
+    --ds-font-size-fluid-md: clamp(26px, 3.2vw, 40px);
+
+    /* ---- Letter-spacing (name == em value x100; n = negative) ---- */
+    --ds-ls-n01: -0.01em;
+    --ds-ls-n005: -0.005em;
+    --ds-ls-0: 0;
+    --ds-ls-005: 0.005em;
+    --ds-ls-02: 0.02em;
+    --ds-ls-04: 0.04em;
+    --ds-ls-06: 0.06em;
+    --ds-ls-08: 0.08em;
+    --ds-ls-16: 0.16em;
+    --ds-ls-20: 0.2em;
+    --ds-ls-22: 0.22em;
+
+    /* ---- Line heights (unitless; name == value x100) ---- */
+    --ds-lh-090: 0.9;
+    --ds-lh-095: 0.95;
+    --ds-lh-100: 1;
+    --ds-lh-105: 1.05;
+    --ds-lh-115: 1.15;
+    --ds-lh-140: 1.4;
+    --ds-lh-160: 1.6;
+
+    /* ---- Radii — the mock is square; the ring motif is the only circle ---- */
+    --ds-radius-0: 0;
+    --ds-radius-full: 50%;
+
+    /* ---- Border widths ---- */
+    --ds-border-1: 1px;
+    --ds-border-2: 2px;
+    --ds-border-24: 24px;
+    --ds-border-40: 40px;
+
+    /* ---- Motion ---- */
+    --ds-duration-fast: .2s;
+    --ds-ease-standard: ease;
+
+    /* ---- Widths (containers and decorative shapes) ---- */
+    --ds-width-1400: 1400px;
+    --ds-width-860: 860px;
+    --ds-width-520: 520px;
+    --ds-width-320: 320px;
+    --ds-width-280: 280px;
+    --ds-width-220: 220px;
+
+    /* ---- Stacking ---- */
+    --ds-z-1: 1;
+    --ds-z-100: 100;
+
+
+    /* =====================================================================
+       2. SEMANTIC TOKENS
+       ===================================================================== */
+
+    /* ---- Colour: foreground on light ---- */
+    --ds-color-fg: var(--ds-ink-900);
+    --ds-color-fg-muted: var(--ds-ink-700);
+    --ds-color-fg-subtle: var(--ds-ink-500);
+
+    /* ---- Colour: foreground on burgundy ---- */
+    --ds-color-fg-inverse: var(--ds-cream-300);          /* 11.2:1 on ground  */
+    --ds-color-fg-inverse-soft: var(--ds-cream-250);     /*  9.5:1            */
+    --ds-color-fg-inverse-muted: var(--ds-rose-400);     /*  6.4:1            */
+    --ds-color-fg-inverse-subtle: var(--ds-mauve-400);   /*  4.6:1            */
+
+    /* ---- Colour: surfaces ---- */
+    --ds-color-bg: var(--ds-bone-50);
+    --ds-color-surface: var(--ds-bone-100);
+    --ds-color-surface-alt: var(--ds-bone-200);
+    --ds-color-surface-raised: var(--ds-bone-75);
+    --ds-color-surface-raised-hover: var(--ds-bone-100);
+    --ds-color-surface-inverse: var(--ds-burgundy-700);
+    --ds-color-surface-inverse-raised: var(--ds-burgundy-600);
+    --ds-color-surface-inverse-raised-hover: var(--ds-burgundy-500);
+    --ds-color-surface-footer: var(--ds-burgundy-900);
+
+    /* ---- Colour: borders ---- */
+    --ds-color-border: var(--ds-bone-250);
+    --ds-color-border-strong: var(--ds-bone-400);
+    --ds-color-border-inverse: var(--ds-cream-300);
+    --ds-color-border-inverse-strong: var(--ds-burgundy-500);
+    --ds-color-border-inverse-subtle: var(--ds-mauve-500);
+    --ds-color-border-footer: var(--ds-burgundy-600);
+
+    /* ---- Colour: interactive (burgundy IS the accent) ---- */
+    --ds-color-accent: var(--ds-burgundy-700);
+    --ds-color-accent-hover: var(--ds-burgundy-800);
+    --ds-color-interactive: var(--ds-burgundy-700);
+    --ds-color-interactive-hover: var(--ds-burgundy-800);
+    --ds-color-interactive-fg: var(--ds-cream-300);
+    --ds-color-interactive-inverse: var(--ds-cream-300);      /* cream button  */
+    --ds-color-interactive-inverse-hover: var(--ds-white);
+    --ds-color-interactive-inverse-fg: var(--ds-burgundy-700);
+
+    /* ---- Colour: decorative washes (hero + split visuals) ---- */
+    --ds-color-wash-veil-start: var(--ds-alpha-white-00);
+    --ds-color-wash-veil-end: var(--ds-alpha-white-45);
+    --ds-color-wash-light-start: var(--ds-bone-75);
+    --ds-color-wash-light-end: var(--ds-bone-200);
+    --ds-color-visual-dark-start: var(--ds-burgundy-600);
+    --ds-color-visual-dark-end: var(--ds-burgundy-900);
+    --ds-color-visual-light-start: var(--ds-bone-100);
+    --ds-color-visual-light-end: var(--ds-bone-300);
+    --ds-color-visual-sheen-on-dark: var(--ds-alpha-white-04);
+    --ds-color-visual-sheen-on-light: var(--ds-alpha-black-05);
+
+    /* ---- The ring motif (see DESIGN-SYSTEM.md) ---- */
+    --ds-ring-color-on-dark: var(--ds-burgundy-600);
+    --ds-ring-color-on-light: var(--ds-bone-250);
+    --ds-ring-size: var(--ds-width-520);
+    --ds-ring-size-compact: var(--ds-width-320);
+    --ds-ring-thickness: var(--ds-border-40);
+    --ds-ring-thickness-compact: var(--ds-border-24);
+    --ds-ring-offset-inline: var(--ds-scale-neg-140);  /* cropped off the right */
+    --ds-ring-offset-block: var(--ds-scale-neg-100);   /* cropped off the top   */
+    --ds-ring-offset-block-compact: var(--ds-scale-neg-64);
+
+    /* ---- Typography: families ---- */
+    --ds-font-display: var(--ds-font-family-condensed);
+    --ds-font-body: var(--ds-font-family-sans);
+    --ds-font-tagline: var(--ds-font-family-sans);
+
+    /* ---- Typography: weights ---- */
+    --ds-font-weight-regular: var(--ds-weight-400);
+    --ds-font-weight-medium: var(--ds-weight-500);
+    --ds-font-weight-semibold: var(--ds-weight-600);
+    --ds-font-weight-bold: var(--ds-weight-700);
+    --ds-font-weight-extrabold: var(--ds-weight-800);
+    --ds-font-weight-wordmark: var(--ds-weight-800);  /* reference wordmark   */
+    --ds-font-weight-strapline: var(--ds-weight-400); /* reference strapline  */
+    --ds-font-weight-tagline: var(--ds-weight-400);   /* reference tagline    */
+
+    /* ---- Typography: styles ---- */
+    --ds-font-style-tagline: var(--ds-style-italic);
+
+    /* ---- Typography: sizes by role ---- */
+    --ds-text-meta: var(--ds-font-size-12);        /* utility bar, footer rule  */
+    --ds-text-eyebrow: var(--ds-font-size-12);     /* kickers above headings    */
+    --ds-text-micro: var(--ds-font-size-13);       /* feature index label       */
+    --ds-text-small: var(--ds-font-size-14);       /* footer copy               */
+    --ds-text-nav: var(--ds-font-size-15);         /* primary nav, step copy    */
+    --ds-text-body: var(--ds-font-size-16);        /* default body + buttons    */
+    --ds-text-lede: var(--ds-font-size-18);        /* intro paragraphs          */
+    --ds-text-heading-xs: var(--ds-font-size-20);
+    --ds-text-heading-sm: var(--ds-font-size-22);
+    --ds-text-tagline: var(--ds-font-size-22);     /* italic pull quote         */
+    --ds-text-wordmark: var(--ds-font-size-26);    /* footer CSS wordmark       */
+    --ds-text-numeral: var(--ds-font-size-48);     /* big step numbers          */
+    --ds-text-hero: var(--ds-font-size-fluid-3xl);
+    --ds-text-page-title: var(--ds-font-size-fluid-2xl);
+    --ds-text-display: var(--ds-font-size-fluid-xl);
+    --ds-text-callout: var(--ds-font-size-fluid-lg);
+    --ds-text-prose-title: var(--ds-font-size-fluid-md);
+
+    /* ---- Typography: tracking by role ---- */
+    --ds-tracking-display: var(--ds-ls-n01);       /* wordmark-level titles     */
+    --ds-tracking-flat: var(--ds-ls-0);            /* prose titles, tagline     */
+    --ds-tracking-callout: var(--ds-ls-005);
+    --ds-tracking-heading: var(--ds-ls-02);        /* small uppercase headings  */
+    --ds-tracking-meta: var(--ds-ls-04);           /* utility bar               */
+    --ds-tracking-nav: var(--ds-ls-06);            /* nav, footer rule          */
+    --ds-tracking-button: var(--ds-ls-08);
+    --ds-tracking-label: var(--ds-ls-16);          /* footer column headings    */
+    --ds-tracking-wordmark: var(--ds-ls-n005);     /* CSS wordmark              */
+    --ds-tracking-eyebrow: var(--ds-ls-20);        /* hero kicker               */
+    --ds-tracking-eyebrow-wide: var(--ds-ls-22);   /* section kicker, crumb     */
+
+    /* ---- Typography: leading by role ---- */
+    --ds-leading-wordmark: var(--ds-lh-090);       /* reference: lines nearly touch */
+    --ds-leading-hero: var(--ds-lh-095);
+    --ds-leading-display: var(--ds-lh-100);
+    --ds-leading-prose-title: var(--ds-lh-105);
+    --ds-leading-heading: var(--ds-lh-115);
+    --ds-leading-tagline: var(--ds-lh-140);
+    --ds-leading-body: var(--ds-lh-160);
+
+    /* ---- Typography: measure (max line length) ---- */
+    --ds-measure-hero: 18ch;
+    --ds-measure-page-title: 20ch;
+    --ds-measure-heading: 22ch;
+    --ds-measure-quote: 32ch;
+    --ds-measure-caption: 38ch;
+    --ds-measure-lede-tight: 56ch;
+    --ds-measure-lede: 60ch;
+    --ds-measure-prose: 70ch;
+
+    /* ---- Spacing by role (t-shirt). One-off gaps reference --ds-scale-* ---- */
+    --ds-space-4xs: var(--ds-scale-2);
+    --ds-space-3xs: var(--ds-scale-4);
+    --ds-space-2xs: var(--ds-scale-8);
+    --ds-space-xs: var(--ds-scale-12);
+    --ds-space-sm: var(--ds-scale-16);
+    --ds-space-md: var(--ds-scale-24);
+    --ds-space-lg: var(--ds-scale-32);
+    --ds-space-xl: var(--ds-scale-40);
+    --ds-space-2xl: var(--ds-scale-48);
+    --ds-space-3xl: var(--ds-scale-64);
+    --ds-space-4xl: var(--ds-scale-80);
+    --ds-space-5xl: var(--ds-scale-100);
+
+    /* ---- Layout rhythm ---- */
+    --ds-gutter: var(--ds-scale-24);
+    --ds-container-max: var(--ds-width-1400);
+    --ds-container-narrow: var(--ds-width-860);
+    --ds-grid-min-card: var(--ds-width-280);   /* feature + audience cards     */
+    --ds-grid-min-step: var(--ds-width-220);   /* process steps                */
+
+    --ds-section-padding-block: var(--ds-space-5xl);           /* 100px       */
+    --ds-section-padding-block-compact: var(--ds-space-3xl);   /*  64px @900  */
+    --ds-callout-padding-block: var(--ds-space-3xl);
+    --ds-hero-padding-block: var(--ds-space-4xl);              /*  80px       */
+    --ds-hero-padding-block-compact: var(--ds-scale-60);       /*  60px @900  */
+    --ds-hero-min-height: 72vh;
+    --ds-hero-min-height-compact: 70vh;
+    --ds-page-head-padding-top: var(--ds-scale-96);
+    --ds-page-head-padding-bottom: var(--ds-scale-72);
+
+    /* ---- Borders & radii ---- */
+    --ds-border-width-hairline: var(--ds-border-1);
+    --ds-border-width-thick: var(--ds-border-2);
+    --ds-radius-control: var(--ds-radius-0);
+    --ds-radius-ring: var(--ds-radius-full);
+
+    /* ---- Motion ---- */
+    --ds-transition-fast: var(--ds-duration-fast) var(--ds-ease-standard);
+
+    /* ---- Stacking ---- */
+    --ds-z-raised: var(--ds-z-1);
+    --ds-z-header: var(--ds-z-100);
+
+
+    /* =====================================================================
+       3. LEGACY ALIASES
+       Kept so any older rule or sibling surface referencing --color-* / --font-*
+       keeps working. New code should use the semantic tokens above.
+       ===================================================================== */
+    --color-bg: var(--ds-color-bg);
+    --color-ink: var(--ds-color-fg);
+    --color-ink-soft: var(--ds-color-fg-muted);
+    --color-ink-mute: var(--ds-color-fg-subtle);
+    --color-line: var(--ds-color-border);
+    --color-line-strong: var(--ds-color-border-strong);
+    --color-surface: var(--ds-color-surface);
+    --color-surface-2: var(--ds-color-surface-alt);
+    --color-surface-dark: var(--ds-color-surface-inverse);
+    --color-accent: var(--ds-color-accent);
+    --color-accent-hover: var(--ds-color-accent-hover);
+
+    --font-display: var(--ds-font-display);
+    --font-body: var(--ds-font-body);
+
+    --max-width: var(--ds-container-max);
+    --gutter: var(--ds-gutter);
+}
