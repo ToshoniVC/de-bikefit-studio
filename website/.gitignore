@@ -32,6 +32,11 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the placeholder template is documentation and must be committed.
+!.env.example
+
+# local CMS database (PGlite / Postgres-in-WASM) — see src/db/cms.ts
+/.pglite/
 
 # vercel
 .vercel

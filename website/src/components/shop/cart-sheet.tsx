@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { ShoppingBag, Plus, Minus, Trash2, Bike } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -17,10 +17,18 @@ import { useCart, selectTotalItems, selectTotalPrice } from '@/lib/cart-store';
 import { formatPrice } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
+/** Never emits, so `useSyncExternalStore` only ever reads its snapshots. */
+const subscribeNever = () => () => {};
+
 export function CartSheet() {
   // Avoid a hydration mismatch: the persisted cart only exists on the client.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // `useSyncExternalStore` returns the server snapshot (false) during SSR and
+  // hydration, then the client snapshot (true) — without a setState-in-effect.
+  const mounted = useSyncExternalStore(
+    subscribeNever,
+    () => true,
+    () => false,
+  );
 
   const items = useCart((s) => s.items);
   const totalItems = useCart(selectTotalItems);

@@ -41,14 +41,37 @@ Add credentials to `.env.local` to switch each integration on — see `.env.exam
 ## Database
 
 ```bash
-npm run db:generate   # generate SQL migrations from src/db/schema.ts
+npm run db:generate   # generate SQL migrations from both schema files
+npm run db:migrate    # apply drizzle/*.sql (Neon if DATABASE_URL is set, else PGlite)
 npm run db:push       # push the schema to Neon (needs DATABASE_URL)
 npm run db:studio     # browse data in Drizzle Studio
 ```
 
-Schema lives in [`src/db/schema.ts`](src/db/schema.ts); read access goes through
-[`src/db/queries.ts`](src/db/queries.ts), which falls back to sample data when
-`DATABASE_URL` is unset.
+Two schemas share one database:
+
+- **Webshop** — [`src/db/schema.ts`](src/db/schema.ts); read access goes through
+  [`src/db/queries.ts`](src/db/queries.ts), which falls back to sample data when
+  `DATABASE_URL` is unset.
+- **CMS** — [`src/db/cms-schema.ts`](src/db/cms-schema.ts), all tables prefixed
+  `cms_`. Accessed via [`src/db/cms.ts`](src/db/cms.ts), which uses Neon when
+  `DATABASE_URL` is set and an embedded **PGlite** database in `.pglite/`
+  otherwise, so the CMS runs locally with no credentials at all.
+
+Prefer `db:migrate` over `db:push` — `push` diffs the live schema and can
+propose destructive changes.
+
+## Bikefit Studio CMS
+
+A Dutch public site plus a small admin lives alongside the webshop. Start here:
+**[`docs/cms-architecture.md`](docs/cms-architecture.md)** — schema, draft/publish
+model, permission matrix, block registry, API signatures, local/staging setup and
+rollback.
+
+```bash
+npm run db:migrate
+CMS_BOOTSTRAP_PASSWORD='<strong password>' npm run cms:bootstrap  # first admin + defaults
+npm run cms:selftest                                              # end-to-end smoke test
+```
 
 ## Project layout
 

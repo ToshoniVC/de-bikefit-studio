@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1790185479708,
+      "tag": "0000_webshop_baseline",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1790185495401,
+      "tag": "0001_cms_foundation",
+      "breakpoints": true
+    }
+  ]
+}
