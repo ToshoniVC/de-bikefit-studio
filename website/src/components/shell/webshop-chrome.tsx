@@ -1,5 +1,6 @@
 import { SiteHeader } from '@/components/layout/header';
 import { SiteFooter } from '@/components/layout/footer';
+import { features } from '@/lib/env';
 
 /**
  * The Qarakter webshop's page chrome.
@@ -10,17 +11,27 @@ import { SiteFooter } from '@/components/layout/footer';
  * webshop route group instead — `(shop)`, `(auth)`, `(content)`, `(webshop)`
  * and `/account`.
  *
- * Nothing about the markup changed: same header, same `<main>`, same footer,
- * same `hasAuth` behaviour. Webshop pages render byte-identically to before.
+ * Same header, `<main>`, footer and `hasAuth` behaviour as before; the only
+ * addition is a skip link to `<main id="inhoud">` (CLAUDE.md §6: a skip link
+ * in every shell).
  */
 export function WebshopChrome({ children }: { children: React.ReactNode }) {
   // Auth UI is only mounted once Clerk is configured, so the app runs key-free.
-  const hasClerk = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+  const hasClerk = features.clerkUi;
 
   return (
     <>
+      {/* Skip link: first focusable element, visible on focus (same pattern as the Studio shell). */}
+      <a
+        href="#inhoud"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-0 focus:top-0 focus:z-50 focus:bg-primary focus:px-4 focus:py-2 focus:font-display focus:text-sm focus:font-semibold focus:uppercase focus:tracking-wide focus:text-primary-foreground"
+      >
+        Direct naar de inhoud
+      </a>
       <SiteHeader hasAuth={hasClerk} />
-      <main className="flex-1">{children}</main>
+      <main id="inhoud" className="flex-1">
+        {children}
+      </main>
       <SiteFooter />
     </>
   );

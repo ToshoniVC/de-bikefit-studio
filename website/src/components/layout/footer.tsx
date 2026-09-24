@@ -40,7 +40,13 @@ export function SiteFooter() {
   );
 }
 
-function FooterColumn({ title, items }: { title: string; items: { title: string; href: string }[] }) {
+function FooterColumn({
+  title,
+  items,
+}: {
+  title: string;
+  items: { title: string; href: string }[];
+}) {
   return (
     <div className="space-y-3">
       <p className="font-display text-sm font-semibold uppercase tracking-wide">{title}</p>

@@ -1,34 +1,40 @@
 # CMS architecture — De Bikefit Studio
 
 Contract document for the Dutch public site + admin built inside the existing
-Next.js 16 app. Written by Worker A (foundation) for Workers B (admin UI) and
-C (public site + SEO + seed).
+Next.js 16 app. Originally written by Worker A (foundation) for Workers B
+(admin UI) and C (public site + SEO + seed); kept current since. Online
+booking, Google Calendar and e-mail are documented separately in
+[`booking-architecture.md`](./booking-architecture.md); the rules here apply
+to them too. Repository-wide conventions: [`../../CLAUDE.md`](../../CLAUDE.md).
 
-**Status:** foundation complete — schema, migrations, dual-driver DB client,
-auth/roles/sessions, block registry, content read API, write API, env, scripts.
-No admin UI and no public Dutch routes exist yet.
+**Status:** implemented — schema and migrations, dual-driver DB client,
+auth/roles/sessions, block registry, read and write APIs, the admin UI at
+`/admin`, the public Dutch site, booking, the consent-gated GA4 tag and the
+admin analytics panel. Rollout per environment: `staging-runbook.md`.
 
 **Hard rule that never changes:** the Qarakter webshop (`users`, `products`,
-`orders`, `order_items`, `/shop`, `/checkout`, `/account`, Clerk, Stripe,
-Mollie) stays exactly as it is. Every CMS table is prefixed `cms_`, every CMS
+`orders`, `order_items`, `/shop`, `/checkout`, `/account`, Clerk, Stripe)
+stays exactly as it is. Every CMS table is prefixed `cms_`, every CMS
 migration is additive, and the CMS has its own auth that shares nothing with
 Clerk.
 
 ---
 
-## 1. Layout and file ownership
+## 1. Layout
 
-Do not edit files outside your own list without saying so in your report.
+File ownership during parallel work comes from the work-block file (see
+`CLAUDE.md` §9), not from this document.
 
-| Owner | Paths |
+| Area | Paths |
 | --- | --- |
-| **A** (done) | `src/db/cms-schema.ts`, `src/db/cms.ts`, `src/lib/cms/{auth,session,password,permissions,blocks,content,repo}.ts`, `drizzle/**`, `drizzle.config.ts`, `scripts/{db-migrate,cms-bootstrap,cms-selftest}.mts`, `src/middleware.ts`, `src/lib/env.ts`, `.env.example`, `docs/cms-architecture.md` |
-| **B** (admin UI) | `src/app/admin/**`, `src/components/admin/**`, `src/lib/cms/actions/**`, `src/app/api/cms/media/**` |
-| **C** (public site) | `src/app/(studio)/**`, `src/components/studio/**`, `src/lib/studio/**`, `src/app/sitemap.ts`, `src/app/robots.ts`, changes to `src/app/layout.tsx` and `src/app/page.tsx`, `scripts/cms-seed.mts` |
-
-Shared files that need a heads-up before you touch them: `src/app/layout.tsx`
-(C owns it, B may need a nested `src/app/admin/layout.tsx` instead — prefer
-that), `package.json`, `next.config.ts`, `src/middleware.ts`.
+| Data | `src/db/cms-schema.ts` (all `cms_*` tables, CMS + booking), `src/db/cms.ts` (driver), `drizzle/**`, `drizzle.config.ts` |
+| CMS core | `src/lib/cms/{auth,session,password,permissions,blocks,content,repo,repo-admin}.ts` |
+| Admin | `src/app/admin/**`, `src/components/admin/**`, `src/lib/cms/actions/**` (server actions + `sanitize.ts`), `src/app/api/cms/media/**` |
+| Public site | `src/app/(studio)/**`, `src/components/studio/**`, `src/lib/studio/**`, `src/app/sitemap.ts`, `src/app/robots.ts` |
+| Booking | `src/lib/booking/**`, `src/lib/email/**`, `src/app/api/google/oauth/**` — see `booking-architecture.md` |
+| Analytics | `src/lib/analytics/{consent,ga4-tag,ga4}.ts(x)`, `src/components/studio/{analytics,consent-banner}.tsx`, `src/components/admin/analytics-panel.tsx` |
+| Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-selftest,cms-retention}.mts` |
+| Shared | `src/middleware.ts`, `src/lib/env.ts`, `.env.example`, `next.config.ts`, `package.json`, `src/app/layout.tsx` |
 
 ---
 
@@ -62,7 +68,8 @@ The webshop's own client (`src/db/index.ts`) and its sample-data fallback in
 `src/db/queries.ts` are untouched and still work with no `DATABASE_URL`.
 
 Verified: PGlite runs under `next dev` and under `next build` + `next start`
-on Node 24.21.0.
+on Node 24.21.0. The supported minimum is Node 22.15 (`module.registerHooks()`
+in the seed and self-test scripts).
 
 ### Transactions
 
@@ -77,7 +84,7 @@ All tables in `src/db/cms-schema.ts`, all prefixed `cms_`.
 
 | Table | Purpose |
 | --- | --- |
-| `cms_users` | CMS operators. `email` lower-cased + unique, `role` (`admin`\|`editor`), scrypt `password_hash`, `must_change_password`, `is_active`, `last_login_at`. |
+| `cms_users` | CMS operators. `email` lower-cased + unique, `role` (`admin`\|`editor`\|`provider`), scrypt `password_hash`, `must_change_password`, `is_active`, `last_login_at`. |
 | `cms_sessions` | Opaque sessions. Stores only `token_hash`, plus `expires_at`, `user_agent`, `ip_address`. |
 | `cms_login_attempts` | One row per login attempt; drives rate limiting. Pruned opportunistically (>1 day). |
 | `cms_pages` | Page record + all SEO fields + `published_snapshot` jsonb. Unique `(locale, slug)` and `(locale, translation_group)`. |
@@ -89,9 +96,16 @@ All tables in `src/db/cms-schema.ts`, all prefixed `cms_`.
 | `cms_site_settings` | `(locale, key)` primary key → jsonb value. |
 | `cms_audit_log` | Lightweight who/what/when. Denormalised `user_email` survives user deletion. |
 
-Only two real Postgres enums exist (`cms_role`, `cms_page_status`). Locale,
-menu key, block type, media storage and structured-data type are plain `text`
-validated by zod, so adding a value later never needs an `ALTER TYPE`.
+Booking adds eight more tables — `cms_locations`, `cms_services`,
+`cms_providers`, `cms_provider_services`, `cms_business_hours`,
+`cms_availability_exceptions`, `cms_bookings`, `cms_booking_rate_limit` —
+described in [`booking-architecture.md`](./booking-architecture.md) §2. That
+makes nineteen `cms_*` tables in total.
+
+Only two real Postgres enums exist (`cms_role` = `admin`, `editor`,
+`provider`; `cms_page_status`). Locale, menu key, block type, media storage and
+structured-data type are plain `text` validated by zod, so adding a value later
+never needs an `ALTER TYPE`.
 
 ### Multi-language
 
@@ -113,12 +127,21 @@ URL prefix (`publicPathFor()` in `repo.ts` encodes that rule).
 | --- | --- |
 | `drizzle/0000_webshop_baseline.sql` | The four existing webshop tables. Back-fills the migration history that `drizzle-kit push` never created. Fully idempotent (`CREATE TABLE IF NOT EXISTS` + `duplicate_object` guards), so it is a **no-op against the live Neon database** and creates the tables on a fresh one. |
 | `drizzle/0001_cms_foundation.sql` | Two enum types + eleven `cms_*` tables + their indexes and foreign keys. **Additive only** — no `DROP`, no `TRUNCATE`, no `ALTER` of any webshop table. Also idempotent. |
+| `drizzle/0002_role_provider.sql` | `ALTER TYPE cms_role ADD VALUE IF NOT EXISTS 'provider'`, nothing else. |
+| `drizzle/0003_booking.sql` | The eight booking tables, FKs and indexes, all guarded. |
 
 `drizzle.config.ts` lists both schema files and falls back to a placeholder URL
 so `npm run db:generate` works without `DATABASE_URL`.
 
-Prefer `npm run db:migrate` over `npm run db:push` from now on — `push` diffs
-live schema and can propose destructive changes.
+Every schema change ships as a named migration, guarded so it can run twice:
+
+```bash
+npm run db:generate -- --name=<snake_name>   # commit drizzle/*.sql + drizzle/meta/*
+npm run db:migrate                           # PGlite locally, Neon when DATABASE_URL is set
+```
+
+**`db:push` is for a throwaway local database only, never for Neon** — it
+diffs the live schema and can propose destructive changes.
 
 ---
 
@@ -177,6 +200,17 @@ Minimum 12 chars, needs lower + upper + digit (`validatePasswordStrength`).
   the session pushes expiry back to a full 14 days.
 - Password change and deactivation revoke every session for that user.
 
+### Cookies
+
+Every cookie the CMS and the studio site set. None is used for tracking; GA4's
+own `_ga*` cookies appear only after consent (§12.7).
+
+| Cookie | Set by | Contents | Flags / lifetime |
+| --- | --- | --- | --- |
+| `cms_session` | login (`session.ts`) | random session token; the DB stores only its HMAC | `httpOnly`, `sameSite=lax`, `path=/`, `secure` in production; 14 days, sliding |
+| `cms_google_oauth` | `GET /api/google/oauth/start` (`src/app/api/google/oauth/state.ts`) | provider id, CMS user id, nonce, return target, expiry; HMAC-SHA256 signed with `CMS_SESSION_SECRET` (domain-separated). The callback accepts only a valid signature, an unexpired state, a nonce equal to Google's `state` (constant-time) and the same signed-in user | `httpOnly`, `sameSite=lax`, `path=/api/google/oauth`, `secure` in production; 10 minutes |
+| `cms_consent` | the consent banner, client-side (`src/lib/analytics/consent.ts`) | `granted` or `denied` | `SameSite=Lax`, `path=/`, `Secure` on https; 365 days. Not `httpOnly`: the banner and the GA4 loader read it in the browser |
+
 ### Rate limiting
 
 10 failed attempts per 15 minutes, counted per **email OR IP**
@@ -199,15 +233,16 @@ login(input: { email: string; password: string; context?: { userAgent?, ipAddres
   : Promise<AuthResult<CmsUserPublic>>            // verifies + sets the cookie
 logout(): Promise<void>                           // always succeeds
 getCurrentCmsUser(): Promise<CmsUserPublic | null> // React.cache'd, one lookup per request
-requireCmsUser(role?: 'admin' | 'editor'): Promise<CmsUserPublic>  // throws CmsAuthError
+requireCmsUser(role?: CmsRole): Promise<CmsUserPublic>  // rank check, throws CmsAuthError
 requirePermission(permission: CmsPermission): Promise<CmsUserPublic>
 changePassword(input: { currentPassword: string; newPassword: string }): Promise<AuthResult<true>>
 createUser(input: { email; name; role; password? }): Promise<AuthResult<{ user; temporaryPassword: string | null }>>
 ```
 
-`CmsAuthError.code` is `'unauthenticated' | 'forbidden'`. **Worker B:** catch it
-in `src/app/admin/layout.tsx` — `redirect('/admin/login')` for
-`unauthenticated`, render a 403 for `forbidden`.
+`CmsAuthError.code` is `'unauthenticated' | 'forbidden'`. The dashboard layout
+`src/app/admin/(dashboard)/layout.tsx` calls `requireCmsUser()` and redirects
+to `/admin/login` on a `CmsAuthError`; each page then checks its own
+permission.
 
 `getCurrentCmsUser()` never returns `passwordHash` (the type is
 `CmsUserPublic`). All messages are Dutch and safe to show to the user.
@@ -221,28 +256,60 @@ screen before anything else — the bootstrap admin is created that way.
 `can(user.role, permission)` for UI visibility and `requirePermission()` in
 every server action. **Hiding a button is not enforcement.**
 
-| Capability | Permission | Editor | Admin |
-| --- | --- | :-: | :-: |
-| View pages | `page.read` | ✅ | ✅ |
-| Create page | `page.create` | ✅ | ✅ |
-| Edit page + SEO | `page.update` | ✅ | ✅ |
-| Delete page | `page.delete` | ✅ | ✅ |
-| **Publish page** | `page.publish` | ❌ | ✅ |
-| **Unpublish page** | `page.unpublish` | ❌ | ✅ |
-| Edit / add / delete blocks | `block.update` | ✅ | ✅ |
-| Reorder blocks | `block.reorder` | ✅ | ✅ |
-| Browse media | `media.read` | ✅ | ✅ |
-| Upload media | `media.create` | ✅ | ✅ |
-| Edit alt text | `media.update` | ✅ | ✅ |
-| Delete media (soft) | `media.delete` | ✅ | ✅ |
-| View navigation | `navigation.read` | ✅ | ✅ |
-| Edit navigation | `navigation.update` | ✅ | ✅ |
-| View redirects | `redirect.read` | ✅ | ✅ |
-| **Manage redirects** | `redirect.manage` | ❌ | ✅ |
-| View site settings | `settings.read` | ✅ | ✅ |
-| **Change site settings** | `settings.update` | ❌ | ✅ |
-| **Manage users** | `user.read`, `user.manage` | ❌ | ✅ |
-| **Read audit log** | `audit.read` | ❌ | ✅ |
+Three roles (Dutch labels in `ROLE_LABELS`): `admin` (Beheerder) has every
+permission; `editor` (Redacteur) does content work and may read booking data;
+`provider` (Aanbieder) is a bookable person who sees only their own bookings,
+profile, hours and Google connection and has **no access to pages, media,
+navigation, redirects or settings**.
+
+| Capability | Permission | Provider | Editor | Admin |
+| --- | --- | :-: | :-: | :-: |
+| View pages | `page.read` | ❌ | ✅ | ✅ |
+| Create page | `page.create` | ❌ | ✅ | ✅ |
+| Edit page + SEO | `page.update` | ❌ | ✅ | ✅ |
+| Delete page | `page.delete` | ❌ | ✅ | ✅ |
+| **Publish page** | `page.publish` | ❌ | ❌ | ✅ |
+| **Unpublish page** | `page.unpublish` | ❌ | ❌ | ✅ |
+| Edit / add / delete blocks | `block.update` | ❌ | ✅ | ✅ |
+| Reorder blocks | `block.reorder` | ❌ | ✅ | ✅ |
+| Browse media | `media.read` | ❌ | ✅ | ✅ |
+| Upload media | `media.create` | ❌ | ✅ | ✅ |
+| Edit alt text | `media.update` | ❌ | ✅ | ✅ |
+| Delete media (soft) | `media.delete` | ❌ | ✅ | ✅ |
+| View navigation | `navigation.read` | ❌ | ✅ | ✅ |
+| Edit navigation | `navigation.update` | ❌ | ✅ | ✅ |
+| View redirects | `redirect.read` | ❌ | ✅ | ✅ |
+| **Manage redirects** | `redirect.manage` | ❌ | ❌ | ✅ |
+| View site settings | `settings.read` | ❌ | ✅ | ✅ |
+| **Change site settings** | `settings.update` | ❌ | ❌ | ✅ |
+| **Manage users** | `user.read`, `user.manage` | ❌ | ❌ | ✅ |
+| **Read audit log** | `audit.read` | ❌ | ❌ | ✅ |
+| All bookings | `booking.read` | ❌ | ✅ | ✅ |
+| Own bookings | `booking.read.own` | ✅ | ❌ | ✅ |
+| Cancel / complete any booking | `booking.manage` | ❌ | ❌ | ✅ |
+| Cancel / complete own bookings | `booking.manage.own` | ✅ | ❌ | ✅ |
+| List services | `service.read` | ✅ | ✅ | ✅ |
+| Create a service | `service.create` | ✅ | ❌ | ✅ |
+| Edit / deactivate any service | `service.manage` | ❌ | ❌ | ✅ |
+| Choose own services | `service.subscribe.own` | ✅ | ❌ | ✅ |
+| View locations | `location.read` | ✅ | ✅ | ✅ |
+| Manage locations | `location.manage` | ❌ | ❌ | ✅ |
+| View all providers | `provider.read` | ❌ | ✅ | ✅ |
+| Manage providers | `provider.manage` | ❌ | ❌ | ✅ |
+| Own profile, hours, exceptions, Google | `provider.self` | ✅ | ❌ | ✅ |
+| GA4 dashboard panel | `analytics.read` | ❌ | ❌ | ✅ |
+
+The provider set is exactly `booking.read.own`, `booking.manage.own`,
+`service.read`, `service.create`, `service.subscribe.own`, `location.read`,
+`provider.self` (the self-test checks this). `*.own` is resolved server-side
+from the signed-in user's `cms_providers` row; a provider may also edit or
+deactivate services they created themselves. Details:
+[`booking-architecture.md`](./booking-architecture.md) §3.
+
+`ROLE_RANK = { provider: 0, editor: 1, admin: 2 }`, so
+`requireCmsUser('editor')` keeps providers out of the content screens. Gate
+booking screens on permissions, not on rank. The admin sidebar
+(`src/components/admin/shell.tsx`) shows each entry only with its permission.
 
 Admins cannot deactivate themselves or drop their own admin role.
 
@@ -271,9 +338,10 @@ database. A forged cookie gets past middleware and is rejected by the layout.
 
 ## 5. Block registry
 
-`src/lib/cms/blocks.ts`. Eleven block types, all derived from the real
+`src/lib/cms/blocks.ts`. Twelve block types: eleven derived from the real
 prototype (`prototype/index.html`, `prototype/bikefit.html`) and copy decks
-(`content/index.html`, `content/about.html`, `content/booking.html`).
+(`content/index.html`, `content/about.html`, `content/booking.html`), plus
+`booking` for the online booking widget.
 
 ```ts
 import { blockRegistry, BLOCK_TYPES, defaultDataFor, validateBlock, validateBlocks } from '@/lib/cms/blocks';
@@ -288,7 +356,7 @@ defaultDataFor('hero')          // deep clone of the above
 | Type | Label | Source section |
 | --- | --- | --- |
 | `hero` | Hero | `.hero` (home) and `.page-head` (subpages) via `variant: 'full' \| 'pageHead'`. `titleEmphasis` reproduces the `<em>` in "Fiets met *comfort.*" |
-| `richText` | Tekst | free prose; `html` must be sanitised on write |
+| `richText` | Tekst | free prose; `html` passes the allowlist sanitiser on every write (see *Rich-text sanitiser* below) |
 | `services` | Diensten | "Vier dingen, één positie" and "Vier manieren om te boeken" |
 | `process` | Werkwijze | "Hoe verloopt een bikefit?", 4 numbered steps |
 | `audience` | Voor wie | "Voor wie is dit?", 5 personas, `featured` for jeugd |
@@ -298,12 +366,13 @@ defaultDataFor('hero')          // deep clone of the above
 | `pricing` | Prijzen | **no amounts exist anywhere in the source material** — see below |
 | `contact` | Contact | phone, city, "Op afspraak" — no street address or e-mail is known |
 | `testimonial` | Ervaringen | 4 reviews from the copy deck, all marked placeholder |
+| `booking` | Afspraak boeken | the booking widget on `/afspraak` (service → provider → day → slot → details → confirmation). Carries copy and a filter only: `serviceIds` (empty = every active service), `showProviderChoice` (AND-ed with the `booking.showProviderChoice` setting), `successTitle`, `successText` (empty → `booking.confirmationText`). Services, providers and live availability are read at render time through `@/lib/booking/content`, so nothing in the block goes stale. |
 
 Most blocks share `variant: 'default' | 'gray' | 'dark'`, matching the
 prototype's white / `--gray` / `--dark` section backgrounds.
 
-**Worker C — two blocks ship with `isPlaceholder: true` and must not be
-rendered publicly while that flag is set:**
+**Two blocks ship with `isPlaceholder: true` and are not rendered publicly
+while that flag is set:**
 
 - `pricing` — the prototype and copy decks contain **no prices at all**. Only
   durations are known (90 min adult, ~60 min youth, up to two hours for
@@ -311,6 +380,50 @@ rendered publicly while that flag is set:**
   an open question. Default plans carry `priceCents: null`.
 - `testimonial` — the four reviews are illustrative copy from
   `content/index.html`, explicitly flagged to be replaced before launch.
+
+A published snapshot that contains a block type the running code does not
+know fails `parsePublishedSnapshot()` and the page is treated as unpublished.
+Deploy code that adds a block type **before** publishing pages that use it
+(this is why `/afspraak` is refreshed after the booking deploy, see the
+staging runbook).
+
+### Rich-text sanitiser
+
+`src/lib/cms/actions/sanitize.ts` is the one place that decides which markup
+may reach `dangerouslySetInnerHTML` on the public site (besides code-generated
+JSON-LD and gtag). `repo.updateBlock()` runs `sanitizeBlockData()` on every
+block write before validation, so the admin action and `scripts/cms-seed.mts`
+(which writes through the repo) store exactly the same thing;
+`rich-text.tsx` renders the stored HTML as-is.
+
+`sanitizeRichTextHtml()` is an **allowlist** built on `sanitize-html`, applied
+to every `html` field:
+
+- Tags: `p`, `br`, `h2`, `h3`, `h4`, `ul`, `ol`, `li`, `a`, `strong`, `b`,
+  `em`, `i`, `blockquote`. Any other element is unwrapped (its text kept);
+  `script`, `style`, `iframe`, `svg`, `template` and similar are removed
+  together with their content.
+- Attributes: only `href`, `title`, `rel`, `target` on `a`; none elsewhere, no
+  classes, no styles. `href` must be relative, an anchor, or `http`, `https`,
+  `mailto`, `tel` (protocol-relative `//…` is refused).
+  `target="_blank"` always gets `rel="noopener noreferrer"`; any other
+  `target` is dropped.
+- Empty `p` and `h2`–`h4` are dropped. The function is idempotent.
+
+Link-ish fields in any block (`href`, `url`, `mapEmbedUrl`, `phoneHref`,
+`website`, `canonicalOverride`) are rejected with a Dutch message when they use
+`javascript:`, `data:`, `vbscript:` or `file:`.
+
+The admin's rich-text field has two modes, both storing HTML: **Tekst** (a
+plain textarea; `plainTextToHtml` in `src/lib/cms/rich-text-plain.ts` turns
+blank-line separated text into escaped `<p>` paragraphs) and **HTML** (the
+source itself, for pages that need headings, lists and links, such as the
+privacy statement and the terms). A block whose stored HTML already uses more
+than `<p>`/`<br>` opens in HTML mode, so saving it never flattens it; switching
+it to Tekst asks for confirmation because that conversion is lossy. The
+client-side helpers never import `sanitize-html`; the allowlist runs on the
+server only. Change the allowlist only together with a test in
+`sanitize.test.ts`.
 
 ### Validation
 
@@ -350,7 +463,11 @@ in the prototype). Validate with `validateNavigationItems(items)`.
 | `contact` | `phoneLabel`, `phoneHref`, `email`, `addressLines`, `postalCode`, `city`, `country`, `hours`, `website` |
 | `seo` | `defaultMetaTitle`, `titleTemplate`, `defaultMetaDescription`, `defaultOgImageMediaId`, `allowIndexing` |
 | `organization` | `type`, `legalName`, `vatNumber`, `sameAs`, `priceRange`, `areaServed`, `latitude`, `longitude` — the Organization / LocalBusiness JSON-LD source |
-| `analytics` | `ga4MeasurementId` (**empty**), `enabled` (**false**) |
+| `analytics` | `ga4MeasurementId` (reference only; the tag reads `NEXT_PUBLIC_GA4_MEASUREMENT_ID`), `ga4PropertyId` (numeric GA4 property for the admin panel; env `GA4_PROPERTY_ID` wins), `enabled` (default **false**; the tag and banner load only when true) |
+| `booking` | `slotStepMinutes` (30), `minNoticeHours` (24), `horizonDays` (56), `defaultBufferAfterMinutes` (15), `cancelUntilHours` (48), `timezone` (`Europe/Brussels`), `introTitle`, `introText`, `confirmationText`, `showProviderChoice` (true) — the booking rules, see `booking-architecture.md` §4 |
+
+Admin → Instellingen has one form per key: Site, Contact, SEO, Organisatie
+(JSON-LD), Afspraken, Analytics.
 
 `getSiteSettings()` always returns every key with schema defaults filled in, so
 it never throws and never returns `undefined` fields.
@@ -362,8 +479,10 @@ it never throws and never returns `undefined` fields.
 
 ## 6. Content read API (Worker C)
 
-`src/lib/cms/content.ts` — `server-only`. This is the **only** module the
-public site uses to reach the database. Do not import `@/db/cms` directly.
+`src/lib/cms/content.ts` — `server-only`. Together with its booking
+counterpart `src/lib/booking/content.ts` (services, providers, live
+availability; `booking-architecture.md` §5), this is the **only** way the
+public site reaches the database. Do not import `@/db/cms` directly.
 
 ```ts
 import {
@@ -403,10 +522,12 @@ middleware, which must stay database-free.
 
 ## 7. Write API (Worker B)
 
-`src/lib/cms/repo.ts` — `server-only`. Wrap these in `'use server'` actions
-under `src/lib/cms/actions/**`. Do not call `getCmsDb()` from an action
-directly; going through `repo.ts` is what guarantees the permission check, the
-audit entry and the cache bust all happen.
+`src/lib/cms/repo.ts` (plus `repo-admin.ts`) — `server-only`. Wrap these in
+`'use server'` actions under `src/lib/cms/actions/**`. Do not call
+`getCmsDb()` from an action directly; going through the repo is what
+guarantees the permission check, the audit entry and the cache bust all
+happen. Booking writes go through `src/lib/booking/repo.ts` the same way
+(`booking-architecture.md` §5).
 
 ```ts
 type RepoResult<T> = { ok: true; data: T } | { ok: false; message: string };  // message is Dutch
@@ -520,26 +641,25 @@ always go through `getMediaBytes()`.
 
 ## 9. Environment variables
 
+The full contract (every variable, per environment, secret or not) is in
+[`../DEPLOYMENT.md`](../DEPLOYMENT.md) §5. The ones the CMS itself reads:
+
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `DATABASE_URL` | prod | Neon pooled URL. Unset locally → PGlite. |
-| `CMS_SESSION_SECRET` | prod | Pepper for session-token hashing. `openssl rand -base64 48`. Rotating it signs everyone out. |
+| `DATABASE_URL` | deployed envs | Neon pooled URL. Unset locally → PGlite. |
+| `CMS_SESSION_SECRET` | deployed envs | Pepper for session-token hashing; also signs the `cms_google_oauth` cookie and the booking confirmation link. `openssl rand -base64 48`. Rotating it signs everyone out. |
 | `CMS_BOOTSTRAP_PASSWORD` | bootstrap only | Pass inline to `npm run cms:bootstrap`. Never store it in `.env.local` or in Vercel. |
-| `NEXT_PUBLIC_SITE_URL` | recommended | Canonical origin for canonicals, sitemap, OG. `siteUrl()` in `src/lib/env.ts` falls back to `NEXT_PUBLIC_APP_URL`, then `VERCEL_URL`, then localhost. |
-| `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | no | **Readiness only — deliberately not loaded.** No analytics script and no analytics cookie ships. Worker C provides a no-op wrapper component as the hook point. |
+| `NEXT_PUBLIC_SITE_URL` | deployed envs | Canonical origin for canonicals, sitemap, OG, e-mail links and the Google OAuth redirect URI. `siteUrl()` in `src/lib/env.ts` falls back to `NEXT_PUBLIC_APP_URL`, then `VERCEL_URL`, then localhost. |
+| `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | no | GA4 tag id. Loaded only when valid, `analytics.enabled` is true and the visitor consented (§12.7). Build-time. |
+| `GA4_PROPERTY_ID`, `GA4_SERVICE_ACCOUNT_JSON` | no | Admin analytics panel (GA4 Data API). |
 | `CMS_PGLITE_DIR` | no | Override the local PGlite directory. |
 | `CMS_PGLITE_AUTO_MIGRATE` | no | `"false"` disables auto-migration on first PGlite use. |
 
-All existing webshop keys (Clerk, Stripe, Mollie, `NEXT_PUBLIC_APP_URL`) are
-unchanged. `.env.example` has placeholders for everything; `.gitignore` now has
-`!.env.example` so the template is tracked while real `.env*` files are not.
-
-### Analytics policy
-
-Nothing reads `NEXT_PUBLIC_GA4_MEASUREMENT_ID`. `cms_site_settings.analytics`
-ships with `ga4MeasurementId: ''` and `enabled: false`. Worker C's wrapper must
-render `null` unless **both** a measurement id is present **and** `enabled` is
-true — and even then it is out of scope for this work block.
+Booking variables (Google OAuth, token encryption key, Resend): see
+`booking-architecture.md` §10. New code reads variables through
+`src/lib/env.ts` only (`CLAUDE.md` §3). `.env.example` has a placeholder and a
+one-line comment for every variable and is tracked (`!.env.example` in
+`.gitignore`) while real `.env*` files are not.
 
 ---
 
@@ -549,50 +669,40 @@ true — and even then it is out of scope for this work block.
 
 ```bash
 cd website
-npm install
+npm ci
 npm run db:migrate                                      # creates website/.pglite/
 CMS_BOOTSTRAP_PASSWORD='<strong password>' npm run cms:bootstrap
+npm run cms:seed                                        # Dutch pages, menus, redirect
+npm run cms:seed-booking                                # first provider (temp password printed once)
 npm run dev
 ```
 
 `cms:bootstrap` is idempotent — it creates the admin `contact@toshoni.be`
-(role `admin`, `must_change_password = true`), the five default `nl` site
-settings, and empty `main` + `footer` menus. Running it twice changes nothing.
+(role `admin`, `must_change_password = true`), the six default `nl` site
+settings (`site`, `contact`, `seo`, `organization`, `analytics`, `booking`),
+empty `main` + `footer` menus, the two locations and the five services.
+Running it twice changes nothing.
 
-Reset the local database by deleting `website/.pglite/` and re-running the two
+Reset the local database by deleting `website/.pglite/` and re-running the
 commands.
 
+Checks (all six are the Definition of Done in `CLAUDE.md` §2):
+
 ```bash
-npm run cms:selftest   # migrations, schema, password, sessions, blocks, publish
-npm run typecheck && npm run lint && npm run build
+npm run typecheck && npm run lint && npm run format:check
+npm test               # vitest unit tests
+npm run cms:selftest   # 14 sections: migrations … full booking flow, on a throwaway PGlite
+npm run build
 ```
 
-### Staging (Neon + Vercel)
+### Staging and production (Neon + Vercel)
 
-> Full step-by-step procedure — env vars, the three one-off scripts, deploy,
-> first login, rollback and the pre-production checklist — lives in
-> **[`staging-runbook.md`](./staging-runbook.md)**. The summary below is the
-> short version.
-
-1. Neon: use the existing project's `staging` branch; copy its **pooled**
-   connection string.
-2. Vercel → project → Settings → Environment Variables, **Staging** scope:
-   - `DATABASE_URL` = the staging Neon pooled URL
-   - `CMS_SESSION_SECRET` = `openssl rand -base64 48`
-   - `NEXT_PUBLIC_SITE_URL` = the staging URL
-   - leave `NEXT_PUBLIC_GA4_MEASUREMENT_ID` empty
-   - do **not** set `CMS_BOOTSTRAP_PASSWORD`
-3. Apply migrations once against that branch:
-   ```bash
-   DATABASE_URL='<staging pooled url>' npm run db:migrate
-   ```
-   `0000` is a guarded no-op against the existing webshop tables; `0001` adds
-   the `cms_*` tables.
-4. Create the first admin once:
-   ```bash
-   DATABASE_URL='<staging pooled url>' CMS_BOOTSTRAP_PASSWORD='…' npm run cms:bootstrap
-   ```
-5. Deploy the `staging` branch and sign in at `/admin/login`.
+Environments, the Hobby-plan staging setup (previews of the `staging` branch
+with branch-scoped variables) and the env var contract are in
+[`../DEPLOYMENT.md`](../DEPLOYMENT.md). The step-by-step procedure — migrate,
+bootstrap, seed, env vars, deploy, first login, rollback and the production
+checklist — is [`staging-runbook.md`](./staging-runbook.md). Deployments are
+executed by the DevOps agent Arend; production needs an explicit go.
 
 Keep `seo.allowIndexing = false` on staging.
 
@@ -610,10 +720,10 @@ git checkout webshop-baseline-2026-09-23 -- website
 git clone .winston/repos/de-bikefit-studio/baselines/webshop-baseline-2026-09-23.bundle restored
 ```
 
-Database rollback: nothing needs undoing. Both migrations are additive, so the
-webshop tables and data are byte-identical before and after. If you want the
-CMS gone from a database, drop the `cms_*` tables and the two `cms_*` enum
-types — no webshop object references them.
+Database rollback: nothing needs undoing. All four migrations are additive, so
+the webshop tables and data are byte-identical before and after. If you want
+the CMS gone from a database, drop the nineteen `cms_*` tables and the two
+`cms_*` enum types — no webshop object references them.
 
 ---
 
@@ -647,9 +757,13 @@ Added with the Dutch public site. Nothing in `src/lib/cms/*` changed.
 | URL | File | Notes |
 | --- | --- | --- |
 | `/` | `src/app/(studio)/page.tsx` | Dutch home page, slug `''` |
-| `/<anything>` | `src/app/(studio)/[...slug]/page.tsx` | published page → redirect → 404, in that order |
+| `/<anything>` | `src/app/(studio)/[...slug]/page.tsx` | published page → redirect → 404, in that order. Includes the seeded `/afspraak` (booking block), `/privacy` and `/algemene-voorwaarden` |
+| `/afspraak/bevestigd` | `src/app/(studio)/afspraak/bevestigd/page.tsx` | booking confirmation; `?ref=` is an HMAC-signed summary without personal data; `noindex` |
+| `/afspraak/annuleren/[token]` | `src/app/(studio)/afspraak/annuleren/[token]/page.tsx` | customer cancellation by e-mailed token; `noindex` |
 | `/og` | `src/app/(studio)/og/route.tsx` | generated 1200×630 share card |
 | `/sitemap.xml`, `/robots.txt` | `src/app/{sitemap,robots}.ts` | from the CMS |
+| `/api/cms/media/[id]` | `src/app/api/cms/media/[id]/route.ts` | media bytes stored in Postgres |
+| `/api/google/oauth/start`, `/api/google/oauth/callback` | `src/app/api/google/oauth/*/route.ts` | Google Calendar connect flow for providers (`booking-architecture.md` §7) |
 | `/webshop` | `src/app/(webshop)/webshop/page.tsx` | the old Qarakter home page, moved verbatim |
 
 Dutch is served from the root with no locale prefix. Nothing hard-codes `'nl'`:
@@ -710,58 +824,87 @@ appear in no structured data.
 
 ### 12.6 Seeding
 
-`npm run cms:seed` creates, fills and **publishes** the six Dutch pages through
-`repo.ts`, so the snapshots, audit entries and permission checks are the real
-ones. It does that by giving the write API the request context it expects:
-`module.registerHooks()` stubs for `server-only`, `next/headers` and
-`next/cache`, plus a genuine `cms_sessions` row for an existing admin (revoked
-again on exit). Pass `--only-missing` to leave anything that already exists
-alone.
+`npm run cms:seed` creates, fills and **publishes** the eight Dutch pages
+(`/`, `/bikefit`, `/over-ons`, `/veelgestelde-vragen`, `/contact`, `/afspraak`,
+`/privacy`, `/algemene-voorwaarden`) through `repo.ts`, so the snapshots, audit
+entries and permission checks are the real ones. It does that by giving the
+write API the request context it expects: `module.registerHooks()` stubs for
+`server-only`, `next/headers` and `next/cache`, plus a genuine `cms_sessions`
+row for an existing admin (revoked again on exit).
 
-### 12.7 Analytics — how to switch GA4 on later
+- `--only-missing` leaves every page and menu that already exists alone.
+- `--refresh-slug <slug>` (also `--refresh-slug=<slug>`; `/` or `home` for the
+  home page) replaces one page's draft blocks with the seed definition and
+  republishes it; its title/SEO fields, all other pages, menus, settings and
+  redirects stay as they are. A missing page is created in full. Used to roll
+  out the `booking` block on `/afspraak` and the legal texts on `/privacy` and
+  `/algemene-voorwaarden` to an existing database. Cannot be combined with
+  `--only-missing`.
 
-Nothing ships today: no script, no cookie, no network request.
-`src/components/studio/analytics.tsx` renders `null` unless **both**
-`NEXT_PUBLIC_GA4_MEASUREMENT_ID` is set **and**
-`cms_site_settings.analytics.enabled` is `true` — and even then it renders only
-an HTML comment.
+The legal texts (`PRIVACY_HTML` / `TERMS_HTML` in `scripts/cms-seed.mts`) take
+their e-mail address from *Instellingen → Contact → e-mail* at seed time;
+see `booking-runbook.md` §11.2.
 
-To activate it:
+### 12.7 Analytics — consent-gated GA4 tag and admin panel
 
-1. Set `NEXT_PUBLIC_GA4_MEASUREMENT_ID=G-XXXXXXXXXX` in the Vercel environment.
-2. In `/admin` → Instellingen → Analytics, fill in the measurement id and tick
-   `enabled`.
-3. Add a consent banner and store the choice (GA4 sets first-party cookies, so
-   under GDPR/ePrivacy this is required before any script loads).
-4. In `analytics.tsx`, replace the comment with
+**Public tag.** `src/components/studio/analytics.tsx` (`StudioAnalytics`,
+mounted once by the studio layout) renders nothing unless **both**
+`NEXT_PUBLIC_GA4_MEASUREMENT_ID` is set and well-formed **and**
+`cms_site_settings.analytics.enabled` is `true` (`resolveMeasurementId()` in
+`src/lib/analytics/consent.ts`). When both hold it mounts two client
+components:
 
-   ```tsx
-   <Script
-     src={`https://www.googletagmanager.com/gtag/js?id=${envId}`}
-     strategy="afterInteractive"
-   />
-   ```
+- `ConsentBanner` (`src/components/studio/consent-banner.tsx`) asks once and
+  stores the choice in the `cms_consent` cookie (`granted` | `denied`, 365
+  days; §4 *Cookies*). *Weigeren* is as prominent as *Accepteren* and also
+  removes any `_ga*` cookies left from an earlier acceptance. The footer link
+  *Cookies* reopens the banner; the banner links to `/privacy` once published.
+- `Ga4Tag` (`src/lib/analytics/ga4-tag.tsx`) loads `gtag/js` only after
+  `granted` and sends a `page_view` on every route change.
 
-   plus the inline `gtag('config', envId)` call, both rendered only once
-   consent has been given.
-5. Re-check: no analytics request may fire before consent, and `robots.txt`
-   must already allow indexing (`seo.allowIndexing`) for the data to mean
-   anything.
+Before consent there is no analytics script, no request to Google and no
+analytics cookie. When the guard fails there is no banner either and no
+footer *Cookies* link (there is no choice to make).
+
+**Admin panel.** `src/components/admin/analytics-panel.tsx` on the dashboard,
+visible only with `analytics.read` (admins). It reads the GA4 Data API through
+`src/lib/analytics/ga4.ts` with a service account (`GA4_SERVICE_ACCOUNT_JSON`;
+property id from `GA4_PROPERTY_ID` or the `analytics.ga4PropertyId` setting),
+cached for one hour, and shows setup steps when not connected.
+
+Setup of the GA4 property, stream and service account:
+`booking-runbook.md` §5. GDPR rules for the banner: `booking-runbook.md` §11.1.
+
+### 12.8 Security headers
+
+`next.config.ts` `headers()` sets `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: strict-origin-when-cross-origin` and
+`Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()` on
+every route, and `X-Frame-Options: DENY` on `/admin` and below. There is no
+Content-Security-Policy yet (see §13). How to verify after a deploy:
+`booking-runbook.md` §11.4.
 
 ---
 
 ## 13. Known gaps and open questions
 
+- **Booking** is built: schema, availability, admin screens, the public widget
+  on `/afspraak`, Google Calendar sync and e-mail. It is documented in
+  [`booking-architecture.md`](./booking-architecture.md) (design) and
+  [`booking-runbook.md`](./booking-runbook.md) (setup, GDPR, retention).
 - **No prices exist.** Nothing in `prototype/`, `content/` or `brand/` names an
-  amount. The `pricing` block is placeholder-flagged and hidden.
-- **No street address, e-mail address or VAT number** is recorded anywhere.
-  `cms_site_settings.contact` has empty slots waiting for them; the
-  `LocalBusiness` JSON-LD will be incomplete until they are filled in.
+  amount. The `pricing` block is placeholder-flagged and hidden; services carry
+  `price_cents = null` and `show_price = false`.
+- **Studio contact details are incomplete.** The legal identity (company,
+  registered office, enterprise/VAT number) is fixed in
+  `src/lib/studio/legal.ts` for the footer and the transactional e-mails, but
+  `cms_site_settings.contact` (street, e-mail) and `organization.vatNumber`
+  are still empty, so the `LocalBusiness` JSON-LD stays incomplete until they
+  are filled in. The public contact e-mail is also what the legal texts use.
 - **Testimonials are illustrative copy** from the copy deck, not real reviews.
-- **Booking is out of scope.** `content/booking.html` is a specification only.
-  The prototype's main CTA dials `tel:+32473952633`; keep that until a real
-  booking flow exists.
-- Structured-data emission (`FAQPage`, `LocalBusiness`) is modelled in the
-  schema but not implemented — that is Worker C's job.
+- **The legal texts are templates** until a lawyer has reviewed them
+  (`booking-runbook.md` §11.5).
+- **No Content-Security-Policy yet** (`next.config.ts` sets the other security
+  headers); the GA4 tag and Next's inline scripts would need nonces.
 - Session rows are only pruned opportunistically. If volume ever matters, add a
   scheduled `pruneExpiredSessions()` call.

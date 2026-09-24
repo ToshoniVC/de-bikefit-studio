@@ -35,6 +35,7 @@ import {
   type SiteSettingKey,
   type SiteSettings,
 } from './blocks';
+import { sanitizeBlockData } from './actions/sanitize';
 import { CMS_TAGS, normalizeRedirectPath, normalizeSlug } from './content';
 
 /**
@@ -112,7 +113,16 @@ export function publicPathFor(locale: string, slug: string): string {
 
 export type PageListItem = Pick<
   CmsPage,
-  'id' | 'locale' | 'slug' | 'translationGroup' | 'title' | 'kind' | 'status' | 'publishedAt' | 'updatedAt' | 'noIndex'
+  | 'id'
+  | 'locale'
+  | 'slug'
+  | 'translationGroup'
+  | 'title'
+  | 'kind'
+  | 'status'
+  | 'publishedAt'
+  | 'updatedAt'
+  | 'noIndex'
 >;
 
 export async function listPages(locale: string = DEFAULT_LOCALE): Promise<PageListItem[]> {
@@ -331,7 +341,12 @@ export async function addBlock(
   return ok(block);
 }
 
-/** Validates `data` against the block's registry schema before writing. */
+/**
+ * Sanitises `data` (unsafe links refused, rich-text `html` through the
+ * allowlist in `actions/sanitize.ts`) and validates it against the block's
+ * registry schema before writing. Every block write — the admin action and the
+ * seed alike — goes through here, so both store exactly the same HTML.
+ */
 export async function updateBlock(blockId: string, data: unknown): Promise<RepoResult<CmsBlock>> {
   const actor = await requirePermission('block.update');
   const db = await getCmsDb();
@@ -339,7 +354,10 @@ export async function updateBlock(blockId: string, data: unknown): Promise<RepoR
   const [existing] = await db.select().from(cmsBlocks).where(eq(cmsBlocks.id, blockId)).limit(1);
   if (!existing) return err('Blok niet gevonden.');
 
-  const validated = validateBlock(existing.type, data);
+  const sanitized = sanitizeBlockData(data);
+  if (!sanitized.ok) return err(sanitized.message);
+
+  const validated = validateBlock(existing.type, sanitized.data);
   if (!validated.ok) return err(validated.message);
 
   const [block] = await db
@@ -371,7 +389,11 @@ export async function deleteBlock(blockId: string): Promise<RepoResult<true>> {
     .from(cmsBlocks)
     .where(eq(cmsBlocks.pageId, existing.pageId))
     .orderBy(asc(cmsBlocks.sortOrder));
-  await applyBlockOrder(db, existing.pageId, remaining.map((row) => row.id));
+  await applyBlockOrder(
+    db,
+    existing.pageId,
+    remaining.map((row) => row.id),
+  );
 
   await recordAudit(db, actor, {
     action: 'block.delete',
@@ -404,7 +426,11 @@ export async function reorderBlocks(
   }
 
   await applyBlockOrder(db, pageId, orderedBlockIds);
-  await recordAudit(db, actor, { action: 'block.reorder', entityType: 'cms_page', entityId: pageId });
+  await recordAudit(db, actor, {
+    action: 'block.reorder',
+    entityType: 'cms_page',
+    entityId: pageId,
+  });
   return ok(true);
 }
 
@@ -588,7 +614,13 @@ export type CreateMediaInput = {
 };
 
 const MEDIA_MAX_BYTES = 8 * 1024 * 1024;
-const MEDIA_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/svg+xml'];
+const MEDIA_ALLOWED_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/avif',
+  'image/svg+xml',
+];
 
 export async function createMedia(input: CreateMediaInput): Promise<RepoResult<CmsMedia>> {
   const actor = await requirePermission('media.create');
@@ -855,7 +887,10 @@ export async function getAdminStats(): Promise<{
   const count = sql<number>`count(*)::int`;
 
   const [pages] = await db.select({ count }).from(cmsPages);
-  const [published] = await db.select({ count }).from(cmsPages).where(eq(cmsPages.status, 'published'));
+  const [published] = await db
+    .select({ count })
+    .from(cmsPages)
+    .where(eq(cmsPages.status, 'published'));
   const [media] = await db.select({ count }).from(cmsMedia).where(isNull(cmsMedia.deletedAt));
   const [redirects] = await db.select({ count }).from(cmsRedirects);
 
@@ -869,11 +904,5 @@ export async function getAdminStats(): Promise<{
 
 // Users CRUD lives in `./auth.ts` (createUser, listCmsUsers, setUserRole,
 // setUserActive, resetUserPassword) because it needs the password primitives.
-export {
-  createUser,
-  listCmsUsers,
-  resetUserPassword,
-  setUserActive,
-  setUserRole,
-} from './auth';
+export { createUser, listCmsUsers, resetUserPassword, setUserActive, setUserRole } from './auth';
 export type { CmsUserPublic };

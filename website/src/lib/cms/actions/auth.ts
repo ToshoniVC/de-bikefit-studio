@@ -3,6 +3,7 @@
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { changePassword, login, logout } from '@/lib/cms/auth';
+import { clientIpFromHeaders } from '@/lib/request-ip';
 import { runAction } from './run';
 import { actionError, actionOk, field, type ActionState } from './state';
 
@@ -21,17 +22,13 @@ function safeAdminPath(value: string, fallback = '/admin'): string {
 
 async function requestContext() {
   const headerList = await headers();
-  const forwarded = headerList.get('x-forwarded-for');
   return {
     userAgent: headerList.get('user-agent') ?? undefined,
-    ipAddress: forwarded?.split(',')[0]?.trim() || headerList.get('x-real-ip') || 'unknown',
+    ipAddress: clientIpFromHeaders(headerList) ?? 'unknown',
   };
 }
 
-export async function loginAction(
-  _prevState: ActionState,
-  form: FormData,
-): Promise<ActionState> {
+export async function loginAction(_prevState: ActionState, form: FormData): Promise<ActionState> {
   return runAction(async () => {
     const email = field(form, 'email');
     const password = String(form.get('password') ?? '');

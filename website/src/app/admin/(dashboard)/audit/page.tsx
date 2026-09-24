@@ -20,14 +20,14 @@ export default async function AdminAuditPage() {
         description="Wie deed wat, wanneer. De laatste 200 gebeurtenissen."
       />
 
-      <div className="overflow-x-auto rounded-xl bg-card ring-1 ring-foreground/10">
+      <div className="overflow-x-auto border border-border bg-card">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-border/60 text-xs text-muted-foreground">
+          <thead className="border-b border-border bg-muted text-xs text-muted-foreground">
             <tr>
-              <th className="p-3 font-medium">Tijdstip</th>
-              <th className="p-3 font-medium">Gebruiker</th>
-              <th className="p-3 font-medium">Actie</th>
-              <th className="p-3 font-medium">Object</th>
+              <th className="p-3">Tijdstip</th>
+              <th className="p-3">Gebruiker</th>
+              <th className="p-3">Actie</th>
+              <th className="p-3">Object</th>
             </tr>
           </thead>
           <tbody>
@@ -39,7 +39,7 @@ export default async function AdminAuditPage() {
               </tr>
             ) : null}
             {entries.map((entry) => (
-              <tr key={entry.id} className="border-b border-border/40 last:border-0 align-top">
+              <tr key={entry.id} className="border-b border-border last:border-0 align-top">
                 <td className="p-3 text-xs whitespace-nowrap text-muted-foreground">
                   {new Date(entry.createdAt).toLocaleString('nl-BE')}
                 </td>

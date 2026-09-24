@@ -3,6 +3,7 @@
 // server-only boundary is enforced one level up, in `src/lib/cms/*`.
 import { drizzle as drizzleNeon, type NeonHttpDatabase } from 'drizzle-orm/neon-http';
 import { neon } from '@neondatabase/serverless';
+import { env, isProduction } from '@/lib/env';
 import * as webshopSchema from './schema';
 import * as cmsSchema from './cms-schema';
 
@@ -44,19 +45,21 @@ export type CmsDriver = 'neon-http' | 'pglite';
 
 /**
  * Where the local PGlite database is persisted, relative to `website/`.
- * Read lazily so scripts can call `dotenv.config()` before the first use.
+ * Read lazily (`env` reads at call time) so scripts can call `dotenv.config()`
+ * before the first use.
  */
 export function pgliteDataDir(): string {
-  return process.env.CMS_PGLITE_DIR ?? '.pglite';
+  return env.CMS_PGLITE_DIR ?? '.pglite';
 }
 
-function isProduction() {
-  return process.env.NODE_ENV === 'production' && process.env.VERCEL_ENV !== 'development';
+/** A production runtime (not `vercel dev`), where PGlite is never acceptable. */
+function requiresNeon() {
+  return isProduction() && env.VERCEL_ENV !== 'development';
 }
 
 /** Which driver `getCmsDb()` will use, without initialising anything. */
 export function cmsDriver(): CmsDriver {
-  return process.env.DATABASE_URL ? 'neon-http' : 'pglite';
+  return env.DATABASE_URL ? 'neon-http' : 'pglite';
 }
 
 type CmsGlobal = {
@@ -74,7 +77,7 @@ async function createNeonDb(url: string): Promise<CmsDatabase> {
 }
 
 async function createPgliteDb(): Promise<CmsDatabase> {
-  if (isProduction()) {
+  if (requiresNeon()) {
     throw new Error(
       'DATABASE_URL is required in production. PGlite is a local-development driver only.',
     );
@@ -86,7 +89,7 @@ async function createPgliteDb(): Promise<CmsDatabase> {
   const client = await PGlite.create({ dataDir: pgliteDataDir() });
   const db = drizzlePglite(client, { schema });
 
-  if (process.env.CMS_PGLITE_AUTO_MIGRATE !== 'false') {
+  if (env.CMS_PGLITE_AUTO_MIGRATE !== 'false') {
     const { migrate } = await import('drizzle-orm/pglite/migrator');
     await migrate(db, { migrationsFolder: './drizzle' });
   }
@@ -102,7 +105,7 @@ async function createPgliteDb(): Promise<CmsDatabase> {
  */
 export function getCmsDb(): Promise<CmsDatabase> {
   if (!cache.db) {
-    const url = process.env.DATABASE_URL;
+    const url = env.DATABASE_URL;
     cache.driver = url ? 'neon-http' : 'pglite';
     cache.db = (url ? createNeonDb(url) : createPgliteDb()).catch((error) => {
       // Do not cache a rejected promise: a transient failure would otherwise

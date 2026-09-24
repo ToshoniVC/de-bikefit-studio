@@ -8,9 +8,12 @@
  *   2. default `nl` site settings (name, tagline, contact, SEO, organisation,
  *      an EMPTY GA4 slot)
  *   3. empty `main` and `footer` navigation menus for `nl`
+ *   4. booking: the `booking` setting (defaults), the default studio location
+ *      "De Bikefit Studio, Ninove", the "Bij jou thuis" location (kind
+ *      `customer`, for Fit aan huis) and the five initial services
  *
  * Running it twice changes nothing and exits 0. It never overwrites an
- * existing password, existing settings or an existing menu.
+ * existing password, existing settings, an existing menu, location or service.
  */
 import { config } from 'dotenv';
 import { and, eq } from 'drizzle-orm';
@@ -18,9 +21,21 @@ import { and, eq } from 'drizzle-orm';
 config({ path: '.env.local' });
 
 import { getCmsDb, cmsDriver } from '@/db/cms';
-import { cmsNavigation, cmsSiteSettings, cmsUsers, DEFAULT_LOCALE } from '@/db/cms-schema';
+import {
+  cmsLocations,
+  cmsNavigation,
+  cmsServices,
+  cmsSiteSettings,
+  cmsUsers,
+  DEFAULT_LOCALE,
+} from '@/db/cms-schema';
 import { hashPassword, validatePasswordStrength } from '@/lib/cms/password';
 import { NAVIGATION_KEYS, siteSettingSchemas } from '@/lib/cms/blocks';
+import {
+  CUSTOMER_LOCATION,
+  DEFAULT_SERVICES,
+  DEFAULT_STUDIO_LOCATION,
+} from '@/lib/booking/defaults';
 
 const ADMIN_EMAIL = 'contact@toshoni.be';
 const ADMIN_NAME = 'Toshoni';
@@ -68,7 +83,20 @@ const DEFAULT_SETTINGS = {
   analytics: {
     // Intentionally empty: no analytics script and no cookie ship by default.
     ga4MeasurementId: '',
+    ga4PropertyId: '',
     enabled: false,
+  },
+  // Booking rules decided on 24 Sep 2026 — identical to the schema defaults.
+  booking: {
+    slotStepMinutes: 30,
+    minNoticeHours: 24,
+    horizonDays: 56,
+    defaultBufferAfterMinutes: 15,
+    cancelUntilHours: 48,
+    timezone: 'Europe/Brussels',
+    introTitle: 'Maak een afspraak',
+    introText: '',
+    showProviderChoice: true,
   },
 } as const;
 
@@ -152,6 +180,71 @@ async function main() {
 
     await db.insert(cmsNavigation).values({ locale: DEFAULT_LOCALE, menuKey, items: [] });
     console.log(`+ menu ${DEFAULT_LOCALE}/${menuKey} created (empty)`);
+  }
+
+  // 4. Booking: locations + services ------------------------------------------
+  const ensureLocation = async (
+    spec: typeof DEFAULT_STUDIO_LOCATION | typeof CUSTOMER_LOCATION,
+  ) => {
+    const [existing] = await db
+      .select({ id: cmsLocations.id })
+      .from(cmsLocations)
+      .where(and(eq(cmsLocations.name, spec.name), eq(cmsLocations.kind, spec.kind)))
+      .limit(1);
+    if (existing) {
+      console.log(`= location “${spec.name}” already exists — left untouched`);
+      return existing.id;
+    }
+    if (spec.isDefault) {
+      const [otherDefault] = await db
+        .select({ id: cmsLocations.id, name: cmsLocations.name })
+        .from(cmsLocations)
+        .where(eq(cmsLocations.isDefault, true))
+        .limit(1);
+      if (otherDefault) {
+        console.log(
+          `= default location is already “${otherDefault.name}” — “${spec.name}” not created`,
+        );
+        return otherDefault.id;
+      }
+    }
+    const [created] = await db.insert(cmsLocations).values(spec).returning({ id: cmsLocations.id });
+    console.log(
+      `+ location “${spec.name}” created (${spec.kind}${spec.isDefault ? ', default' : ''})`,
+    );
+    return created.id;
+  };
+
+  await ensureLocation(DEFAULT_STUDIO_LOCATION);
+  const customerLocationId = await ensureLocation(CUSTOMER_LOCATION);
+
+  for (const service of DEFAULT_SERVICES) {
+    const [existing] = await db
+      .select({ id: cmsServices.id })
+      .from(cmsServices)
+      .where(and(eq(cmsServices.locale, DEFAULT_LOCALE), eq(cmsServices.slug, service.slug)))
+      .limit(1);
+    if (existing) {
+      console.log(`= service ${DEFAULT_LOCALE}/${service.slug} already exists — left untouched`);
+      continue;
+    }
+    await db.insert(cmsServices).values({
+      locale: DEFAULT_LOCALE,
+      slug: service.slug,
+      name: service.name,
+      description: service.description,
+      durationMinutes: service.durationMinutes,
+      bufferAfterMinutes: 15,
+      priceCents: null,
+      showPrice: false,
+      locationId: service.location === 'customer' ? customerLocationId : null,
+      requiresGuardian: service.requiresGuardian,
+      isActive: true,
+      sortOrder: service.sortOrder,
+    });
+    console.log(
+      `+ service ${DEFAULT_LOCALE}/${service.slug} created (${service.durationMinutes} min)`,
+    );
   }
 
   console.log('');

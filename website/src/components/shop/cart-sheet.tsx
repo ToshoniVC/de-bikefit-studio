@@ -68,9 +68,7 @@ export function CartSheet() {
                 </div>
                 <div className="flex flex-1 flex-col">
                   <span className="text-sm font-medium leading-tight">{item.name}</span>
-                  <span className="text-sm text-muted-foreground">
-                    {formatPrice(item.price)}
-                  </span>
+                  <span className="text-sm text-muted-foreground">{formatPrice(item.price)}</span>
                   <div className="mt-auto flex items-center gap-2">
                     <Button
                       variant="outline"

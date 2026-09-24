@@ -31,7 +31,10 @@ function parseFrontmatter(raw: string): { data: PostFrontmatter; content: string
     const idx = line.indexOf(':');
     if (idx === -1) continue;
     const key = line.slice(0, idx).trim();
-    let value: unknown = line.slice(idx + 1).trim().replace(/^["']|["']$/g, '');
+    let value: unknown = line
+      .slice(idx + 1)
+      .trim()
+      .replace(/^["']|["']$/g, '');
     if (typeof value === 'string' && value.startsWith('[') && value.endsWith(']')) {
       value = value
         .slice(1, -1)

@@ -37,6 +37,12 @@ yarn-error.log*
 
 # local CMS database (PGlite / Postgres-in-WASM) — see src/db/cms.ts
 /.pglite/
+# throwaway PGlite databases (cms:selftest, CMS_PGLITE_DIR experiments)
+/.pglite-selftest/
+/.pglite-*/
+
+# test output
+/test-results/
 
 # vercel
 .vercel

@@ -52,7 +52,8 @@ export type AuthError =
   | 'not_found'
   | 'forbidden';
 
-export type AuthResult<T> = { ok: true; data: T } | { ok: false; error: AuthError; message: string };
+export type AuthResult<T> =
+  { ok: true; data: T } | { ok: false; error: AuthError; message: string };
 
 const MESSAGES: Record<AuthError, string> = {
   invalid_credentials: 'E-mailadres of wachtwoord is onjuist.',
@@ -395,7 +396,11 @@ export async function resetUserPassword(userId: string): Promise<AuthResult<stri
   const actor = await requireCmsUser('admin');
   const db = await getCmsDb();
 
-  const [row] = await db.select({ id: cmsUsers.id }).from(cmsUsers).where(eq(cmsUsers.id, userId)).limit(1);
+  const [row] = await db
+    .select({ id: cmsUsers.id })
+    .from(cmsUsers)
+    .where(eq(cmsUsers.id, userId))
+    .limit(1);
   if (!row) return fail('not_found');
 
   const temporary = generateTemporaryPassword();

@@ -1,68 +1,129 @@
+import sanitizeHtml from 'sanitize-html';
+
+// Re-exported for existing callers and tests; the implementation lives in a
+// client-safe module so the admin editor never imports `sanitize-html`.
+export { htmlToPlainText, plainTextToHtml } from '@/lib/cms/rich-text-plain';
+
 /**
- * Content sanitising shared by the block editor (client) and the block write
- * action (server).
+ * Content sanitising for CMS blocks — the ONE place that decides which markup
+ * may reach `dangerouslySetInnerHTML` on the public site (CLAUDE.md §4).
  *
- * Deliberately no WYSIWYG and no HTML sanitiser dependency. The `richText`
- * block is edited as plain paragraphs separated by blank lines; the stored
- * `html` is rebuilt from that text with everything escaped, so the only markup
- * that can ever reach `cms_blocks.data.html` is `<p>` and `<br />` that this
- * module wrote itself. The rebuild runs again **server-side** in the action, so
- * a hand-crafted request cannot smuggle markup past the browser form.
+ * Write path: `repo.updateBlock()` runs {@link sanitizeBlockData} on every block
+ * write before validating it, so the admin action (`actions/blocks.ts`) and the
+ * seed (`scripts/cms-seed.mts`, which writes through the repo) store exactly
+ * the same thing. `rich-text.tsx` then renders the stored HTML as-is.
+ *
+ * Rich text is an **allowlist** built on `sanitize-html`
+ * ({@link sanitizeRichTextHtml}): the tags in {@link RICH_TEXT_ALLOWED_TAGS},
+ * links with `href`/`title`/`rel`/`target` only, `http`/`https`/`mailto`/`tel`
+ * or relative/anchor hrefs, `rel="noopener noreferrer"` on every
+ * `target="_blank"`, no attributes anywhere else, no styles, no scripts, and
+ * empty paragraphs/headings dropped. Change the list only together with a test
+ * in `sanitize.test.ts`.
+ *
+ * The admin's rich-text field (`src/components/admin/blocks/field-inputs.tsx`)
+ * has two modes: "Tekst" (plain paragraphs via `plainTextToHtml`, in
+ * `src/lib/cms/rich-text-plain.ts`) and "HTML" (the source, for pages such as
+ * the legal texts that need headings, lists and links). Both land here.
  */
 
-const ESCAPES: Record<string, string> = {
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
+/** Every element a `richText` block may contain. Anything else is unwrapped (its text kept). */
+export const RICH_TEXT_ALLOWED_TAGS = [
+  'p',
+  'br',
+  'h2',
+  'h3',
+  'h4',
+  'ul',
+  'ol',
+  'li',
+  'a',
+  'strong',
+  'b',
+  'em',
+  'i',
+  'blockquote',
+] as const;
+
+/** Link schemes a rich-text `href` may use; relative (`/pad`) and anchor (`#id`) hrefs are always fine. */
+export const RICH_TEXT_ALLOWED_SCHEMES = ['http', 'https', 'mailto', 'tel'] as const;
+
+/** Elements removed when they contain no text at all (`<p></p>`, `<p><br /></p>`, `<h2> </h2>`). */
+const DROP_WHEN_EMPTY = new Set(['p', 'h2', 'h3', 'h4']);
+
+/** Disallowed elements whose CONTENT is dropped too, not just the tag. */
+const DROP_WITH_CONTENT = [
+  'script',
+  'style',
+  'textarea',
+  'option',
+  'xmp',
+  'noscript',
+  'noembed',
+  'noframes',
+  'iframe',
+  'object',
+  'embed',
+  'template',
+  'title',
+  'head',
+  'svg',
+  'math',
+];
+
+/**
+ * `target="_blank"` → `rel` gains `noopener noreferrer` (existing tokens kept);
+ * any other `target` value is dropped (same-tab is the default anyway).
+ */
+function normaliseLink(tagName: string, attribs: sanitizeHtml.Attributes): sanitizeHtml.Tag {
+  const next: sanitizeHtml.Attributes = { ...attribs };
+  if (next.target?.trim().toLowerCase() === '_blank') {
+    const rel = new Set((next.rel ?? '').toLowerCase().split(/\s+/).filter(Boolean));
+    rel.add('noopener');
+    rel.add('noreferrer');
+    next.target = '_blank';
+    next.rel = [...rel].join(' ');
+  } else {
+    delete next.target;
+  }
+  return { tagName, attribs: next };
+}
+
+const RICH_TEXT_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: [...RICH_TEXT_ALLOWED_TAGS],
+  allowedAttributes: { a: ['href', 'title', 'rel', 'target'] },
+  allowedClasses: {},
+  allowedSchemes: [...RICH_TEXT_ALLOWED_SCHEMES],
+  allowedSchemesByTag: {},
+  allowedSchemesAppliedToAttributes: ['href'],
+  // `//evil.example` is an absolute link in disguise; write `https://` instead.
+  allowProtocolRelative: false,
+  disallowedTagsMode: 'discard',
+  nonTextTags: DROP_WITH_CONTENT,
+  // No `style` attribute is allowed, so there is nothing for postcss to parse.
+  parseStyleAttributes: false,
+  enforceHtmlBoundary: false,
+  transformTags: { a: normaliseLink },
+  exclusiveFilter: (frame) => DROP_WHEN_EMPTY.has(frame.tag) && frame.text.trim() === '',
 };
 
-export function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => ESCAPES[char] ?? char);
-}
-
-function unescapeHtml(value: string): string {
-  return value
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&');
-}
-
-/** Blank-line separated plain text → escaped `<p>` paragraphs. */
-export function plainTextToHtml(text: string): string {
-  const paragraphs = text
-    .replace(/\r\n/g, '\n')
-    .split(/\n{2,}/)
-    .map((paragraph) => paragraph.trim())
-    .filter(Boolean)
-    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br />')}</p>`);
-  return paragraphs.join('');
-}
-
-/** `<p>` paragraphs → the plain text the editor shows in its textarea. */
-export function htmlToPlainText(html: string): string {
-  return unescapeHtml(
-    html
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/(p|div|h[1-6]|li)>/gi, '\n\n')
-      .replace(/<li[^>]*>/gi, '• ')
-      .replace(/<[^>]*>/g, ''),
-  )
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-/** Re-derives `html` from its own text content, dropping any other markup. */
-export function normalizeRichTextHtml(html: string): string {
-  return plainTextToHtml(htmlToPlainText(html));
+/**
+ * Pure allowlist sanitiser for `richText` HTML. Idempotent: running it on its
+ * own output changes nothing.
+ */
+export function sanitizeRichTextHtml(html: string): string {
+  return sanitizeHtml(html, RICH_TEXT_OPTIONS).trim();
 }
 
 const UNSAFE_URL = /^\s*(javascript|data|vbscript|file)\s*:/i;
-const URL_KEYS = new Set(['href', 'url', 'mapEmbedUrl', 'phoneHref', 'website', 'canonicalOverride']);
+const URL_KEYS = new Set([
+  'href',
+  'url',
+  'mapEmbedUrl',
+  'phoneHref',
+  'website',
+  'canonicalOverride',
+]);
 
 /** `true` when a link value uses a scheme that must never be rendered. */
 export function isUnsafeUrl(value: string): boolean {
@@ -70,14 +131,12 @@ export function isUnsafeUrl(value: string): boolean {
   return UNSAFE_URL.test(value);
 }
 
-export type SanitizeResult =
-  | { ok: true; data: unknown }
-  | { ok: false; message: string };
+export type SanitizeResult = { ok: true; data: unknown } | { ok: false; message: string };
 
 /**
  * Walks arbitrary block data:
- *  - rejects link-ish fields using `javascript:` / `data:` / `vbscript:`,
- *  - re-derives any `html` field from its own text content.
+ *  - rejects link-ish fields using `javascript:` / `data:` / `vbscript:` / `file:`,
+ *  - passes any `html` field through {@link sanitizeRichTextHtml}.
  */
 export function sanitizeBlockData(data: unknown): SanitizeResult {
   const rejected: string[] = [];
@@ -96,7 +155,7 @@ export function sanitizeBlockData(data: unknown): SanitizeResult {
         rejected.push(key);
         return value;
       }
-      if (key === 'html') return normalizeRichTextHtml(value);
+      if (key === 'html') return sanitizeRichTextHtml(value);
     }
     return value;
   };

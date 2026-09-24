@@ -12,6 +12,7 @@ import {
   StatusMessage,
   SubmitButton,
 } from '@/components/admin/form';
+import { badgeTone } from '@/components/admin/tones';
 import {
   createUserAction,
   resetUserPasswordAction,
@@ -37,7 +38,13 @@ export type UserRow = {
  * they are never stored in plaintext and password hashes never leave the
  * server.
  */
-export function UsersManager({ users, currentUserId }: { users: UserRow[]; currentUserId: string }) {
+export function UsersManager({
+  users,
+  currentUserId,
+}: {
+  users: UserRow[];
+  currentUserId: string;
+}) {
   const [state, formAction] = useActionState(createUserAction, IDLE_STATE);
 
   return (
@@ -58,6 +65,7 @@ export function UsersManager({ users, currentUserId }: { users: UserRow[]; curre
               <Select id="user-role" name="role" defaultValue="editor">
                 <option value="editor">{ROLE_LABELS.editor}</option>
                 <option value="admin">{ROLE_LABELS.admin}</option>
+                <option value="provider">{ROLE_LABELS.provider}</option>
               </Select>
             </Field>
             <Field
@@ -78,21 +86,26 @@ export function UsersManager({ users, currentUserId }: { users: UserRow[]; curre
       <SectionCard title="Gebruikers" description={`${users.length} account(s).`}>
         <ul className="flex flex-col gap-2">
           {users.map((user) => (
-            <li key={user.id} className="rounded-lg border border-border p-2.5">
+            <li key={user.id} className="border border-border bg-background p-3">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium">{user.name}</span>
                 <span className="text-xs text-muted-foreground">{user.email}</span>
                 <Badge variant={user.role === 'admin' ? 'default' : 'secondary'}>
                   {ROLE_LABELS[user.role]}
                 </Badge>
-                <Badge variant={user.isActive ? 'success' : 'destructive'}>
+                <Badge
+                  variant={user.isActive ? 'success' : 'destructive'}
+                  className={badgeTone(user.isActive ? 'success' : 'destructive')}
+                >
                   {user.isActive ? 'Actief' : 'Gedeactiveerd'}
                 </Badge>
                 {user.mustChangePassword ? (
-                  <Badge variant="warning">Moet wachtwoord wijzigen</Badge>
+                  <Badge variant="warning" className={badgeTone('warning')}>
+                    Moet wachtwoord wijzigen
+                  </Badge>
                 ) : null}
                 {user.id === currentUserId ? <Badge variant="outline">Jijzelf</Badge> : null}
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {user.lastLoginAt
                     ? `Laatst aangemeld: ${new Date(user.lastLoginAt).toLocaleString('nl-BE')}`
                     : 'Nog nooit aangemeld'}
@@ -105,6 +118,7 @@ export function UsersManager({ users, currentUserId }: { users: UserRow[]; curre
                     <Select name="role" defaultValue={user.role} className="w-36">
                       <option value="editor">{ROLE_LABELS.editor}</option>
                       <option value="admin">{ROLE_LABELS.admin}</option>
+                      <option value="provider">{ROLE_LABELS.provider}</option>
                     </Select>
                     <SubmitButton size="xs" variant="outline">
                       Rol opslaan

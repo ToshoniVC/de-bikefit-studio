@@ -49,7 +49,12 @@ export function SettingsForms({
           </Field>
         </div>
         <Field label="Missie" htmlFor="site-mission" className="mt-3">
-          <Textarea id="site-mission" name="mission" rows={3} defaultValue={settings.site.mission} />
+          <Textarea
+            id="site-mission"
+            name="mission"
+            rows={3}
+            defaultValue={settings.site.mission}
+          />
         </Field>
         <Field label="Logo" className="mt-3">
           <MediaPicker
@@ -246,14 +251,152 @@ export function SettingsForms({
       </SettingForm>
 
       <SettingForm
+        settingKey="booking"
+        locale={locale}
+        canEdit={canEdit}
+        title="Afspraken"
+        description="Regels voor de online agenda op /afspraak. Tijden worden berekend in de tijdzone hieronder."
+      >
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Tijdsraster (minuten)"
+            htmlFor="booking-slotStepMinutes"
+            hint="Om de hoeveel minuten een afspraak kan starten. Standaard 30."
+          >
+            <Input
+              id="booking-slotStepMinutes"
+              name="slotStepMinutes"
+              type="number"
+              min={5}
+              max={240}
+              step={5}
+              defaultValue={settings.booking.slotStepMinutes}
+            />
+          </Field>
+          <Field
+            label="Minimale termijn vooraf (uren)"
+            htmlFor="booking-minNoticeHours"
+            hint="Hoeveel uur op voorhand een klant ten laatste kan boeken. Standaard 24."
+          >
+            <Input
+              id="booking-minNoticeHours"
+              name="minNoticeHours"
+              type="number"
+              min={0}
+              max={1440}
+              defaultValue={settings.booking.minNoticeHours}
+            />
+          </Field>
+          <Field
+            label="Boekingshorizon (dagen)"
+            htmlFor="booking-horizonDays"
+            hint="Hoe ver vooruit klanten kunnen boeken. Standaard 56 (8 weken)."
+          >
+            <Input
+              id="booking-horizonDays"
+              name="horizonDays"
+              type="number"
+              min={1}
+              max={730}
+              defaultValue={settings.booking.horizonDays}
+            />
+          </Field>
+          <Field
+            label="Standaard buffer na een afspraak (minuten)"
+            htmlFor="booking-defaultBufferAfterMinutes"
+            hint="Geldt voor diensten zonder eigen buffer. Standaard 15."
+          >
+            <Input
+              id="booking-defaultBufferAfterMinutes"
+              name="defaultBufferAfterMinutes"
+              type="number"
+              min={0}
+              max={240}
+              defaultValue={settings.booking.defaultBufferAfterMinutes}
+            />
+          </Field>
+          <Field
+            label="Annuleren via link tot (uren vooraf)"
+            htmlFor="booking-cancelUntilHours"
+            hint="Daarna kan de klant niet meer zelf annuleren. Standaard 48."
+          >
+            <Input
+              id="booking-cancelUntilHours"
+              name="cancelUntilHours"
+              type="number"
+              min={0}
+              max={1440}
+              defaultValue={settings.booking.cancelUntilHours}
+            />
+          </Field>
+          <Field
+            label="Tijdzone"
+            htmlFor="booking-timezone"
+            hint="IANA-naam. Laat op Europe/Brussels tenzij je weet wat je doet."
+          >
+            <Input id="booking-timezone" name="timezone" defaultValue={settings.booking.timezone} />
+          </Field>
+          <Field
+            label="Titel boekingspagina"
+            htmlFor="booking-introTitle"
+            hint="Leeg laten zet “Maak een afspraak” terug."
+          >
+            <Input
+              id="booking-introTitle"
+              name="introTitle"
+              defaultValue={settings.booking.introTitle}
+            />
+          </Field>
+        </div>
+        <Field
+          label="Introductietekst"
+          htmlFor="booking-introText"
+          hint="Korte uitleg boven de agenda. Mag leeg blijven."
+          className="mt-3"
+        >
+          <Textarea
+            id="booking-introText"
+            name="introText"
+            rows={3}
+            defaultValue={settings.booking.introText}
+          />
+        </Field>
+        <Field
+          label="Bevestigingstekst"
+          htmlFor="booking-confirmationText"
+          hint="Getoond na een geslaagde boeking. Leeg laten zet de standaardtekst terug."
+          className="mt-3"
+        >
+          <Textarea
+            id="booking-confirmationText"
+            name="confirmationText"
+            rows={3}
+            defaultValue={settings.booking.confirmationText}
+          />
+        </Field>
+        <div className="mt-3">
+          <CheckboxField
+            name="showProviderChoice"
+            label="Klant kan een aanbieder kiezen"
+            defaultChecked={settings.booking.showProviderChoice}
+            hint="Uit: de klant kiest enkel een dienst en krijgt de eerste vrije aanbieder."
+          />
+        </div>
+      </SettingForm>
+
+      <SettingForm
         settingKey="analytics"
         locale={locale}
         canEdit={canEdit}
         title="Analytics"
-        description="Enkel voorbereiding: er wordt in deze fase géén trackingscript en géén analytics-cookie geladen, ook niet als je hieronder iets invult."
+        description="GA4 laadt pas als analytics hier ingeschakeld is, de meet-ID in Vercel staat (NEXT_PUBLIC_GA4_MEASUREMENT_ID) én de bezoeker via de cookiebanner toestemming gaf."
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="GA4 measurement id" htmlFor="analytics-ga4">
+          <Field
+            label="GA4 measurement id"
+            htmlFor="analytics-ga4"
+            hint="Ter referentie. Het script gebruikt de omgevingsvariabele NEXT_PUBLIC_GA4_MEASUREMENT_ID."
+          >
             <Input
               id="analytics-ga4"
               name="ga4MeasurementId"
@@ -261,13 +404,26 @@ export function SettingsForms({
               defaultValue={settings.analytics.ga4MeasurementId}
             />
           </Field>
+          <Field
+            label="GA4 property id"
+            htmlFor="analytics-ga4PropertyId"
+            hint="Numeriek id (bv. 123456789) voor de cijfers op het dashboard. De omgevingsvariabele GA4_PROPERTY_ID heeft voorrang."
+          >
+            <Input
+              id="analytics-ga4PropertyId"
+              name="ga4PropertyId"
+              inputMode="numeric"
+              placeholder="123456789"
+              defaultValue={settings.analytics.ga4PropertyId}
+            />
+          </Field>
         </div>
         <div className="mt-3">
           <CheckboxField
             name="enabled"
-            label="Analytics ingeschakeld (voorbereiding)"
+            label="Analytics ingeschakeld"
             defaultChecked={settings.analytics.enabled}
-            hint="Deze schakelaar laadt niets. Het script wordt pas in een latere fase toegevoegd."
+            hint="Uit: er wordt geen trackingscript en geen analytics-cookie geladen, ook niet na toestemming."
           />
         </div>
       </SettingForm>

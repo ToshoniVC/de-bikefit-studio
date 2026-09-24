@@ -4,7 +4,11 @@
  * file, because those may only export async functions.
  */
 
-/** Stricter than `repo.createMedia()`'s own 8 MB ceiling. */
+/**
+ * Stricter than `repo.createMedia()`'s own 8 MB ceiling. The upload is a
+ * server action, so `experimental.serverActions.bodySizeLimit` in
+ * `next.config.ts` (6 MB) must stay above this; change them together.
+ */
 export const UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
 
 /**

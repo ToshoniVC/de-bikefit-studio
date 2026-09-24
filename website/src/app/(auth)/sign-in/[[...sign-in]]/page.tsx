@@ -1,7 +1,8 @@
 import { SignIn } from '@clerk/nextjs';
 import { FeatureNotice } from '@/components/feature-notice';
+import { features } from '@/lib/env';
 
-const hasClerk = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+const hasClerk = features.clerkUi;
 
 export const metadata = { title: 'Sign in' };
 

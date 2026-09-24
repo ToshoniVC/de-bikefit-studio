@@ -20,6 +20,7 @@ import {
   type NavigationItem,
   type NavigationKey,
   type PublishedSnapshot,
+  type SiteSettingKey,
   type SiteSettings,
 } from './blocks';
 
@@ -157,7 +158,10 @@ export async function getPublishedPage(
       } satisfies PublishedPage;
     },
     ['cms-published-page', locale, normalizedSlug],
-    { tags: [CMS_TAGS.all, CMS_TAGS.pages, CMS_TAGS.page(locale, normalizedSlug)], revalidate: REVALIDATE_SECONDS },
+    {
+      tags: [CMS_TAGS.all, CMS_TAGS.pages, CMS_TAGS.page(locale, normalizedSlug)],
+      revalidate: REVALIDATE_SECONDS,
+    },
   );
   return load();
 }
@@ -228,6 +232,15 @@ export async function getNavigation(
 // Site settings
 // ---------------------------------------------------------------------------
 
+/** Parses one stored row into its typed slot; `K` ties the key to its value type. */
+function assignSiteSetting<K extends SiteSettingKey>(
+  settings: SiteSettings,
+  key: K,
+  value: unknown,
+): void {
+  settings[key] = parseSiteSetting(key, value);
+}
+
 /**
  * All site settings for a locale, with schema defaults filled in for any key
  * that is missing or invalid — so this never throws and never returns
@@ -244,10 +257,7 @@ export async function getSiteSettings(locale: string = DEFAULT_LOCALE): Promise<
 
       const settings = defaultSiteSettings();
       for (const row of rows) {
-        if (isSiteSettingKey(row.key)) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (settings as any)[row.key] = parseSiteSetting(row.key, row.value);
-        }
+        if (isSiteSettingKey(row.key)) assignSiteSetting(settings, row.key, row.value);
       }
       return settings;
     },
@@ -341,7 +351,10 @@ export async function getMedia(id: string): Promise<CmsMediaItem | null> {
       return row ?? null;
     },
     ['cms-media', id],
-    { tags: [CMS_TAGS.all, CMS_TAGS.media, CMS_TAGS.mediaItem(id)], revalidate: REVALIDATE_SECONDS },
+    {
+      tags: [CMS_TAGS.all, CMS_TAGS.media, CMS_TAGS.mediaItem(id)],
+      revalidate: REVALIDATE_SECONDS,
+    },
   );
   return load();
 }

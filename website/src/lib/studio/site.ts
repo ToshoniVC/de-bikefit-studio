@@ -101,8 +101,7 @@ export async function resolveMedia(
 
 /**
  * The one loud control in the header, and the fallback target for any CTA the
- * content does not spell out. `/afspraak` is an informational page (how to make
- * an appointment) — there is deliberately no booking flow yet, so nothing here
- * promises one.
+ * content does not spell out. `/afspraak` carries the online booking widget
+ * (the `booking` block, anchored at `#boeken`), so this promise is kept.
  */
 export const PRIMARY_CTA = { label: 'Afspraak maken', href: '/afspraak' } as const;

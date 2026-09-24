@@ -1,5 +1,6 @@
 import { drizzle } from 'drizzle-orm/neon-http';
 import { neon } from '@neondatabase/serverless';
+import { env } from '@/lib/env';
 import * as schema from './schema';
 
 /**
@@ -14,7 +15,7 @@ import * as schema from './schema';
  * `src/db/queries.ts` degrade gracefully when it is null.
  */
 function createDb() {
-  const url = process.env.DATABASE_URL;
+  const url = env.DATABASE_URL;
   if (!url) return null;
   return drizzle(neon(url), { schema });
 }
@@ -24,9 +25,7 @@ export const db = createDb();
 /** Narrowing helper for code paths that require a live database. */
 export function requireDb() {
   if (!db) {
-    throw new Error(
-      'DATABASE_URL is not set. Provision a Neon database and add it to .env.local.',
-    );
+    throw new Error('DATABASE_URL is not set. Provision a Neon database and add it to .env.local.');
   }
   return db;
 }

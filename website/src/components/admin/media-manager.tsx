@@ -55,7 +55,7 @@ export function MediaManager({ items, canUpload }: { items: MediaItem[]; canUplo
                 type="file"
                 accept={UPLOAD_ACCEPT}
                 required
-                className="text-xs file:mr-2 file:rounded-md file:border file:border-input file:bg-background file:px-2 file:py-1 file:text-xs"
+                className="text-sm file:mr-3 file:border file:border-input file:bg-secondary file:px-3 file:py-1.5 file:font-ds-display file:text-xs file:font-semibold file:tracking-[0.08em] file:text-foreground file:uppercase hover:file:bg-muted"
               />
             </Field>
             <Field label="Alt-tekst (nl)" htmlFor="alt" hint="Beschrijf wat er te zien is.">
@@ -77,7 +77,7 @@ export function MediaManager({ items, canUpload }: { items: MediaItem[]; canUplo
             {items.map((item) => (
               <li
                 key={item.id}
-                className="flex flex-col gap-2 rounded-lg border border-border p-2.5"
+                className="flex flex-col gap-2 border border-border bg-background p-3"
               >
                 <div className="flex items-start gap-2">
                   <Image
@@ -89,10 +89,10 @@ export function MediaManager({ items, canUpload }: { items: MediaItem[]; canUplo
                     className="size-16 rounded-md object-cover ring-1 ring-foreground/10"
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium" title={item.filename}>
+                    <p className="truncate text-sm font-medium" title={item.filename}>
                       {item.filename}
                     </p>
-                    <p className="text-[11px] text-muted-foreground">
+                    <p className="text-xs text-muted-foreground">
                       {item.mimeType} · {formatBytes(item.sizeBytes)}
                     </p>
                     {item.isDeleted ? (

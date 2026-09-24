@@ -60,11 +60,9 @@ export function NavigationEditor({
         ) : null}
 
         {items.map((item, index) => (
-          <div key={index} className="rounded-lg border border-border p-2.5">
+          <div key={index} className="border border-border bg-background p-3">
             <div className="mb-2 flex items-center justify-between">
-              <span className="text-[11px] font-medium text-muted-foreground">
-                Item {index + 1}
-              </span>
+              <span className="admin-label text-xs text-muted-foreground">Item {index + 1}</span>
               <div className="flex gap-1">
                 <Button
                   type="button"
@@ -121,7 +119,7 @@ export function NavigationEditor({
               </div>
             </div>
 
-            <label className="mt-2 flex items-center gap-2 text-xs">
+            <label className="mt-2 flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
                 checked={item.external}
@@ -131,9 +129,9 @@ export function NavigationEditor({
               <span>Externe link</span>
             </label>
 
-            <div className="mt-2 border-t border-border/60 pt-2">
+            <div className="mt-3 border-t border-border pt-3">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-medium text-muted-foreground">
+                <span className="admin-label text-xs text-muted-foreground">
                   Subitems ({item.children.length})
                 </span>
                 <Button

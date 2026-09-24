@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Refresh the Neon `staging` branch so it mirrors production, then scrub PII.
+# Refresh the Neon `Staging` branch so it mirrors production, then scrub PII.
 #
 # Requirements:
 #   - neonctl installed and authenticated:  npm i -g neonctl && neonctl auth
@@ -11,10 +11,13 @@
 #
 # Usage:  ./scripts/reset-staging.sh
 #
+# The Neon branch is called `Staging` (capital S) in project Qarakter; Neon branch
+# names are case-sensitive. Override with STAGING_BRANCH=… if yours differs.
+#
 set -euo pipefail
 
 PARENT_BRANCH="${PARENT_BRANCH:-production}"
-STAGING_BRANCH="${STAGING_BRANCH:-staging}"
+STAGING_BRANCH="${STAGING_BRANCH:-Staging}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ -z "${NEON_PROJECT_ID:-}" ]]; then

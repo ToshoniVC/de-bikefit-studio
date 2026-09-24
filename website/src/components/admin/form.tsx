@@ -6,6 +6,7 @@ import { useFormStatus } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { FLASH_TONES } from '@/components/admin/tones';
 import { cn } from '@/lib/utils';
 import { IDLE_STATE, type ActionState } from '@/lib/cms/actions/state';
 
@@ -76,12 +77,7 @@ export function StatusMessage({ state }: { state: ActionState }) {
   return (
     <p
       role="status"
-      className={cn(
-        'rounded-lg border px-2.5 py-2 text-xs',
-        state.ok
-          ? 'border-emerald-600/30 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300'
-          : 'border-destructive/30 bg-destructive/10 text-destructive',
-      )}
+      className={cn('px-3 py-2 text-sm', state.ok ? FLASH_TONES.success : FLASH_TONES.error)}
     >
       {state.message}
       {state.payload?.temporaryPassword ? (
@@ -110,7 +106,7 @@ export function Field({
     <div className={cn('flex flex-col gap-1', className)}>
       <Label htmlFor={htmlFor}>{label}</Label>
       {children}
-      {hint ? <p className="text-[11px] text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -127,7 +123,7 @@ export function CheckboxField({
   hint?: string;
 }) {
   return (
-    <label className="flex items-start gap-2 text-xs">
+    <label className="flex items-start gap-2 text-sm">
       <input
         type="checkbox"
         name={name}
@@ -136,7 +132,7 @@ export function CheckboxField({
       />
       <span>
         <span className="font-medium">{label}</span>
-        {hint ? <span className="block text-[11px] text-muted-foreground">{hint}</span> : null}
+        {hint ? <span className="block text-xs text-muted-foreground">{hint}</span> : null}
       </span>
     </label>
   );
@@ -154,12 +150,12 @@ export function SectionCard({
   actions?: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl bg-card p-4 ring-1 ring-foreground/10">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="font-heading text-base font-semibold">{title}</h2>
+    <section className="border border-border bg-card p-5 sm:p-6">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-xl leading-tight">{title}</h2>
           {description ? (
-            <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+            <p className="mt-1 max-w-[70ch] text-sm text-muted-foreground">{description}</p>
           ) : null}
         </div>
         {actions}

@@ -13,6 +13,7 @@ import {
   StatusMessage,
   SubmitButton,
 } from '@/components/admin/form';
+import { badgeTone } from '@/components/admin/tones';
 import {
   createRedirectAction,
   deleteRedirectAction,
@@ -79,13 +80,16 @@ export function RedirectsManager({
         ) : (
           <ul className="flex flex-col gap-2">
             {redirects.map((redirect) => (
-              <li key={redirect.id} className="rounded-lg border border-border p-2.5">
+              <li key={redirect.id} className="border border-border bg-background p-3">
                 <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
-                  <code className="rounded bg-muted px-1 text-xs">{redirect.fromPath}</code>
+                  <code className="bg-muted px-1 text-xs">{redirect.fromPath}</code>
                   <span aria-hidden>→</span>
-                  <code className="rounded bg-muted px-1 text-xs">{redirect.toPath}</code>
+                  <code className="bg-muted px-1 text-xs">{redirect.toPath}</code>
                   <Badge variant="outline">{redirect.statusCode}</Badge>
-                  <Badge variant={redirect.isEnabled ? 'success' : 'secondary'}>
+                  <Badge
+                    variant={redirect.isEnabled ? 'success' : 'secondary'}
+                    className={badgeTone(redirect.isEnabled ? 'success' : 'secondary')}
+                  >
                     {redirect.isEnabled ? 'Actief' : 'Uit'}
                   </Badge>
                 </div>
@@ -100,7 +104,11 @@ export function RedirectsManager({
                           <option value="301">301</option>
                           <option value="302">302</option>
                         </Select>
-                        <Input name="notes" defaultValue={redirect.notes ?? ''} placeholder="Notitie" />
+                        <Input
+                          name="notes"
+                          defaultValue={redirect.notes ?? ''}
+                          placeholder="Notitie"
+                        />
                       </div>
                       <CheckboxField
                         name="isEnabled"
@@ -127,7 +135,10 @@ export function RedirectsManager({
                         </SubmitButton>
                       </ActionForm>
 
-                      <ActionForm action={deleteRedirectAction} hidden={{ redirectId: redirect.id }}>
+                      <ActionForm
+                        action={deleteRedirectAction}
+                        hidden={{ redirectId: redirect.id }}
+                      >
                         <SubmitButton
                           size="xs"
                           variant="destructive"
@@ -139,7 +150,7 @@ export function RedirectsManager({
                     </div>
                   </div>
                 ) : (
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Alleen beheerders kunnen redirects wijzigen.
                   </p>
                 )}

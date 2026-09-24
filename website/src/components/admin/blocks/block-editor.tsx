@@ -12,7 +12,7 @@ import {
   updateBlockAction,
 } from '@/lib/cms/actions/blocks';
 import { IDLE_STATE } from '@/lib/cms/actions/state';
-import { FieldInput } from './field-inputs';
+import { BlockServicesContext, FieldInput, type BlockServiceOption } from './field-inputs';
 import { defaultValueFor, type BlockSpec } from './field-spec';
 
 export type EditorBlock = { id: string; type: string; data: unknown };
@@ -27,63 +27,71 @@ export function BlockEditor({
   blocks,
   specs,
   media,
+  services = [],
   canEdit,
 }: {
   pageId: string;
   blocks: EditorBlock[];
   specs: Record<string, BlockSpec>;
   media: MediaOption[];
+  /** Booking services, for the `serviceIds` picker of the `booking` block. */
+  services?: BlockServiceOption[];
   canEdit: boolean;
 }) {
   const types = Object.values(specs);
 
   return (
-    <div className="flex flex-col gap-3">
-      {canEdit ? (
-        <ActionForm
-          action={addBlockAction}
-          hidden={{ pageId }}
-          className="rounded-xl bg-card p-3 ring-1 ring-foreground/10"
-        >
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="min-w-56 flex-1">
-              <label htmlFor="add-block-type" className="text-xs font-medium text-muted-foreground">
-                Blok toevoegen
-              </label>
-              <Select id="add-block-type" name="type" defaultValue={types[0]?.type}>
-                {types.map((spec) => (
-                  <option key={spec.type} value={spec.type}>
-                    {spec.label} — {spec.description}
-                  </option>
-                ))}
-              </Select>
+    <BlockServicesContext value={services}>
+      <div className="flex flex-col gap-3">
+        {canEdit ? (
+          <ActionForm
+            action={addBlockAction}
+            hidden={{ pageId }}
+            className="border border-border bg-card p-4"
+          >
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex min-w-56 flex-1 flex-col gap-1">
+                <label
+                  htmlFor="add-block-type"
+                  className="admin-label text-xs text-muted-foreground"
+                >
+                  Blok toevoegen
+                </label>
+                <Select id="add-block-type" name="type" defaultValue={types[0]?.type}>
+                  {types.map((spec) => (
+                    <option key={spec.type} value={spec.type}>
+                      {spec.label} — {spec.description}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <SubmitButton>Toevoegen</SubmitButton>
             </div>
-            <SubmitButton>Toevoegen</SubmitButton>
-          </div>
-        </ActionForm>
-      ) : null}
+          </ActionForm>
+        ) : null}
 
-      {blocks.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          Deze pagina heeft nog geen blokken.
-        </p>
-      ) : null}
+        {blocks.length === 0 ? (
+          <p className="border border-dashed border-ds-bone-400 bg-muted p-8 text-center text-sm text-muted-foreground">
+            Deze pagina heeft nog geen blokken.
+          </p>
+        ) : null}
 
-      {blocks.map((block, index) => (
-        <BlockCard
-          key={block.id}
-          pageId={pageId}
-          block={block}
-          spec={specs[block.type]}
-          media={media}
-          canEdit={canEdit}
-          isFirst={index === 0}
-          isLast={index === blocks.length - 1}
-          position={index + 1}
-          total={blocks.length}
-        />
-      ))}
-    </div>
+        {blocks.map((block, index) => (
+          <BlockCard
+            key={block.id}
+            pageId={pageId}
+            block={block}
+            spec={specs[block.type]}
+            media={media}
+            canEdit={canEdit}
+            isFirst={index === 0}
+            isLast={index === blocks.length - 1}
+            position={index + 1}
+            total={blocks.length}
+          />
+        ))}
+      </div>
+    </BlockServicesContext>
   );
 }
 
@@ -116,16 +124,14 @@ function BlockCard({
   const [state, formAction] = useActionState(updateBlockAction, IDLE_STATE);
 
   return (
-    <section className="rounded-xl bg-card ring-1 ring-foreground/10">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 p-3">
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">
+    <section className="border border-border bg-card">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted px-4 py-3">
+        <div className="flex items-center gap-3">
+          <span className="font-ds-display text-base leading-none font-semibold text-muted-foreground tabular-nums">
             {position}/{total}
           </span>
-          <h3 className="font-heading text-sm font-semibold">{spec?.label ?? block.type}</h3>
-          <code className="rounded bg-muted px-1 text-[10px] text-muted-foreground">
-            {block.type}
-          </code>
+          <h3 className="text-base leading-tight">{spec?.label ?? block.type}</h3>
+          <code className="bg-background px-1 text-[10px] text-muted-foreground">{block.type}</code>
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -135,7 +141,12 @@ function BlockCard({
                 action={moveBlockAction}
                 hidden={{ pageId, blockId: block.id, direction: 'up' }}
               >
-                <SubmitButton variant="ghost" size="icon-xs" aria-label="Blok omhoog" disabled={isFirst}>
+                <SubmitButton
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Blok omhoog"
+                  disabled={isFirst}
+                >
                   ↑
                 </SubmitButton>
               </ActionForm>
@@ -143,7 +154,12 @@ function BlockCard({
                 action={moveBlockAction}
                 hidden={{ pageId, blockId: block.id, direction: 'down' }}
               >
-                <SubmitButton variant="ghost" size="icon-xs" aria-label="Blok omlaag" disabled={isLast}>
+                <SubmitButton
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label="Blok omlaag"
+                  disabled={isLast}
+                >
                   ↓
                 </SubmitButton>
               </ActionForm>
@@ -168,12 +184,12 @@ function BlockCard({
         in sync.
       */}
       <details className="group/block">
-        <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-muted-foreground select-none hover:text-foreground">
+        <summary className="admin-label cursor-pointer list-none px-4 py-2.5 text-xs text-primary select-none hover:text-ds-burgundy-800">
           <span className="group-open/block:hidden">▸ Inhoud bewerken</span>
           <span className="hidden group-open/block:inline">▾ Inklappen</span>
         </summary>
 
-        <form action={formAction} className="flex flex-col gap-3 p-3 pt-0">
+        <form action={formAction} className="flex flex-col gap-3 p-4 pt-1">
           <input type="hidden" name="pageId" value={pageId} />
           <input type="hidden" name="blockId" value={block.id} />
           <input type="hidden" name="data" value={JSON.stringify(data)} />

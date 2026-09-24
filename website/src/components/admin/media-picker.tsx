@@ -60,7 +60,7 @@ export function MediaPicker({
             className="size-12 rounded-md object-cover ring-1 ring-foreground/10"
           />
         ) : (
-          <div className="flex size-12 items-center justify-center rounded-md bg-muted text-[10px] text-muted-foreground">
+          <div className="admin-label flex size-12 items-center justify-center border border-dashed border-ds-bone-400 bg-muted text-[10px] text-muted-foreground">
             leeg
           </div>
         )}
@@ -81,7 +81,7 @@ export function MediaPicker({
       </div>
 
       {open ? (
-        <div className="max-h-56 overflow-y-auto rounded-lg border border-border p-2">
+        <div className="max-h-56 overflow-y-auto border border-border bg-background p-2">
           {media.length === 0 ? (
             <p className="p-2 text-xs text-muted-foreground">
               Nog geen media. Upload eerst een bestand in de mediabibliotheek.

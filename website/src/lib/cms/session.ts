@@ -2,13 +2,16 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { eq, lt } from 'drizzle-orm';
 import type { CmsDatabase } from '@/db/cms';
 import { cmsSessions, cmsUsers, type CmsUser, type CmsUserPublic } from '@/db/cms-schema';
+import { isProduction } from '@/lib/env';
+import { sessionSecret } from '@/lib/secrets';
 
 /**
  * Opaque server-side sessions for the CMS.
  *
  * - 32 random bytes, base64url-encoded, are handed to the browser in the
  *   `cms_session` cookie and never stored anywhere else.
- * - The database only ever holds `HMAC-SHA256(token, CMS_SESSION_SECRET)`, so a
+ * - The database only ever holds `HMAC-SHA256(token, CMS_SESSION_SECRET)`
+ *   (`sessionSecret()` in `src/lib/secrets.ts`), so a
  *   leaked `cms_sessions` dump cannot be replayed, and rotating the secret
  *   invalidates every live session at once.
  * - 14-day lifetime with sliding renewal: once a session is past its halfway
@@ -25,16 +28,6 @@ export const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 export const SESSION_RENEW_AFTER_MS = SESSION_TTL_MS / 2;
 
 const TOKEN_BYTES = 32;
-
-function sessionSecret(): string {
-  const secret = process.env.CMS_SESSION_SECRET;
-  if (secret && secret.length > 0) return secret;
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('CMS_SESSION_SECRET must be set in production.');
-  }
-  // Local development only: keeps PGlite sessions stable across restarts.
-  return 'bikefit-local-development-session-pepper';
-}
 
 export function generateSessionToken(): string {
   return randomBytes(TOKEN_BYTES).toString('base64url');
@@ -190,7 +183,7 @@ async function cookieStore() {
 function cookieOptions(expiresAt: Date) {
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction(),
     sameSite: 'lax' as const,
     path: '/',
     expires: expiresAt,

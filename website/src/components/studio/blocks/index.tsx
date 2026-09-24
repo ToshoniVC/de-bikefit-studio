@@ -2,6 +2,7 @@ import type { BlockInstance } from '@/lib/cms/blocks';
 import { sectionAnchors, visibleBlocks } from '@/lib/studio/blocks';
 import type { StudioLocale } from '@/lib/studio/locale';
 import { AudienceBlock } from './audience';
+import { BookingBlock } from './booking';
 import { ContactBlock } from './contact';
 import { CtaBlock } from './cta';
 import { FaqBlock } from './faq';
@@ -92,6 +93,8 @@ function StudioBlock({
       return <ContactBlock data={block.data} {...common} />;
     case 'testimonial':
       return <TestimonialBlock data={block.data} {...common} />;
+    case 'booking':
+      return <BookingBlock data={block.data} {...common} />;
     default: {
       // Exhaustiveness guard: a new registry type lands here as a type error.
       const exhaustive: never = block;

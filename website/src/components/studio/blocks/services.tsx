@@ -18,7 +18,8 @@ import type { BlockProps } from './types';
 const MIN_TRACK: Record<number, string> = { 2: '420px', 3: '320px', 4: '280px' };
 
 export function ServicesBlock({ data, anchor, headingLevel, locale }: BlockProps<'services'>) {
-  const asFeatureGrid = data.cards.length > 0 && data.cards.every((card) => card.label.trim() !== '');
+  const asFeatureGrid =
+    data.cards.length > 0 && data.cards.every((card) => card.label.trim() !== '');
   const style = { '--studio-card-min': MIN_TRACK[data.columns] ?? '280px' } as React.CSSProperties;
 
   return (

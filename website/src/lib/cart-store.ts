@@ -57,8 +57,7 @@ export const useCart = create<CartState>()(
 );
 
 /** Derived selectors — call with the hook, e.g. `useCart(selectTotalItems)`. */
-export const selectTotalItems = (s: CartState) =>
-  s.items.reduce((sum, i) => sum + i.quantity, 0);
+export const selectTotalItems = (s: CartState) => s.items.reduce((sum, i) => sum + i.quantity, 0);
 
 export const selectTotalPrice = (s: CartState) =>
   s.items.reduce((sum, i) => sum + Number(i.price) * i.quantity, 0);

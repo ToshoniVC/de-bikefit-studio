@@ -1,9 +1,4 @@
-import {
-  blockRegistry,
-  imageRefSchema,
-  linkSchema,
-  type BlockType,
-} from '@/lib/cms/blocks';
+import { blockRegistry, imageRefSchema, linkSchema, type BlockType } from '@/lib/cms/blocks';
 
 /**
  * Turns the zod schemas in the block registry into a small, JSON-serialisable
@@ -101,6 +96,11 @@ const LABELS: Record<string, string> = {
   quoteAttribution: 'Citaat — wie',
   rotating: 'Roterend tonen',
   secondaryCta: 'Secundaire knop',
+  // `booking` block
+  serviceIds: 'Diensten (één dienst-ID per regel; leeg = alle actieve diensten)',
+  showProviderChoice: 'Keuze van aanbieder tonen',
+  successTitle: 'Titel na boeken',
+  successText: 'Tekst na boeken (leeg = tekst uit Instellingen → Afspraken)',
   steps: 'Stappen',
   subtitle: 'Ondertitel',
   title: 'Titel',
@@ -119,6 +119,7 @@ const MULTILINE = new Set([
   'paragraphs',
   'quote',
   'subtitle',
+  'successText',
   'text',
 ]);
 

@@ -14,11 +14,7 @@ export function AddToCartButton({ item, inStock, className }: Props) {
   const addItem = useCart((s) => s.addItem);
 
   return (
-    <Button
-      className={className}
-      disabled={!inStock}
-      onClick={() => addItem(item)}
-    >
+    <Button className={className} disabled={!inStock} onClick={() => addItem(item)}>
       <ShoppingBag className="size-4" />
       {inStock ? 'Add to cart' : 'Out of stock'}
     </Button>

@@ -171,10 +171,7 @@ export function breadcrumbJsonLd(canonical: string, trail: BreadcrumbEntry[]): J
  * FAQPage from the `faq` blocks that opted in via `emitStructuredData`.
  * Questions and answers are byte-identical to the rendered ones.
  */
-export function faqJsonLd(
-  blocks: readonly BlockInstance[],
-  canonical: string,
-): JsonLdNode | null {
+export function faqJsonLd(blocks: readonly BlockInstance[], canonical: string): JsonLdNode | null {
   const items = visibleBlocks(blocks)
     .filter((block) => block.type === 'faq' && block.data.emitStructuredData)
     .flatMap((block) => (block.type === 'faq' ? block.data.items : []));

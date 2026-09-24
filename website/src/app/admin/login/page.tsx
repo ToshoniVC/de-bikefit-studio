@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
 import { LoginForm } from '@/components/admin/login-form';
+import { AdminAuthFrame } from '@/components/admin/shell';
 import { getCurrentCmsUser } from '@/lib/cms/auth';
 
 export const metadata: Metadata = {
@@ -29,14 +30,8 @@ export default async function AdminLoginPage({
       : '/admin';
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-12">
-      <div className="w-full max-w-sm rounded-xl bg-card p-5 ring-1 ring-foreground/10">
-        <h1 className="font-heading text-xl font-semibold tracking-tight">Beheer</h1>
-        <p className="mt-1 mb-4 text-sm text-muted-foreground">
-          Meld je aan om de website te beheren.
-        </p>
-        <LoginForm next={safeNext} />
-      </div>
-    </div>
+    <AdminAuthFrame title="Beheer" description="Meld je aan om de website te beheren.">
+      <LoginForm next={safeNext} />
+    </AdminAuthFrame>
   );
 }

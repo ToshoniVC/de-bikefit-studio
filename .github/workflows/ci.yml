@@ -1,0 +1,43 @@
+name: CI
+
+# The six checks from CLAUDE.md §2. A red run is never merged.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: website
+
+jobs:
+  checks:
+    name: typecheck, lint, format, test, selftest, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # No env block on purpose: the build must succeed without any env vars.
+    # cms:selftest uses its own throwaway PGlite (.pglite-selftest/) and the
+    # build never opens a database, so no DATABASE_URL or PGlite dir is needed.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run format:check
+      - run: npm test
+      - run: npm run cms:selftest
+      - run: npm run build

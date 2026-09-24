@@ -29,6 +29,13 @@ import type { NextRequest } from 'next/server';
 
 const isProtectedRoute = createRouteMatcher(['/account(.*)', '/checkout(.*)']);
 
+/**
+ * Same test as `features.clerk` in `src/lib/env.ts`, but read literally on
+ * purpose: middleware runs on the edge runtime, where Next wires up only the
+ * variables it finds as literal `process.env.X` reads at build time. The
+ * whole-object read in `env.ts` would see nothing there. This is the one
+ * documented exception to "env only through `src/lib/env.ts`".
+ */
 const hasClerk = Boolean(
   process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY,
 );

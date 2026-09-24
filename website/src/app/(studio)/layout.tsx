@@ -48,7 +48,8 @@ export default async function StudioLayout({ children }: { children: React.React
       </main>
 
       <StudioSiteFooter chrome={chrome} />
-      <StudioAnalytics settings={chrome.settings} />
+      {/* Consent banner + GA4 tag; nothing before consent, nothing at all unless GA4 is configured. */}
+      <StudioAnalytics settings={chrome.settings} locale={locale} />
     </div>
   );
 }

@@ -1,0 +1,17 @@
+# Build output, dependencies and local databases
+.next
+node_modules
+coverage
+.pglite*
+test-results
+
+# Generated
+drizzle/meta
+next-env.d.ts
+package-lock.json
+
+# Static assets
+public
+
+# Markdown is edited by hand; formatting it would churn every doc
+*.md

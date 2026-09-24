@@ -30,10 +30,7 @@ export async function POST(request: Request) {
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object;
     if (db) {
-      await db
-        .update(orders)
-        .set({ status: 'paid' })
-        .where(eq(orders.stripeSessionId, session.id));
+      await db.update(orders).set({ status: 'paid' }).where(eq(orders.stripeSessionId, session.id));
     }
   }
 

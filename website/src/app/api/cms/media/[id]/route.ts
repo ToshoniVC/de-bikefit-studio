@@ -19,10 +19,7 @@ import { getMediaBytes } from '@/lib/cms/content';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   // Next 16: route params are async.
   const { id } = await params;
 
@@ -37,7 +34,10 @@ export async function GET(
   });
 
   if (media.mimeType === 'image/svg+xml') {
-    headers.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+    headers.set(
+      'Content-Security-Policy',
+      "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    );
   }
 
   return new Response(new Uint8Array(media.data), { headers });

@@ -2,11 +2,8 @@
 
 import { Input } from '@/components/ui/input';
 import { ActionForm, Field, SubmitButton } from '@/components/admin/form';
-import {
-  deletePageAction,
-  publishPageAction,
-  unpublishPageAction,
-} from '@/lib/cms/actions/pages';
+import { FLASH_TONES } from '@/components/admin/tones';
+import { deletePageAction, publishPageAction, unpublishPageAction } from '@/lib/cms/actions/pages';
 
 /**
  * Publish / unpublish / delete.
@@ -26,7 +23,7 @@ export function PagePublishActions({
 }) {
   if (!canPublish) {
     return (
-      <p className="text-xs text-muted-foreground">
+      <p className={`px-3 py-2 text-sm ${FLASH_TONES.info}`}>
         Publiceren kan alleen een beheerder. Sla je wijzigingen op en vraag een beheerder om de
         pagina te publiceren.
       </p>

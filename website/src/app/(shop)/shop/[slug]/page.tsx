@@ -22,11 +22,7 @@ export async function generateMetadata({
   return { title: product.name, description: product.description };
 }
 
-export default async function ProductPage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
+export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const product = await getProductBySlug(slug);
   if (!product) notFound();
@@ -72,9 +68,7 @@ export default async function ProductPage({
 
           <p className="text-sm">
             {inStock ? (
-              <span className="text-foreground">
-                In stock — {product.stockCount} available
-              </span>
+              <span className="text-foreground">In stock — {product.stockCount} available</span>
             ) : (
               <span className="text-muted-foreground">Currently sold out</span>
             )}

@@ -5,7 +5,13 @@ import { useActionState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { CheckboxField, Field, SectionCard, StatusMessage, SubmitButton } from '@/components/admin/form';
+import {
+  CheckboxField,
+  Field,
+  SectionCard,
+  StatusMessage,
+  SubmitButton,
+} from '@/components/admin/form';
 import { MediaPicker, type MediaOption } from '@/components/admin/media-picker';
 import { PAGE_KINDS } from '@/components/admin/page-create-form';
 import { updatePageAction } from '@/lib/cms/actions/pages';

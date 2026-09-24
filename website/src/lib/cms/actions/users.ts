@@ -23,7 +23,7 @@ import { actionError, actionOk, field, type ActionState } from './state';
 
 function roleFrom(form: FormData): CmsRole | null {
   const role = field(form, 'role');
-  return role === 'admin' || role === 'editor' ? role : null;
+  return role === 'admin' || role === 'editor' || role === 'provider' ? role : null;
 }
 
 export async function createUserAction(
@@ -51,7 +51,9 @@ export async function createUserAction(
     revalidatePath('/admin/users');
     return actionOk(
       `Gebruiker ${result.data.user.email} aangemaakt. Het wachtwoord moet bij de eerste aanmelding gewijzigd worden.`,
-      result.data.temporaryPassword ? { temporaryPassword: result.data.temporaryPassword } : undefined,
+      result.data.temporaryPassword
+        ? { temporaryPassword: result.data.temporaryPassword }
+        : undefined,
     );
   });
 }

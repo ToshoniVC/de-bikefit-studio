@@ -24,7 +24,7 @@ export default async function AdminUsersPage() {
     <>
       <PageHeading
         title="Gebruikers"
-        description="Beheerders kunnen alles; redacteurs kunnen inhoud bewerken maar niet publiceren."
+        description="Beheerders kunnen alles; redacteurs kunnen inhoud bewerken maar niet publiceren; aanbieders beheren hun eigen agenda en afspraken."
       />
       <UsersManager users={users} currentUserId={user.id} />
     </>

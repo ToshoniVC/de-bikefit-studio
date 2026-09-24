@@ -1,0 +1,15 @@
+# Normalise text to LF in the repository and the working tree (CLAUDE.md §7).
+* text=auto eol=lf
+
+# Shell scripts break under WSL/Linux with CRLF; PowerShell scripts stay CRLF.
+*.sh text eol=lf
+*.ps1 text eol=crlf
+
+# Binary assets: never diff or convert.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.avif binary
+*.ico binary
+*.woff2 binary

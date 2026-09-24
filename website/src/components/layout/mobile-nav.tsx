@@ -4,13 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { mainNav } from '@/lib/nav';
 
 export function MobileNav() {
@@ -19,9 +13,7 @@ export function MobileNav() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
-        render={
-          <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu" />
-        }
+        render={<Button variant="ghost" size="icon" className="md:hidden" aria-label="Open menu" />}
       >
         <Menu className="size-5" />
       </SheetTrigger>

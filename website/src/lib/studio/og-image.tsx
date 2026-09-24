@@ -26,75 +26,73 @@ const MAUVE = '#8c6a5a';
 
 export function renderDefaultOgImage(): ImageResponse {
   return new ImageResponse(
-    (
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        position: 'relative',
+        background: BURGUNDY,
+        padding: '80px',
+        fontFamily: 'sans-serif',
+      }}
+    >
+      {/* The ring motif, cropped off the right edge. */}
       <div
         style={{
-          width: '100%',
-          height: '100%',
+          position: 'absolute',
+          top: -120,
+          right: -220,
+          width: 700,
+          height: 700,
+          borderRadius: 350,
+          border: `56px solid ${RING}`,
+        }}
+      />
+
+      <div
+        style={{
           display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          position: 'relative',
-          background: BURGUNDY,
-          padding: '80px',
-          fontFamily: 'sans-serif',
+          fontSize: 26,
+          letterSpacing: 10,
+          textTransform: 'uppercase',
+          color: MAUVE,
+          borderTop: `2px solid ${MAUVE}`,
+          paddingTop: 18,
+          marginBottom: 28,
         }}
       >
-        {/* The ring motif, cropped off the right edge. */}
-        <div
-          style={{
-            position: 'absolute',
-            top: -120,
-            right: -220,
-            width: 700,
-            height: 700,
-            borderRadius: 350,
-            border: `56px solid ${RING}`,
-          }}
-        />
-
-        <div
-          style={{
-            display: 'flex',
-            fontSize: 26,
-            letterSpacing: 10,
-            textTransform: 'uppercase',
-            color: MAUVE,
-            borderTop: `2px solid ${MAUVE}`,
-            paddingTop: 18,
-            marginBottom: 28,
-          }}
-        >
-          Professionele bikefit · Ninove
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            fontSize: 108,
-            fontWeight: 800,
-            lineHeight: 1,
-            letterSpacing: -2,
-            textTransform: 'uppercase',
-            color: CREAM,
-          }}
-        >
-          De Bikefit Studio
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            fontSize: 40,
-            fontStyle: 'italic',
-            color: ROSE,
-            marginTop: 28,
-          }}
-        >
-          Pijnvrij fietsen begint hier
-        </div>
+        Professionele bikefit · Ninove
       </div>
-    ),
+
+      <div
+        style={{
+          display: 'flex',
+          fontSize: 108,
+          fontWeight: 800,
+          lineHeight: 1,
+          letterSpacing: -2,
+          textTransform: 'uppercase',
+          color: CREAM,
+        }}
+      >
+        De Bikefit Studio
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          fontSize: 40,
+          fontStyle: 'italic',
+          color: ROSE,
+          marginTop: 28,
+        }}
+      >
+        Pijnvrij fietsen begint hier
+      </div>
+    </div>,
     OG_IMAGE_SIZE,
   );
 }

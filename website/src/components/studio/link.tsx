@@ -18,8 +18,16 @@ export type StudioLinkProps = {
   'aria-label'?: string;
 };
 
+/**
+ * `true` for a site-relative path (`/bikefit`). Browsers drop tabs and line
+ * breaks from URLs and read `\` as `/`, so `/\evil.example`, `\evil.example`
+ * and `/<tab>/evil.example` all leave the site like `//evil.example` does;
+ * those count as external.
+ */
 export function isInternalPath(href: string): boolean {
-  return href.startsWith('/') && !href.startsWith('//');
+  if (href.startsWith('\\')) return false;
+  const normalized = href.replace(/[\t\n\r]/g, '').replace(/\\/g, '/');
+  return normalized.startsWith('/') && !normalized.startsWith('//');
 }
 
 export function StudioLink({ href, external, children, ...rest }: StudioLinkProps) {

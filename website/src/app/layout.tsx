@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, Barlow_Condensed } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import './globals.css';
-import { siteUrl } from '@/lib/env';
+import { features, siteUrl } from '@/lib/env';
 
 /**
  * Root document shell.
@@ -40,7 +40,7 @@ const barlow = Barlow_Condensed({
 });
 
 // Auth UI is only mounted once Clerk is configured, so the app runs key-free.
-const hasClerk = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+const hasClerk = features.clerkUi;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),

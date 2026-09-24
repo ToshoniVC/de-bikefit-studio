@@ -9,8 +9,10 @@ import { SectionCard } from '@/components/admin/form';
 import { PageDeleteForm, PagePublishActions } from '@/components/admin/page-actions';
 import { PageSettingsForm } from '@/components/admin/page-settings-form';
 import { PageHeading } from '@/components/admin/shell';
+import { badgeTone } from '@/components/admin/tones';
 import type { MediaOption } from '@/components/admin/media-picker';
 import { DEFAULT_LOCALE } from '@/db/cms-schema';
+import { listServices } from '@/lib/booking/repo';
 import { requireCmsUser } from '@/lib/cms/auth';
 import { can } from '@/lib/cms/permissions';
 import { getPageForEdit, listMedia, publicPathFor } from '@/lib/cms/repo';
@@ -36,6 +38,15 @@ export default async function EditPagePage({ params }: { params: Promise<{ id: s
       }))
     : [];
 
+  // For the `booking` block's service picker.
+  const services = can(user.role, 'service.read')
+    ? (await listServices({ includeInactive: true, locale: page.locale })).map((service) => ({
+        id: service.id,
+        name: service.name,
+        isActive: service.isActive,
+      }))
+    : [];
+
   const publicPath = publicPathFor(page.locale, page.slug);
   const canEdit = can(user.role, 'page.update');
 
@@ -46,20 +57,26 @@ export default async function EditPagePage({ params }: { params: Promise<{ id: s
         description={`${page.locale} · ${publicPath}`}
         actions={
           <>
-            <Badge variant={page.status === 'published' ? 'success' : 'secondary'}>
+            <Badge
+              variant={page.status === 'published' ? 'success' : 'secondary'}
+              className={badgeTone(page.status === 'published' ? 'success' : 'secondary')}
+            >
               {page.status === 'published' ? 'Gepubliceerd' : 'Concept'}
             </Badge>
             {page.status === 'published' ? (
               <Link
                 href={publicPath}
-                className="text-xs underline underline-offset-4"
+                className="text-sm underline underline-offset-4 hover:text-primary"
                 target="_blank"
                 rel="noreferrer"
               >
                 Bekijk pagina
               </Link>
             ) : null}
-            <Link href="/admin/pages" className="text-xs underline underline-offset-4">
+            <Link
+              href="/admin/pages"
+              className="text-sm underline underline-offset-4 hover:text-primary"
+            >
               Alle pagina’s
             </Link>
           </>
@@ -104,7 +121,7 @@ export default async function EditPagePage({ params }: { params: Promise<{ id: s
         />
 
         <section>
-          <h2 className="mb-2 font-heading text-lg font-semibold">Blokken</h2>
+          <h2 className="mb-3 text-2xl leading-tight">Blokken</h2>
           <BlockEditor
             pageId={page.id}
             blocks={blocks.map((block) => ({
@@ -114,6 +131,7 @@ export default async function EditPagePage({ params }: { params: Promise<{ id: s
             }))}
             specs={allBlockSpecs()}
             media={media}
+            services={services}
             canEdit={can(user.role, 'block.update')}
           />
         </section>

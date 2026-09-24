@@ -59,7 +59,10 @@ export async function buildPageMetadata(studio: StudioPage): Promise<Metadata> {
 
   const index = shouldIndex(settings, seo.noIndex);
 
-  const media = await resolveMedia(seo.ogImageMediaId ?? settings.seo.defaultOgImageMediaId, locale);
+  const media = await resolveMedia(
+    seo.ogImageMediaId ?? settings.seo.defaultOgImageMediaId,
+    locale,
+  );
 
   // A CMS image wins; otherwise the generated brand card at `GET /og`.
   const ogImage = media

@@ -19,11 +19,7 @@ export const metadata: Metadata = {
  * `/admin/login`, `/admin/password` and `/admin/logout` sit outside this route
  * group so they can render without (or before) a complete session.
  */
-export default async function AdminDashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function AdminDashboardLayout({ children }: { children: React.ReactNode }) {
   let user;
   try {
     user = await requireCmsUser();

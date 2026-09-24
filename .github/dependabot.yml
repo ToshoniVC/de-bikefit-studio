@@ -1,0 +1,28 @@
+version: 2
+updates:
+  # The Next.js app. Minor and patch bumps arrive as one grouped PR a week;
+  # majors stay separate so each can be reviewed on its own.
+  - package-ecosystem: npm
+    directory: /website
+    schedule:
+      interval: weekly
+    # Branch flow is feat → staging → main (CLAUDE.md §7): never straight to main.
+    target-branch: staging
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    target-branch: staging
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]

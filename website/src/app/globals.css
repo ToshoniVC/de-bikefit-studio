@@ -1,6 +1,6 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 
 @plugin "@tailwindcss/typography";
 
@@ -1348,5 +1348,699 @@
       flex-direction: column;
       gap: var(--ds-space-2xs);
     }
+  }
+}
+
+/* ============================================================================
+   BOOKING WIDGET (`booking` block, /afspraak) — additive, studio-booking* only
+   ----------------------------------------------------------------------------
+   Mobile first: one column below 720px, two-column form rows from 720px, and
+   the calendar beside the slot list from 960px. Square, hairline, condensed
+   caps — the same language as the feature grid and the FAQ. The widget always
+   sits on a light raised panel, so it stays legible inside a dark section.
+   ========================================================================== */
+@layer components {
+  .studio-booking {
+    color: var(--ds-color-fg);
+    background: var(--ds-color-surface-raised);
+    border: 1px solid var(--ds-color-border);
+    max-width: 1080px;
+  }
+
+  /* ---- steps ------------------------------------------------------------- */
+  .studio-booking__steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .studio-booking__step + .studio-booking__step {
+    border-top: 1px solid var(--ds-color-border);
+  }
+  .studio-booking__step-head {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--ds-space-xs);
+    padding: var(--ds-space-md) var(--ds-space-sm);
+  }
+  .studio-booking__step-num {
+    flex: none;
+    font-family: var(--ds-font-display);
+    font-weight: 600;
+    font-size: var(--ds-text-heading-sm);
+    line-height: var(--ds-leading-heading);
+    color: var(--ds-color-fg-subtle);
+    min-width: 2ch;
+  }
+  .studio-booking__step-heading {
+    flex: 1;
+    min-width: 0;
+  }
+  .studio-booking__step-title {
+    font-family: var(--ds-font-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: var(--ds-text-heading-sm);
+    line-height: var(--ds-leading-heading);
+  }
+  .studio-booking__step-title:focus {
+    outline: none;
+  }
+  .studio-booking__step-title:focus-visible {
+    outline: 2px solid var(--ds-color-accent);
+    outline-offset: 4px;
+  }
+  .studio-booking__step[data-state='active'] .studio-booking__step-num {
+    color: var(--ds-color-accent);
+  }
+  .studio-booking__step[data-state='upcoming'] .studio-booking__step-title,
+  .studio-booking__step[data-state='upcoming'] .studio-booking__step-num {
+    color: var(--ds-color-fg-subtle);
+  }
+  .studio-booking__step-summary {
+    margin-top: var(--ds-space-3xs);
+    color: var(--ds-color-fg-muted);
+    font-size: var(--ds-text-small);
+  }
+  .studio-booking__edit {
+    flex: none;
+    min-height: 44px;
+    padding: 0 var(--ds-space-xs);
+    font-family: var(--ds-font-display);
+    font-size: var(--ds-text-micro);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ds-color-accent);
+    background: transparent;
+    border: 1px solid var(--ds-color-border-strong);
+    cursor: pointer;
+  }
+  .studio-booking__edit:hover {
+    border-color: var(--ds-color-accent);
+  }
+  /* Narrow on phones: at 360px the 7-column month still gets ~38px per day. */
+  .studio-booking__step-body {
+    padding: 0 var(--ds-space-sm) var(--ds-space-lg);
+  }
+
+  /* ---- option cards (service / provider) --------------------------------- */
+  .studio-booking__options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+    gap: var(--ds-space-xs);
+  }
+  .studio-booking__option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--ds-space-3xs);
+    width: 100%;
+    min-height: 44px;
+    padding: var(--ds-space-sm) var(--ds-space-md);
+    text-align: left;
+    color: var(--ds-color-fg);
+    background: var(--ds-color-bg);
+    border: 1px solid var(--ds-color-border-strong);
+    border-top: 2px solid var(--ds-color-border-strong);
+    cursor: pointer;
+    transition:
+      background var(--ds-transition-fast),
+      border-color var(--ds-transition-fast);
+  }
+  .studio-booking__option:hover {
+    background: var(--ds-color-surface);
+    border-top-color: var(--ds-color-accent);
+  }
+  .studio-booking__option[aria-pressed='true'] {
+    background: var(--ds-color-surface-inverse);
+    border-color: var(--ds-color-surface-inverse);
+    color: var(--ds-color-fg-inverse);
+  }
+  .studio-booking__option-title {
+    font-family: var(--ds-font-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    font-size: var(--ds-text-heading-xs);
+    line-height: var(--ds-leading-heading);
+  }
+  .studio-booking__option-meta {
+    font-family: var(--ds-font-display);
+    font-size: var(--ds-text-micro);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ds-color-fg-subtle);
+  }
+  .studio-booking__option-body {
+    font-size: var(--ds-text-small);
+    color: var(--ds-color-fg-muted);
+  }
+  .studio-booking__option[aria-pressed='true'] .studio-booking__option-meta {
+    color: var(--ds-color-fg-inverse-subtle);
+  }
+  .studio-booking__option[aria-pressed='true'] .studio-booking__option-body {
+    color: var(--ds-color-fg-inverse-muted);
+  }
+  .studio-booking__option[aria-pressed='true']:focus-visible {
+    outline-color: var(--ds-color-accent);
+    outline-offset: 3px;
+  }
+
+  /* ---- calendar + slots --------------------------------------------------- */
+  .studio-booking__when {
+    display: grid;
+    gap: var(--ds-space-lg);
+  }
+  .studio-booking__cal-wrap {
+    max-width: 420px;
+  }
+  .studio-booking__cal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ds-space-xs);
+    margin-bottom: var(--ds-space-xs);
+  }
+  .studio-booking__cal-title {
+    font-family: var(--ds-font-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: var(--ds-text-heading-xs);
+  }
+  .studio-booking__cal-nav {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    font-weight: 800;
+    color: var(--ds-color-accent);
+    background: transparent;
+    border: 1px solid var(--ds-color-border-strong);
+    cursor: pointer;
+  }
+  .studio-booking__cal-nav:hover:not(:disabled) {
+    border-color: var(--ds-color-accent);
+  }
+  .studio-booking__cal-nav:disabled {
+    color: var(--ds-color-border-strong);
+    cursor: not-allowed;
+  }
+  .studio-booking__cal {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  .studio-booking__cal th {
+    padding-bottom: var(--ds-space-2xs);
+    font-family: var(--ds-font-display);
+    font-weight: 400;
+    font-size: var(--ds-text-micro);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ds-color-fg-subtle);
+    text-align: center;
+  }
+  .studio-booking__cal td {
+    padding: 1px;
+    text-align: center;
+  }
+  .studio-booking__day {
+    position: relative;
+    width: 100%;
+    min-height: 44px;
+    aspect-ratio: 1;
+    font-family: var(--ds-font-display);
+    font-size: var(--ds-text-body);
+    font-weight: 500;
+    color: var(--ds-color-fg-subtle);
+    background: transparent;
+    border: 1px solid transparent;
+    cursor: default;
+  }
+  .studio-booking__day[data-today='true'] {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .studio-booking__day[data-available='true'] {
+    font-weight: 700;
+    color: var(--ds-color-fg);
+    background: var(--ds-color-surface-alt);
+    border-color: var(--ds-color-border-strong);
+    cursor: pointer;
+  }
+  .studio-booking__day[data-available='true']::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: 6px;
+    width: 4px;
+    height: 4px;
+    margin-left: -2px;
+    border-radius: 50%;
+    background: var(--ds-color-accent);
+  }
+  .studio-booking__day[data-available='true']:hover {
+    border-color: var(--ds-color-accent);
+  }
+  .studio-booking__day[aria-pressed='true'] {
+    color: var(--ds-color-interactive-fg);
+    background: var(--ds-color-interactive);
+    border-color: var(--ds-color-interactive);
+  }
+  .studio-booking__day[aria-pressed='true']::after {
+    background: var(--ds-color-interactive-fg);
+  }
+  .studio-booking__cal[aria-busy='true'] {
+    opacity: 0.6;
+  }
+  .studio-booking__legend {
+    display: flex;
+    align-items: center;
+    gap: var(--ds-space-2xs);
+    margin-top: var(--ds-space-xs);
+    font-size: var(--ds-text-micro);
+    color: var(--ds-color-fg-subtle);
+  }
+  .studio-booking__legend-mark {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    background: var(--ds-color-surface-alt);
+    border: 1px solid var(--ds-color-border-strong);
+  }
+  .studio-booking__day-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-sm);
+    min-width: 0;
+  }
+  .studio-booking__status {
+    color: var(--ds-color-fg-muted);
+    font-size: var(--ds-text-small);
+    min-height: 1.6em;
+  }
+  .studio-booking__slots {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 112px), 1fr));
+    gap: var(--ds-space-2xs);
+  }
+  .studio-booking__slot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 48px;
+    padding: var(--ds-space-2xs) var(--ds-space-xs);
+    color: var(--ds-color-accent);
+    background: var(--ds-color-bg);
+    border: 1px solid var(--ds-color-accent);
+    cursor: pointer;
+    transition:
+      background var(--ds-transition-fast),
+      color var(--ds-transition-fast);
+  }
+  .studio-booking__slot:hover,
+  .studio-booking__slot[aria-pressed='true'] {
+    color: var(--ds-color-interactive-fg);
+    background: var(--ds-color-interactive);
+  }
+  .studio-booking__slot-time {
+    font-family: var(--ds-font-display);
+    font-weight: 700;
+    font-size: var(--ds-text-heading-xs);
+    letter-spacing: 0.04em;
+  }
+  .studio-booking__slot-provider {
+    font-size: var(--ds-text-meta);
+    letter-spacing: 0.04em;
+  }
+
+  /* ---- details form ------------------------------------------------------- */
+  .studio-booking__form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-lg);
+    max-width: 760px;
+  }
+  .studio-booking__fieldset {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-sm);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+  }
+  .studio-booking__legend-title {
+    padding: 0;
+    margin-bottom: var(--ds-space-2xs);
+    font-family: var(--ds-font-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: var(--ds-text-body);
+  }
+  .studio-booking__row {
+    display: grid;
+    gap: var(--ds-space-sm);
+  }
+  .studio-booking__field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-3xs);
+    min-width: 0;
+  }
+  .studio-booking__label {
+    font-family: var(--ds-font-display);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: var(--ds-text-small);
+  }
+  .studio-booking__optional {
+    font-family: var(--ds-font-body);
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--ds-color-fg-subtle);
+  }
+  .studio-booking__input {
+    width: 100%;
+    min-height: 48px;
+    padding: var(--ds-space-xs) var(--ds-space-sm);
+    font: inherit;
+    /* 16px keeps iOS from zooming into the field on focus. */
+    font-size: var(--ds-text-body);
+    color: var(--ds-color-fg);
+    background: var(--ds-color-bg);
+    border: 1px solid var(--ds-color-border-strong);
+    border-radius: 0;
+    transition: border-color var(--ds-transition-fast);
+  }
+  .studio-booking__input:hover {
+    border-color: var(--ds-color-fg-subtle);
+  }
+  .studio-booking__input:focus-visible {
+    outline: 2px solid var(--ds-color-accent);
+    outline-offset: 0;
+    border-color: var(--ds-color-accent);
+  }
+  textarea.studio-booking__input {
+    min-height: 7.5em;
+    resize: vertical;
+  }
+  .studio-booking__select {
+    appearance: auto;
+  }
+  .studio-booking__field[data-invalid='true'] .studio-booking__input {
+    border-color: var(--ds-color-accent);
+    border-left-width: 4px;
+  }
+  .studio-booking__hint {
+    font-size: var(--ds-text-small);
+    color: var(--ds-color-fg-muted);
+  }
+  .studio-booking__hint--lead {
+    margin-top: calc(-1 * var(--ds-space-xs));
+  }
+  .studio-booking__hint a,
+  .studio-booking__reassure a,
+  .studio-booking__confirm a,
+  .studio-booking__fallback a {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .studio-booking__error {
+    font-size: var(--ds-text-small);
+    font-weight: 600;
+    color: var(--ds-color-accent);
+  }
+  .studio-booking__error::before {
+    content: '! ';
+  }
+  .studio-booking__alert {
+    padding: var(--ds-space-xs) var(--ds-space-sm);
+    font-weight: 600;
+    color: var(--ds-color-fg);
+    background: var(--ds-color-surface);
+    border-left: 4px solid var(--ds-color-accent);
+  }
+  .studio-booking__honeypot {
+    position: absolute;
+    left: -10000px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  .studio-booking__actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--ds-space-sm);
+  }
+  .studio-booking__actions .studio-btn:disabled {
+    opacity: 0.7;
+    cursor: progress;
+  }
+  .studio-booking__reassure {
+    max-width: 60ch;
+    font-size: var(--ds-text-small);
+    color: var(--ds-color-fg-muted);
+  }
+
+  /* ---- confirmation ------------------------------------------------------- */
+  .studio-booking__confirm {
+    padding: var(--ds-space-xl) var(--ds-space-md);
+    border-top: 2px solid var(--ds-color-accent);
+  }
+  .studio-booking__confirm-title {
+    font-family: var(--ds-font-display);
+    font-weight: 800;
+    text-transform: uppercase;
+    line-height: var(--ds-leading-display);
+    font-size: var(--ds-text-callout);
+    margin-bottom: var(--ds-space-sm);
+  }
+  .studio-booking__confirm-title:focus {
+    outline: none;
+  }
+  .studio-booking__confirm-text {
+    max-width: 60ch;
+    color: var(--ds-color-fg-muted);
+    margin-bottom: var(--ds-space-md);
+  }
+  .studio-booking__summary {
+    margin: 0 0 var(--ds-space-md);
+    border-top: 1px solid var(--ds-color-border);
+    max-width: var(--ds-container-narrow);
+  }
+  .studio-booking__summary > div {
+    display: grid;
+    gap: var(--ds-space-3xs);
+    padding: var(--ds-space-xs) 0;
+    border-bottom: 1px solid var(--ds-color-border);
+  }
+  .studio-booking__summary dt {
+    font-family: var(--ds-font-display);
+    font-size: var(--ds-text-micro);
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--ds-color-fg-subtle);
+  }
+  .studio-booking__summary dd {
+    margin: 0;
+    font-size: var(--ds-text-body);
+  }
+
+  /* ---- fallback + standalone pages (/afspraak/bevestigd, /annuleren) ----- */
+  .studio-booking__fallback {
+    max-width: 60ch;
+    padding: var(--ds-space-md);
+    background: var(--ds-color-surface-raised);
+    border: 1px solid var(--ds-color-border);
+    color: var(--ds-color-fg);
+  }
+  .studio-booking-page {
+    padding: var(--ds-space-4xl) var(--ds-gutter);
+  }
+  .studio-booking-page__inner {
+    max-width: var(--ds-container-narrow);
+    margin-inline: auto;
+  }
+  .studio-booking-page__title {
+    font-family: var(--ds-font-display);
+    font-weight: 800;
+    text-transform: uppercase;
+    line-height: var(--ds-leading-wordmark);
+    font-size: min(var(--ds-text-page-title), 10vw);
+    letter-spacing: -0.01em;
+    margin-bottom: var(--ds-space-md);
+  }
+  .studio-booking-page__lede {
+    font-size: var(--ds-text-lede);
+    color: var(--ds-color-fg-muted);
+    max-width: 60ch;
+    margin-bottom: var(--ds-space-lg);
+  }
+
+  /* ---- wider screens ------------------------------------------------------ */
+  @media (min-width: 720px) {
+    .studio-booking__step-head {
+      gap: var(--ds-space-sm);
+      padding: var(--ds-space-lg) var(--ds-space-xl);
+    }
+    .studio-booking__step-body {
+      padding: 0 var(--ds-space-xl) var(--ds-space-xl)
+        calc(var(--ds-space-xl) + 2ch + var(--ds-space-sm));
+    }
+    .studio-booking__cal td {
+      padding: 2px;
+    }
+    .studio-booking__row {
+      grid-template-columns: 1fr 1fr;
+    }
+    .studio-booking__confirm {
+      padding: var(--ds-space-2xl) var(--ds-space-xl);
+    }
+    .studio-booking__summary > div {
+      grid-template-columns: 10rem 1fr;
+      align-items: baseline;
+    }
+  }
+
+  @media (min-width: 960px) {
+    .studio-booking__when {
+      grid-template-columns: minmax(300px, 420px) 1fr;
+      align-items: start;
+    }
+  }
+}
+
+/* Worker E: footer legal */
+@layer components {
+  /* Second row of the bottom bar: legal identity, legal links, "Cookies". */
+  .studio-footer__legal {
+    margin-top: var(--ds-space-xs);
+    align-items: baseline;
+  }
+  .studio-footer__identity a {
+    text-transform: none;
+  }
+  .studio-footer__legal-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--ds-space-2xs) var(--ds-space-sm);
+  }
+  .studio-footer__cookies {
+    font: inherit;
+    letter-spacing: inherit;
+    text-transform: inherit;
+    color: inherit;
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+  }
+  .studio-footer__legal a:hover,
+  .studio-footer__cookies:hover {
+    color: var(--ds-color-fg-inverse);
+    text-decoration: underline;
+  }
+  /* The seed's "Juridisch" menu group is a fifth footer column on wide screens. */
+  @media (min-width: 901px) {
+    .studio-footer__grid:has(> :nth-child(5)) {
+      grid-template-columns: 2fr repeat(4, minmax(0, 1fr));
+    }
+  }
+}
+
+/* Worker F: admin on the studio design system */
+/* ----------------------------------------------------------------------------
+   Every admin screen (/admin/**) renders `class="studio-root admin-root"` on
+   its outermost element. `.studio-root` brings the studio's semantic tier
+   (the --ds-* tokens above); `.admin-root` points the shadcn variables that the
+   admin's primitives read (bg-primary, border-input, rounded-lg, ...) at the
+   same palette. `components/ui/*` stays untouched, so the webshop keeps its
+   own look.
+
+   Light only: these values are declared on `.admin-root` itself, so they win
+   over anything a `.dark` ancestor would pass down, and `color-scheme` keeps
+   the native date, time and select pickers light as well.
+   ========================================================================== */
+.admin-root {
+  color-scheme: light;
+  font-family: var(--font-ds-body);
+
+  --background: var(--color-ds-bone-50);
+  --foreground: var(--color-ds-ink-900);
+  --card: var(--color-ds-bone-75);
+  --card-foreground: var(--color-ds-ink-900);
+  --popover: var(--color-ds-bone-75);
+  --popover-foreground: var(--color-ds-ink-900);
+  --primary: var(--color-ds-burgundy-700);
+  --primary-foreground: var(--color-ds-cream-300);
+  --secondary: var(--color-ds-bone-200);
+  --secondary-foreground: var(--color-ds-ink-900);
+  --muted: var(--color-ds-bone-100);
+  --muted-foreground: var(--color-ds-ink-700);
+  --accent: var(--color-ds-bone-200);
+  --accent-foreground: var(--color-ds-ink-900);
+  /* Brick red: about 7:1 on bone, and clearly not the burgundy accent. */
+  --destructive: #a4262c;
+  --border: var(--color-ds-bone-250);
+  /* Form controls take the stronger edge of the public booking form
+     (.studio-booking__input); bone-250 all but vanishes on a card. */
+  --input: var(--color-ds-bone-400);
+  --ring: var(--color-ds-burgundy-500);
+  /* Square, like every studio control (--ds-radius-control: 0 in
+     prototype/design-system/tokens.css). */
+  --radius: 0px;
+}
+
+/* On the burgundy sidebar the accent turns cream, as on the public footer. */
+.admin-root .admin-sidebar {
+  --ring: var(--color-ds-cream-300);
+  --ds-color-accent: var(--color-ds-cream-300);
+}
+
+@layer components {
+  /* Headings in the studio's condensed caps: the page title like
+     .studio-pagehead__title, section and card titles like .studio-card__title.
+     Sizes come from the markup. */
+  .admin-root :is(h1, h2, h3) {
+    font-family: var(--ds-font-display);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    line-height: var(--ds-leading-heading);
+  }
+  .admin-root h1 {
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    line-height: var(--ds-leading-display);
+  }
+
+  /* Buttons, badges, labels and table heads (.studio-btn,
+     .studio-booking__label). The primitives set `font-medium`; re-pointing its
+     variable gives them the studio's 600 without touching components/ui. */
+  .admin-root
+    :is([data-slot='button'], [data-slot='badge'], [data-slot='label'], .admin-label, th) {
+    --font-weight-medium: 600;
+    font-family: var(--ds-font-display);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  /* Outline buttons get the strong edge of .studio-btn--ghost. */
+  .admin-root [data-slot='button'] {
+    --border: var(--color-ds-bone-400);
   }
 }

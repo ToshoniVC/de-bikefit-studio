@@ -67,7 +67,9 @@ export default async function HomePage() {
       {/* Featured */}
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
         <div className="mb-8 flex items-end justify-between">
-          <h2 className="font-display text-3xl font-extrabold uppercase tracking-tight">Featured</h2>
+          <h2 className="font-display text-3xl font-extrabold uppercase tracking-tight">
+            Featured
+          </h2>
           <Link
             href="/shop"
             className="text-sm font-medium text-muted-foreground hover:text-foreground"
@@ -103,15 +105,7 @@ export default async function HomePage() {
   );
 }
 
-function ValueProp({
-  icon,
-  title,
-  body,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  body: string;
-}) {
+function ValueProp({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
   return (
     <div className="flex gap-4">
       <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground">

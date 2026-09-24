@@ -7,13 +7,13 @@ import Link from 'next/link';
  */
 export function ForbiddenNotice({ what = 'dit onderdeel' }: { what?: string }) {
   return (
-    <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-6">
-      <h1 className="font-heading text-lg font-semibold">Geen toegang</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
+    <div className="border border-l-4 border-border border-l-destructive bg-card p-6">
+      <h1 className="text-3xl leading-none">Geen toegang</h1>
+      <p className="mt-3 text-base text-muted-foreground">
         Je rol geeft geen toegang tot {what}. Vraag een beheerder als je dit nodig hebt.
       </p>
-      <p className="mt-3 text-xs">
-        <Link href="/admin" className="underline underline-offset-4">
+      <p className="mt-4 text-sm">
+        <Link href="/admin" className="underline underline-offset-4 hover:text-primary">
           Terug naar het overzicht
         </Link>
       </p>

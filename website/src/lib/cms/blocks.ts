@@ -81,7 +81,7 @@ export const heroSchema = z.object({
   image: imageRefSchema.default(emptyImage),
 });
 
-/** `richText` — a free prose section. `html` is sanitised on write by Worker B. */
+/** `richText` — a free prose section. `html` is sanitised on write (`repo.updateBlock()` → `actions/sanitize.ts`). */
 export const richTextSchema = z.object({
   variant: sectionVariantSchema,
   eyebrow,
@@ -277,6 +277,28 @@ export const testimonialSchema = z.object({
       }),
     )
     .default([]),
+});
+
+/**
+ * `booking` — the online booking widget on `/afspraak` (service → provider →
+ * day → slot → details → confirmation). The block carries copy and a service
+ * filter only; services, providers, rules and live availability are read at
+ * render time through `@/lib/booking/content`, so nothing here goes stale.
+ *
+ * `showProviderChoice` is AND-ed with the `booking.showProviderChoice` site
+ * setting and only matters when more than one provider offers the service.
+ * An empty `successText` falls back to `booking.confirmationText`.
+ */
+export const bookingSchema = z.object({
+  variant: sectionVariantSchema,
+  eyebrow,
+  title: z.string().default(''),
+  lede,
+  /** `cms_services.id`s to offer, in this order. Empty = every active service. */
+  serviceIds: z.array(z.string()).default([]),
+  showProviderChoice: z.boolean().default(true),
+  successTitle: z.string().default('Je afspraak staat vast'),
+  successText: z.string().default(''),
 });
 
 // ---------------------------------------------------------------------------
@@ -659,6 +681,23 @@ export const blockRegistry = {
       ],
     },
   },
+
+  booking: {
+    label: 'Afspraak boeken',
+    description:
+      'Online boeken: dienst, aanbieder, dag en uur kiezen en je gegevens invullen. Diensten en beschikbaarheid komen uit Afspraken.',
+    schema: bookingSchema,
+    defaultData: {
+      variant: 'default',
+      eyebrow: 'Online boeken',
+      title: 'Kies je moment',
+      lede: 'Kies je fit, een dag en een uur dat past. Je krijgt meteen een bevestiging per e-mail.',
+      serviceIds: [],
+      showProviderChoice: true,
+      successTitle: 'Je afspraak staat vast',
+      successText: '',
+    },
+  },
 } as const satisfies Record<string, BlockDefinition>;
 
 export type BlockType = keyof typeof blockRegistry;
@@ -699,8 +738,7 @@ export type BlockValidationIssue = {
 };
 
 export type BlockValidationResult =
-  | { ok: true; blocks: BlockInstance[] }
-  | { ok: false; issues: BlockValidationIssue[] };
+  { ok: true; blocks: BlockInstance[] } | { ok: false; issues: BlockValidationIssue[] };
 
 /** Validates and normalises one block's `data` against its registry schema. */
 export function validateBlock(
@@ -837,7 +875,39 @@ export const siteSettingSchemas = {
      * script and no cookie ships until this is deliberately switched on.
      */
     ga4MeasurementId: z.string().default(''),
+    /** Numeric GA4 property id for the Data API (admin dashboard); env `GA4_PROPERTY_ID` wins. */
+    ga4PropertyId: z.string().default(''),
     enabled: z.boolean().default(false),
+  }),
+  /**
+   * Booking rules (Worker A, `src/lib/booking/settings.ts`). Every field has a
+   * default so a missing row behaves exactly like the documented defaults.
+   */
+  booking: z.object({
+    slotStepMinutes: z.number().int().min(5).max(240).default(30),
+    minNoticeHours: z
+      .number()
+      .int()
+      .min(0)
+      .max(24 * 60)
+      .default(24),
+    horizonDays: z.number().int().min(1).max(730).default(56),
+    defaultBufferAfterMinutes: z.number().int().min(0).max(240).default(15),
+    cancelUntilHours: z
+      .number()
+      .int()
+      .min(0)
+      .max(24 * 60)
+      .default(48),
+    timezone: z.string().min(1).default('Europe/Brussels'),
+    introTitle: z.string().default('Maak een afspraak'),
+    introText: z.string().default(''),
+    confirmationText: z
+      .string()
+      .default(
+        'Je ontvangt een uitnodiging in je mailbox. Daarin vind je alle details en een link om te annuleren.',
+      ),
+    showProviderChoice: z.boolean().default(true),
   }),
 } as const;
 
@@ -853,7 +923,10 @@ export function isSiteSettingKey(value: string): value is SiteSettingKey {
 }
 
 /** Parses a stored value, falling back to the schema defaults when invalid. */
-export function parseSiteSetting<K extends SiteSettingKey>(key: K, value: unknown): SiteSettings[K] {
+export function parseSiteSetting<K extends SiteSettingKey>(
+  key: K,
+  value: unknown,
+): SiteSettings[K] {
   const parsed = siteSettingSchemas[key].safeParse(value ?? {});
   return (parsed.success ? parsed.data : siteSettingSchemas[key].parse({})) as SiteSettings[K];
 }
