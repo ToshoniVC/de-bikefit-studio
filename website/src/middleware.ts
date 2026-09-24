@@ -1,40 +1,60 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 /**
- * Auth middleware.
+ * Site access gate ("firewall") for the staging/dev phase.
  *
- * NOTE: Next.js 16 is migrating `middleware.ts` → `proxy.ts`. We keep
- * `middleware.ts` because that is the filename Clerk's `clerkMiddleware`
- * expects; it still works in 16.x (with a deprecation notice).
- *
- * When Clerk isn't configured this is a pass-through, so every route keeps
- * working during the skeleton phase instead of 500-ing on a missing key.
+ * When SITE_GATE_PASSWORD is set, the whole site is locked behind HTTP Basic
+ * Auth. It's off when the var is absent, so:
+ *   - Staging   → set the vars in Vercel  → locked
+ *   - Production → don't set them          → public
+ *   - Local      → set in .env.local or not → your choice
  */
-const isProtectedRoute = createRouteMatcher(['/account(.*)', '/checkout(.*)']);
+const GATE_USER = process.env.SITE_GATE_USER ?? '';
+const GATE_PASSWORD = process.env.SITE_GATE_PASSWORD ?? '';
+const gateEnabled = GATE_PASSWORD.length > 0;
 
-const hasClerk = Boolean(
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY,
-);
-
-const clerk = clerkMiddleware(async (auth, req) => {
-  if (isProtectedRoute(req)) {
-    await auth.protect();
+/** Constant-time string compare (no Node crypto, works in any runtime). */
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let result = 0;
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
-});
+  return result === 0;
+}
 
-export default hasClerk
-  ? clerk
-  : function middleware(_req: NextRequest) {
+function unauthorized() {
+  return new NextResponse('Authentication required.', {
+    status: 401,
+    headers: { 'WWW-Authenticate': 'Basic realm="Qarakter (staging)"' },
+  });
+}
+
+export function middleware(request: NextRequest) {
+  if (!gateEnabled) return NextResponse.next();
+
+  const header = request.headers.get('authorization');
+  if (header?.startsWith('Basic ')) {
+    let decoded = '';
+    try {
+      decoded = atob(header.slice(6));
+    } catch {
+      return unauthorized();
+    }
+    const sep = decoded.indexOf(':');
+    const user = decoded.slice(0, sep);
+    const pass = decoded.slice(sep + 1);
+    // Username is optional: if SITE_GATE_USER is unset, only the password matters.
+    const userOk = GATE_USER.length === 0 || safeEqual(user, GATE_USER);
+    if (userOk && safeEqual(pass, GATE_PASSWORD)) {
       return NextResponse.next();
-    };
+    }
+  }
+  return unauthorized();
+}
 
 export const config = {
-  matcher: [
-    // Skip Next internals and static files, run on everything else.
-    '/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)',
-    // Always run on API routes.
-    '/(api|trpc)(.*)',
-  ],
+  // Gate everything except Next's static assets and the favicon.
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
