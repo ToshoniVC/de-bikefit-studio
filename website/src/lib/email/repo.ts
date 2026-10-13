@@ -114,13 +114,21 @@ export async function setEmailApiKey(value: string): Promise<RepoResult<true>> {
     secretUpdatedAt: now,
     updatedBy: actor.id,
   };
-  await db
-    .insert(cmsIntegrationSettings)
-    .values({ key: EMAIL_SETTINGS_KEY, ...secret })
-    .onConflictDoUpdate({
-      target: cmsIntegrationSettings.key,
-      set: { ...secret, updatedAt: now },
-    });
+  try {
+    await db
+      .insert(cmsIntegrationSettings)
+      .values({ key: EMAIL_SETTINGS_KEY, ...secret })
+      .onConflictDoUpdate({
+        target: cmsIntegrationSettings.key,
+        set: { ...secret, updatedAt: now },
+      });
+  } catch (error) {
+    // Never let this reach `runAction`'s log: a driver error lists the query
+    // parameters (ciphertext and hint) after its first line.
+    const detail = error instanceof Error ? error.message.split('\n')[0].slice(0, 200) : '';
+    console.error(`[email] API-sleutel niet opgeslagen. ${detail}`);
+    return err('De sleutel kon niet opgeslagen worden. Probeer het opnieuw.');
+  }
   await recordAudit(db, actor, {
     action: 'email.key.set',
     ...ENTITY,

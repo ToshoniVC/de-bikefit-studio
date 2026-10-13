@@ -20,6 +20,8 @@
  * 8. A rotated `CMS_SESSION_SECRET` makes the stored key unreadable: nothing
  *    is sent. A missing table means "nothing stored" (env still works).
  * 9. Removing the key: nothing is sent again.
+ * 10. A failed key write is refused without logging the query parameters
+ *    (ciphertext, hint).
  *
  * Imported lazily by `cms-selftest.mts` after its request-context stubs.
  */
@@ -439,6 +441,44 @@ export async function emailServiceSection(ctx: {
         afterClear.reason === 'not_configured' &&
         calls.length === 0 &&
         (await emailAudit()).some((entry) => entry.action === 'email.key.clear'),
+    );
+
+    // --- 10. failed key write ------------------------------------------------------------------
+    // A driver error lists the query parameters (ciphertext, hint) after its
+    // first line; none of that may reach a log.
+    const FAIL_KEY = 're_SelftestFailedWrite_Zq7Xw9Kp';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const exec = (sql: string) => (db as any).execute(sql);
+    await exec(`create or replace function selftest_refuse_write() returns trigger as $$
+      begin raise exception 'selftest: write refused'; end; $$ language plpgsql`);
+    await exec(`create trigger selftest_refuse_write before insert or update
+      on cms_integration_settings for each row execute function selftest_refuse_write()`);
+    const logsBefore = logs.length;
+    let failedWrite = null as Awaited<ReturnType<typeof emailRepo.setEmailApiKey>> | null;
+    try {
+      await as(admin.id, async () => {
+        failedWrite = await emailRepo.setEmailApiKey(FAIL_KEY);
+      });
+    } finally {
+      await exec('drop trigger if exists selftest_refuse_write on cms_integration_settings');
+      await exec('drop function if exists selftest_refuse_write()');
+    }
+    const writeLogs = logs.slice(logsBefore);
+    check(
+      'failed key write: refused in Dutch, not audited; the log has no key, ciphertext, hint or query parameters',
+      failedWrite !== null &&
+        !failedWrite!.ok &&
+        writeLogs.some((line) => line.startsWith('[email] API-sleutel niet opgeslagen')) &&
+        !writeLogs.some(
+          (line) =>
+            line.includes(FAIL_KEY) ||
+            line.includes(FAIL_KEY.slice(-4)) ||
+            line.includes('params') ||
+            /v1\.[\w-]{8,}\./.test(line),
+        ) &&
+        (await storedRow())?.secretCiphertext === null &&
+        (await emailAudit()).filter((entry) => entry.action === 'email.key.set').length === 1,
+      JSON.stringify({ failedWrite, writeLogs }),
     );
 
     check(
