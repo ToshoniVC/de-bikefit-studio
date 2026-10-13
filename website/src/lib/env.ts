@@ -106,6 +106,12 @@ const envSchema = z.object({
   /** e.g. `De Bikefit Studio <afspraken@debikefitstudio.be>` (verified domain). */
   EMAIL_FROM: z.string().optional(),
   EMAIL_REPLY_TO: z.string().optional(),
+  /**
+   * Inbox for gift voucher orders; overrides `orders.giftVoucherRecipient`
+   * (Instellingen → Bestellingen). Never falls back to the public contact
+   * address. An invalid value means "not sent" (see `gift-voucher/recipient.ts`).
+   */
+  GIFT_VOUCHER_RECIPIENT: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

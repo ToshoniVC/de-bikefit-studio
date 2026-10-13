@@ -5,13 +5,16 @@ import { getCmsDb, type CmsDatabase } from '@/db/cms';
 import { cmsBookingRateLimit, DEFAULT_LOCALE } from '@/db/cms-schema';
 import { getSiteSettings } from '@/lib/cms/content';
 import { sendEmail } from '@/lib/email/send';
+import { env, features } from '@/lib/env';
 import { deliverGiftVoucherOrder, type GiftVoucherResult, type GiftVoucherStore } from './delivery';
+import { resolveGiftVoucherRecipient, type GiftVoucherDeliveryStatus } from './recipient';
 
 /**
  * The real wiring behind "Bestel nu" (`actions.ts` → here → `delivery.ts`):
  *
- *  - recipient: Instellingen → Contact → e-mail (`contact.email`), the
- *    studio's public address; empty = not configured, nothing is sent;
+ *  - recipient: env `GIFT_VOUCHER_RECIPIENT`, else Instellingen → Bestellingen
+ *    (`orders.giftVoucherRecipient`); deliberately NOT the public
+ *    `contact.email` (see `recipient.ts`); empty = nothing is sent;
  *  - sender: `EMAIL_FROM` through Resend (`src/lib/email/send.ts`), never the
  *    visitor's address; the visitor's address is only the Reply-To;
  *  - rate limit and duplicate protection: rows in `cms_booking_rate_limit`
@@ -81,12 +84,31 @@ export async function requestGiftVoucher(
   context: { ipAddress: string | null; locale?: string },
 ): Promise<GiftVoucherResult> {
   const settings = await getSiteSettings(context.locale ?? DEFAULT_LOCALE);
+  const recipient = resolveGiftVoucherRecipient({
+    env: env.GIFT_VOUCHER_RECIPIENT,
+    setting: settings.orders.giftVoucherRecipient,
+  });
   return deliverGiftVoucherOrder(raw, {
     store: giftVoucherStore(await getCmsDb()),
     send: (mail) => sendEmail(mail),
-    recipient: settings.contact.email,
+    recipient: recipient.address,
     siteName: settings.site.name || 'De Bikefit Studio',
     ipAddress: context.ipAddress,
     log: (message) => console.warn(message),
   });
+}
+
+/**
+ * What the admin settings page shows about voucher sending. Only presence of
+ * the API key, never its value; the sender and recipient are addresses, not
+ * secrets.
+ */
+export function giftVoucherDeliveryStatus(settingValue: string): GiftVoucherDeliveryStatus {
+  const apiKey = features.email;
+  const sender = env.EMAIL_FROM ?? '';
+  const recipient = resolveGiftVoucherRecipient({
+    env: env.GIFT_VOUCHER_RECIPIENT,
+    setting: settingValue,
+  });
+  return { apiKey, sender, recipient, ready: apiKey && Boolean(sender && recipient.address) };
 }

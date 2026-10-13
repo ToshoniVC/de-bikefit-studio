@@ -12,9 +12,11 @@ import {
   SubmitButton,
 } from '@/components/admin/form';
 import { MediaPicker, type MediaOption } from '@/components/admin/media-picker';
+import { OrderSettingsFields } from '@/components/admin/order-settings-form';
 import { updateSettingAction } from '@/lib/cms/actions/settings';
 import { IDLE_STATE } from '@/lib/cms/actions/state';
 import type { SiteSettingKey, SiteSettings } from '@/lib/cms/blocks';
+import type { GiftVoucherDeliveryStatus } from '@/lib/gift-voucher/recipient';
 
 /** Site settings, one form (and one `cms_site_settings` row) per key. */
 export function SettingsForms({
@@ -22,11 +24,13 @@ export function SettingsForms({
   locale,
   media,
   canEdit,
+  orderStatus,
 }: {
   settings: SiteSettings;
   locale: string;
   media: MediaOption[];
   canEdit: boolean;
+  orderStatus: GiftVoucherDeliveryStatus;
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -71,7 +75,7 @@ export function SettingsForms({
         locale={locale}
         canEdit={canEdit}
         title="Contact"
-        description="Gebruikt in de footer en in de LocalBusiness structured data."
+        description="Gebruikt in de footer en in de LocalBusiness structured data. Cadeaubonbestellingen gaan niet automatisch naar dit e-mailadres: zie Bestellingen."
       >
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Telefoon (label)" htmlFor="contact-phoneLabel">
@@ -426,6 +430,16 @@ export function SettingsForms({
             hint="Uit: er wordt geen trackingscript en geen analytics-cookie geladen, ook niet na toestemming."
           />
         </div>
+      </SettingForm>
+
+      <SettingForm
+        settingKey="orders"
+        locale={locale}
+        canEdit={canEdit}
+        title="Bestellingen"
+        description="Cadeaubonbestellingen (Bestel nu op /aanbod/cadeaubon) worden als e-mail naar de studio gestuurd. Er wordt niets betaald of gefactureerd op de site."
+      >
+        <OrderSettingsFields value={settings.orders.giftVoucherRecipient} status={orderStatus} />
       </SettingForm>
     </div>
   );

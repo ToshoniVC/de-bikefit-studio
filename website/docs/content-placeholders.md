@@ -190,12 +190,12 @@ Sinds 13 oktober 2026 (vraag van Toshoni): `/aanbod` → groep **Overige** → k
 contactgegevens). **Bestel nu** mailt de aanvraag naar de studio; factuur en betaallink maakt de
 studio zelf op. Er is geen betaling, factuur, boncode of automatische mail naar de klant. Zolang
 C-01 of C-02 open is, krijgt elke bezoeker "Je bestelling is niet verstuurd" met het
-telefoonnummer, en blijft alles wat hij invulde staan. Uitleg en instellingen:
+telefoonnummer, en blijft alles wat de bezoeker invulde staan. Uitleg en instellingen:
 `docs/booking-runbook.md` § Cadeaubon.
 
 | ID | Waar (exacte plaats) | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
 | C-01 | E-mailverzending (Resend): omgevingsvariabelen `RESEND_API_KEY` en `EMAIL_FROM` in Vercel (Arend) | niet ingesteld op staging en productie (preflight Arend, 13 okt 2026): elke bestelling meldt "niet verstuurd" | Resend-account, een afzenderdomein dat in Resend geverifieerd is (DNS), dan beide variabelen; `EMAIL_FROM` is nooit het adres van de bezoeker | open |
-| C-02 | Ontvanger van de bestellingen: `/admin` → **Instellingen** → Contact → **E-mail** (dezelfde waarde als G-01) | `info@debikefitstudio.be`; het domein `debikefitstudio.be` gaf op 13 okt 2026 geen MX (NXDOMAIN), dus mail zou niet aankomen | een werkende mailbox voor dat adres, of een ander adres in die instelling | open |
+| C-02 | Ontvanger van de bestellingen: `/admin` → **Instellingen** → **Bestellingen** → *Ontvanger cadeaubonbestellingen*, of omgevingsvariabele `GIFT_VOUCHER_RECIPIENT` (heeft voorrang). Bewust los van het publieke adres (G-01): geen automatische terugval op `info@debikefitstudio.be` | leeg: elke bestelling meldt "niet verstuurd". Het gevraagde publieke adres `info@debikefitstudio.be` blijft in footer en contacttekst; het domein gaf op 13 okt 2026 geen DNS (NXDOMAIN), dus mail daarheen zou niet aankomen | een werkende mailbox kiezen (Toshoni) en die in de instelling of de variabele zetten | open |
 | C-03 | `/aanbod/cadeaubon` (*Cadeaubon*) → blok *Cadeaubon (bestelformulier)* → **Inleiding**, **Korte omschrijving**, **Titel boven het formulier** | neutraal geschreven door de implementatie: bedrag en boodschap naar keuze, factuur en betaallink na de bestelling | nakijken door Toshoni | te bevestigen |
 | C-04 | Voorwaarden van de bon: geldigheid, vorm (digitaal of op papier), levering, minimum- en maximumbedrag | nergens vermeld; het formulier aanvaardt technisch € 1 tot € 5.000 (daarboven: "bel ons best even") | beslissing van de studio; daarna in de **Inleiding** en zo nodig in de algemene voorwaarden | open |

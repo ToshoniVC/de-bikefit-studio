@@ -581,14 +581,28 @@ mail goes straight to the visitor: it is the Reply-To). The mail lists the amoun
 the contact details and the reference.
 
 **What has to be set for it to work** (until then every order says "Je bestelling is niet
-verstuurd", keeps the form filled in and shows the phone number; nothing is sent):
+verstuurd", keeps the form filled in and shows the phone number, from Contact or else the
+legal identity's 0473 95 26 33; nothing is sent):
 
 | Setting | Where | Notes |
 | --- | --- | --- |
 | `RESEND_API_KEY` | Vercel env (sensitive), per environment; source 1Password | § 6 |
 | `EMAIL_FROM` | Vercel env | an address on a domain **verified in Resend**, e.g. `De Bikefit Studio <bestellingen@debikefitstudio.be>`; never the visitor's address |
-| Recipient | `/admin` → **Instellingen** → Contact → **E-mail** (`contact.email`) | the studio inbox; must really receive mail. Empty = not sent |
+| Recipient | `/admin` → **Instellingen** → **Bestellingen** → *Ontvanger cadeaubonbestellingen* (`orders.giftVoucherRecipient`), or env `GIFT_VOUCHER_RECIPIENT` (Vercel, wins over the setting) | one plain address of an inbox that **really receives mail**. Deliberately separate from the public Contact → E-mail in the footer, with no fallback to it: a provider accepts mail to a dead domain and it bounces later, so the visitor would see "verstuurd" for an order nobody gets. Empty or invalid = not sent |
 | `EMAIL_REPLY_TO` | not used for vouchers | the visitor's address is the Reply-To |
+
+The Bestellingen form shows a checklist of these three (API key present yes/no, never its
+value; the sender; the effective recipient and where it comes from). Only admins can change it.
+
+**Turning it on, in this order** (each step alone changes nothing for visitors until all three
+are done; never submit a test order unless a mail to the studio is intended):
+
+1. Toshoni names the working order inbox. Set it in Bestellingen (or have Arend set
+   `GIFT_VOUCHER_RECIPIENT` on the environment).
+2. Resend account with a sender domain **verified in Resend** (DKIM/SPF DNS records: needs an
+   explicit DNS go).
+3. Arend sets `RESEND_API_KEY` (sensitive, from 1Password) and `EMAIL_FROM` (an address on that
+   domain) for the environment and redeploys. Check Bestellingen: three times *Klaar*/*Aanwezig*.
 
 **Honest states.** The site says "verstuurd" only when Resend **accepted** the message (HTTP
 2xx). A missing key or sender, an empty recipient, a refusal, a timeout or an exception is

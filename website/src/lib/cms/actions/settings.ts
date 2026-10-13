@@ -5,6 +5,7 @@ import { DEFAULT_LOCALE } from '@/db/cms-schema';
 import { isValidTimeZone } from '@/lib/booking/time';
 import { isSiteSettingKey, type SiteSettingKey } from '@/lib/cms/blocks';
 import { updateSiteSetting } from '@/lib/cms/repo';
+import { giftVoucherRecipientProblem } from '@/lib/gift-voucher/recipient';
 import { isUnsafeUrl } from './sanitize';
 import { runAction } from './run';
 import { actionError, actionOk, boolField, field, type ActionState } from './state';
@@ -96,6 +97,8 @@ function valueFor(key: SiteSettingKey, form: FormData): unknown {
         confirmationText: field(form, 'confirmationText') || undefined,
         showProviderChoice: boolField(form, 'showProviderChoice'),
       };
+    case 'orders':
+      return { giftVoucherRecipient: field(form, 'giftVoucherRecipient') };
   }
 }
 
@@ -138,6 +141,10 @@ export async function updateSettingAction(
     const locale = field(form, 'locale') || DEFAULT_LOCALE;
     if (key === 'booking') {
       const problem = bookingProblem(form);
+      if (problem) return actionError(problem);
+    }
+    if (key === 'orders') {
+      const problem = giftVoucherRecipientProblem(field(form, 'giftVoucherRecipient'));
       if (problem) return actionError(problem);
     }
     const value = valueFor(key, form);

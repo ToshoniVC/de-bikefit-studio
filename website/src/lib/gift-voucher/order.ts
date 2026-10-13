@@ -41,7 +41,7 @@ export const GIFT_VOUCHER_MESSAGES = {
 
 export type GiftVoucherField = 'amount' | 'message' | 'name' | 'email' | 'phone';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_RE = /^[+0-9()./\s-]{6,25}$/;
 /** Shape of the per-form request id the client generates (`crypto.randomUUID()`). */
 const REQUEST_ID_RE = /^[A-Za-z0-9-]{16,64}$/;

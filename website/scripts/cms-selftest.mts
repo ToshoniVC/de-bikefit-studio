@@ -42,7 +42,9 @@
  *      guard, page + "Overige" published and verified, idempotent, restore)
  *      and the order service on the database with `fetch` replaced (missing
  *      key/sender or a refusal is "not sent", only an accepted request is a
- *      success, no double mail, rate limit) (`scripts/selftest/cadeaubon.mts`)
+ *      success, no double mail, rate limit, the recipient is its own setting
+ *      with an env override and never `contact.email`)
+ *      (`scripts/selftest/cadeaubon.mts`)
  *
  * Counts failures and exits non-zero at the end when any check failed.
  *

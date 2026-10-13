@@ -1,4 +1,5 @@
 import { getSiteSettings } from '@/lib/cms/content';
+import { LEGAL_IDENTITY } from '@/lib/studio/legal';
 import { GiftVoucherForm } from '../gift-voucher/order-form';
 import { SectionHeading } from './section';
 import type { BlockProps } from './types';
@@ -9,7 +10,9 @@ import type { BlockProps } from './types';
  *
  * The form posts to a server action that e-mails the studio; there is no
  * payment, invoice or voucher code on the site. The phone number from
- * Instellingen → Contact is the fallback whenever the request cannot be sent.
+ * Instellingen → Contact is the fallback whenever the request cannot be sent;
+ * if that is empty, the legal identity's number (as on the error pages), so the
+ * visitor always gets a working way out besides e-mail.
  */
 export async function GiftVoucherBlock({
   data,
@@ -18,7 +21,8 @@ export async function GiftVoucherBlock({
   locale,
 }: BlockProps<'giftVoucher'>) {
   const settings = await getSiteSettings(locale);
-  const { phoneLabel, phoneHref } = settings.contact;
+  const hasPhone = Boolean(settings.contact.phoneLabel && settings.contact.phoneHref);
+  const { phoneLabel, phoneHref } = hasPhone ? settings.contact : LEGAL_IDENTITY;
   const innerHeading = headingLevel === 1 ? 'h2' : 'h3';
 
   return (

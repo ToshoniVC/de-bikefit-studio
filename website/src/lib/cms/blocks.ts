@@ -895,6 +895,14 @@ export const siteSettingSchemas = {
       ),
     showProviderChoice: z.boolean().default(true),
   }),
+  /**
+   * Order handling (`src/lib/gift-voucher/`). Not the public contact address:
+   * empty means orders are not sent (there is no fallback to `contact.email`);
+   * env `GIFT_VOUCHER_RECIPIENT` wins.
+   */
+  orders: z.object({
+    giftVoucherRecipient: z.string().default(''),
+  }),
 } as const;
 
 export type SiteSettingKey = keyof typeof siteSettingSchemas;

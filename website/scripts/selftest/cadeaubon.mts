@@ -11,9 +11,13 @@
  * 2. The order service end to end on the database (no network: `fetch` is
  *    replaced): no `RESEND_API_KEY` or no `EMAIL_FROM` or a provider refusal
  *    is "not sent" and leaves no sent marker; only an accepted request is a
- *    success, sent from `EMAIL_FROM` to the studio with the visitor as
- *    Reply-To; a repeat is not mailed twice; the rate limit holds; the rows
- *    never hold the plain e-mail address and never count as booking attempts.
+ *    success, sent from `EMAIL_FROM` to the order inbox
+ *    (`orders.giftVoucherRecipient`) with the visitor as Reply-To; a repeat is
+ *    not mailed twice; the rate limit holds; the rows never hold the plain
+ *    e-mail address and never count as booking attempts. The public
+ *    `contact.email` alone is never used as the recipient; env
+ *    `GIFT_VOUCHER_RECIPIENT` wins over the setting; an invalid value sends
+ *    nothing.
  *
  * Imported lazily by `cms-selftest.mts` after its request-context stubs.
  */
@@ -199,13 +203,24 @@ export async function cadeaubonSection(ctx: {
 
   // --- 2. order requests through the real service (fetch replaced) -----------------
   const { requestGiftVoucher } = await import('@/lib/gift-voucher/service');
+  const ORDER_INBOX = 'bestellingen-inbox@example.test';
+  const setOrderInbox = (address: string) =>
+    asEditor(async () => {
+      await repo.updateSiteSetting(locale, 'orders', { giftVoucherRecipient: address });
+    });
   await asEditor(async () => {
     const current = (await getSiteSettings(locale)).contact;
     await repo.updateSiteSetting(locale, 'contact', { ...current, email: CONTACT_EMAIL });
   });
+  await setOrderInbox(ORDER_INBOX);
 
   const realFetch = globalThis.fetch;
-  const env = { key: process.env.RESEND_API_KEY, from: process.env.EMAIL_FROM };
+  const env = {
+    key: process.env.RESEND_API_KEY,
+    from: process.env.EMAIL_FROM,
+    recipient: process.env.GIFT_VOUCHER_RECIPIENT,
+  };
+  delete process.env.GIFT_VOUCHER_RECIPIENT;
   const calls: { url: string; body: Record<string, unknown> }[] = [];
   let status = 200;
   globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
@@ -261,12 +276,12 @@ export async function cadeaubonSection(ctx: {
     const accepted = await requestGiftVoucher(order, { ipAddress: ip });
     const body = calls[0]?.body ?? {};
     check(
-      'accepted by the provider → success; from EMAIL_FROM to the studio, Reply-To the visitor',
+      'accepted by the provider → success; from EMAIL_FROM to the order inbox, Reply-To the visitor',
       accepted.ok &&
         calls.length === 1 &&
         calls[0].url === 'https://api.resend.com/emails' &&
         body.from === process.env.EMAIL_FROM &&
-        JSON.stringify(body.to) === JSON.stringify([CONTACT_EMAIL]) &&
+        JSON.stringify(body.to) === JSON.stringify([ORDER_INBOX]) &&
         body.reply_to === order.email &&
         !String(body.subject).includes('Selftest') &&
         String(body.text).includes('Veel fietsplezier!') &&
@@ -315,12 +330,51 @@ export async function cadeaubonSection(ctx: {
         ).length === 0,
       rows.map((row) => `${row.email.slice(0, 20)}|${row.ipAddress}`).join(', '),
     );
+
+    // The recipient is its own setting (gift-voucher/recipient.ts). Another
+    // visitor and IP, so the rate limit above does not interfere. Key, sender
+    // and an accepting provider are all in place for these three.
+    const other = { ...order, email: 'tweede.klant@example.com' };
+    const otherIp = '198.51.100.10';
+    calls.length = 0;
+    await setOrderInbox('');
+    const contactOnly = await requestGiftVoucher(
+      { ...other, requestId: 'selftest-request-0010' },
+      { ipAddress: otherIp },
+    );
+    process.env.GIFT_VOUCHER_RECIPIENT = 'ops-inbox@example.test';
+    await setOrderInbox(ORDER_INBOX);
+    const viaEnv = await requestGiftVoucher(
+      { ...other, requestId: 'selftest-request-0011' },
+      { ipAddress: otherIp },
+    );
+    process.env.GIFT_VOUCHER_RECIPIENT = 'geen-adres';
+    const badEnv = await requestGiftVoucher(
+      { ...other, requestId: 'selftest-request-0012' },
+      { ipAddress: otherIp },
+    );
+    check(
+      'recipient: public contact e-mail alone → not sent; env wins over the setting; invalid env → not sent',
+      !contactOnly.ok &&
+        contactOnly.code === 'not_sent' &&
+        viaEnv.ok &&
+        !badEnv.ok &&
+        badEnv.code === 'not_sent' &&
+        calls.length === 1 &&
+        JSON.stringify(calls[0].body.to) === JSON.stringify(['ops-inbox@example.test']),
+      JSON.stringify({
+        results: [contactOnly, viaEnv, badEnv].map((result) => (result.ok ? 'ok' : result.code)),
+        to: calls.map((call) => call.body.to),
+      }),
+    );
   } finally {
     globalThis.fetch = realFetch;
     if (env.key === undefined) delete process.env.RESEND_API_KEY;
     else process.env.RESEND_API_KEY = env.key;
     if (env.from === undefined) delete process.env.EMAIL_FROM;
     else process.env.EMAIL_FROM = env.from;
+    if (env.recipient === undefined) delete process.env.GIFT_VOUCHER_RECIPIENT;
+    else process.env.GIFT_VOUCHER_RECIPIENT = env.recipient;
     await db
       .delete(schema.cmsBookingRateLimit)
       .where(like(schema.cmsBookingRateLimit.email, 'cadeaubon%'));

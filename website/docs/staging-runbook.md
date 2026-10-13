@@ -487,9 +487,11 @@ What it adds, and where:
 | `/aanbod` | category `overige` ("Overige"); a `giftVoucher` page becomes a card "Bedrag naar keuze" | catalogue groups: "Overige" appended after Bikefit and Begeleiding (exact-value guard) |
 
 Nothing else: no settings, menus, redirects, booking tables, migrations or env vars. Home and
-`/bikefit` keep their own groups. Independent of §11 (different fields), but run it after §11
-so the order recipient (`contact.email`) is set. **Never a full `cms:seed` or `--refresh-slug`
-for this.**
+`/bikefit` keep their own groups. Independent of §11 (different fields); run it after §11.
+The order recipient is **not** set by any patch: it is `/admin` → Instellingen → Bestellingen
+or env `GIFT_VOUCHER_RECIPIENT` (see `booking-runbook.md` § Cadeaubon), and stays empty until
+a working inbox is chosen, so orders show "niet verstuurd". **Never a full `cms:seed` or
+`--refresh-slug` for this.**
 
 1. Deploy the code first (release gate, staging READY). Old content renders unchanged on the
    new code.
