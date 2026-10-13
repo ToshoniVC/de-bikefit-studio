@@ -106,7 +106,7 @@ its variables are missing. Names and purpose only; values never appear here.
 | `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ("Web application") for per-provider Calendar sync. | no | optional (both or neither) |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Secret of that client. Without the pair the OAuth routes answer 503 and availability ignores Google. | yes | optional |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | base64 of 32 bytes; AES-256-GCM key for stored Google tokens. **Optional:** empty → key derived from `CMS_SESSION_SECRET` (HKDF-SHA256). Rotating either value forces every provider to reconnect Google. One per environment. | yes | optional |
-| `RESEND_API_KEY` | Resend API key for booking e-mails and gift voucher orders. **Optional:** an admin can instead store the key in `/admin/email` (sealed with AES-256-GCM, key derived from `CMS_SESSION_SECRET`); when set here it wins. With no key anywhere, booking mails are logged (recipients masked) and skipped, and every gift voucher order shows "niet verstuurd". | yes | optional |
+| `RESEND_API_KEY` | Resend API key for booking e-mails and gift voucher orders. **Optional:** an admin can instead store the key in `/admin/email` (sealed with AES-256-GCM, key derived from `CMS_SESSION_SECRET`); when set here it wins. With no key anywhere, booking mails are logged (number of recipients only, no subject or address) and skipped, and every gift voucher order shows "niet verstuurd". | yes | optional |
 | `EMAIL_FROM` | Sender on a domain verified in Resend. Also required for gift voucher orders. Overrides the sender in `/admin/email`. | no | optional |
 | `EMAIL_REPLY_TO` | Reply-To for customer mails (not used for gift voucher orders: their Reply-To is the visitor). Overrides `/admin/email`. | no | optional |
 | `GIFT_VOUCHER_RECIPIENT` | Inbox for gift voucher orders (one plain address). Overrides `/admin/email` → *Ontvanger cadeaubonbestellingen*. Never falls back to the public contact e-mail; unset in both places, or invalid, means every order shows "niet verstuurd". | no | optional |
@@ -148,8 +148,9 @@ Resets the Neon staging branch from its parent (`production`), then runs
 > customer and guardian names, e-mails (`booking-<id>@example.invalid`), phones, address,
 > bike details and notes, plus the Google event references (so a staging cancellation can
 > never delete a real calendar event); it truncates `cms_sessions`, `cms_login_attempts`
-> and `cms_booking_rate_limit`, empties the four `cms_mfa_*` tables when they exist (staging
-> admins then enrol anew) and nulls every Google token on `cms_providers`. On
+> and `cms_booking_rate_limit`, empties the `cms_mfa_*` tables when they exist (the four of
+> 0005 and the rate-limit counters of 0007; staging admins then enrol anew) and nulls every
+> Google token on `cms_providers`. On
 > `cms_integration_settings` (when it exists) it clears the stored e-mail API key (ciphertext,
 > hint, date) and the gift voucher order inbox, so staging never uses production's Resend
 > credential or mails test orders to the studio's real inbox; sender and reply-to stay. After a

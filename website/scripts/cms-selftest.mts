@@ -24,6 +24,12 @@
  *  5e. admin session limits and step-up: 15-minute idle and 8-hour absolute
  *      end on real rows, editors unchanged, sensitive changes refused without
  *      a recent re-authentication (`scripts/selftest/session-limits.mts`)
+ *  5f. two-step verification under concurrency: migration 0007, the three
+ *      rate-limit scopes under parallel reservations, parallel wrong codes at
+ *      sign-in, enrolment, replacement and re-authentication (code checks
+ *      actually run ≤ 5), parallel password sign-ins, replay, release on
+ *      success, an unreadable factor, password change and admin reset end a
+ *      challenge (`scripts/selftest/mfa-concurrency.mts`)
  *   6. block registry: every block's defaultData validates, unknown type fails
  *   7. permissions: admin / editor content matrix
  *   8. draft → publish snapshot: draft blocks freeze into a published snapshot
@@ -71,7 +77,8 @@
  *
  * The booking modules are `server-only` and expect a request context, so —
  * like `cms-seed.mts` — this script installs tiny stubs for `server-only`,
- * `next/headers` (cookie jar backed by a Map) and `next/cache` through Node's
+ * `next/headers` (cookie jar backed by a Map, one per simulated browser where a
+ * section sets `__bikefitSelftestCookieScope`) and `next/cache` through Node's
  * `module.registerHooks` (Node ≥ 22.15) and imports those modules lazily.
  */
 import { config } from 'dotenv';
@@ -120,7 +127,7 @@ const cookieJar = new Map<string, string>();
 const STUB_SOURCES: Record<string, string> = {
   'server-only': 'export {};',
   'next/headers': `
-    function jar() { return globalThis.__bikefitSelftestCookies; }
+    function jar() { return globalThis.__bikefitSelftestCookieScope?.getStore() ?? globalThis.__bikefitSelftestCookies; }
     export async function cookies() {
       return {
         get: (name) => (jar().has(name) ? { name, value: jar().get(name) } : undefined),
@@ -374,6 +381,10 @@ async function main() {
     section,
     cookieJar,
   });
+
+  // 5f: concurrent second steps, one cookie jar per simulated browser.
+  const { mfaConcurrencySection } = await import('./selftest/mfa-concurrency.mjs');
+  await mfaConcurrencySection({ db, admin: user, check, section, cookieJar });
 
   section('6. block registry');
   check(

@@ -8,8 +8,8 @@ import { verifyPassword } from '../password';
 import { upgradePasswordHashIfNeeded } from '../password-upgrade';
 import { markSessionReauthenticated, type SessionContext } from '../session';
 import { MfaConfigError } from './crypto';
-import { fail, ipOf, ok, type MfaResult } from './outcome';
-import { hasConfirmedFactor, mfaRateLimited, recordMfaAttempt, verifySecondFactor } from './repo';
+import { fail, holdAttempt, ok, releaseAttempt, type MfaResult } from './outcome';
+import { hasConfirmedFactor, verifySecondFactor } from './repo';
 
 /**
  * Re-authentication for sensitive changes, in two shapes:
@@ -24,8 +24,8 @@ import { hasConfirmedFactor, mfaRateLimited, recordMfaAttempt, verifySecondFacto
  *   password, and the e-mail service key and addresses (`/admin/email`).
  *   Signing in with password and code counts as well.
  *
- * Both are rate limited together with the sign-in codes (`./repo.ts`) and
- * audited; a successful one upgrades a legacy password hash.
+ * Both count against the same limits as the sign-in codes (`./rate-limit.ts`)
+ * and are audited; a successful one upgrades a legacy password hash.
  */
 
 export type Reauthentication = { password: string; code: string };
@@ -34,6 +34,12 @@ export type Reauthentication = { password: string; code: string };
  * The current password AND (when `requireCode`) a current code or recovery
  * code, checked in that order so a wrong password never burns a recovery
  * code. One generic message for either mistake.
+ *
+ * The attempt is reserved against the limits BEFORE the password is checked,
+ * so parallel requests cannot check more than the limits allow. A wrong
+ * password or code keeps the reservation; a success, an unreadable factor
+ * (as at sign-in) and a check that never ran (missing key, busy hasher) give
+ * it back.
  */
 export async function reauthenticate(
   db: CmsDatabase,
@@ -42,15 +48,26 @@ export async function reauthenticate(
   context: SessionContext,
   requireCode = true,
 ): Promise<MfaResult<true>> {
-  if (await mfaRateLimited(db, user.id, ipOf(context))) return fail('rate_limited');
+  const hold = await holdAttempt(db, user.id, context);
+  if (!hold.ok) return fail(hold.error);
   const [row] = await db
     .select({ passwordHash: cmsUsers.passwordHash })
     .from(cmsUsers)
     .where(eq(cmsUsers.id, user.id))
     .limit(1);
-  if (!row) return fail('not_found');
+  if (!row) {
+    await releaseAttempt(db, hold.held);
+    return fail('not_found');
+  }
 
-  const passwordOk = await verifyPassword(input.password, row.passwordHash);
+  let passwordOk: boolean;
+  try {
+    passwordOk = await verifyPassword(input.password, row.passwordHash);
+  } catch (error) {
+    // A busy or failing hasher says nothing about the password: not counted.
+    await releaseAttempt(db, hold.held);
+    throw error;
+  }
   let code: Awaited<ReturnType<typeof verifySecondFactor>> | null = null;
   try {
     code =
@@ -60,11 +77,14 @@ export async function reauthenticate(
           ? { ok: true as const, method: 'totp' as const }
           : null;
   } catch (error) {
-    if (error instanceof MfaConfigError) return fail('not_configured');
+    if (error instanceof MfaConfigError) {
+      await releaseAttempt(db, hold.held);
+      return fail('not_configured');
+    }
     throw error;
   }
   if (!code?.ok) {
-    await recordMfaAttempt(db, user.id, ipOf(context), false);
+    if (code?.ok === false && code.reason === 'unreadable') await releaseAttempt(db, hold.held);
     await recordAudit(db, user, {
       action: 'auth.mfa_reauth_failed',
       entityType: 'cms_user',
@@ -75,7 +95,7 @@ export async function reauthenticate(
     });
     return fail('reauth_failed');
   }
-  await recordMfaAttempt(db, user.id, ipOf(context), true);
+  await releaseAttempt(db, hold.held);
   await upgradePasswordHashIfNeeded(db, user.id, input.password, row.passwordHash);
   return ok(true);
 }

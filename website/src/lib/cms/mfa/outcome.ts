@@ -10,14 +10,21 @@ import {
   type CreateSessionOptions,
   type SessionContext,
 } from '../session';
-import { clearChallengeCookie, recordChallengeFailure } from './challenge';
+import {
+  clearChallengeCookie,
+  releaseChallengeAttempt,
+  reserveChallengeAttempt,
+  settleChallengeFailure,
+} from './challenge';
 import { qrSvgPath } from './qr';
-import { recordMfaAttempt, startEnrolment, type CodeFailure } from './repo';
+import { releaseMfaAttempt, reserveMfaAttempt, type MfaReservation } from './rate-limit';
+import { startEnrolment, type CodeFailure } from './repo';
 
 /**
  * Shared pieces of the MFA flows in `./flow.ts` (sign-in challenge) and
  * `./manage.ts` (signed-in management, break-glass): result type, Dutch
- * messages, enrolment display, failure bookkeeping, session issuance.
+ * messages, enrolment display, attempt reservation and failure bookkeeping,
+ * session issuance.
  */
 
 export type MfaError =
@@ -92,20 +99,63 @@ export async function beginEnrolment(
   return { ...started, qrSize: qr.size, qrPath: qr.path };
 }
 
-/** Records a failed second step everywhere it counts. Returns the error to show. */
+/** What a code check holds while it runs: its rate-limit hits and, at sign-in, a challenge slot. */
+export type HeldAttempt = {
+  reservation: MfaReservation;
+  challenge?: { id: string; slot: number };
+};
+
+/**
+ * Reserves everything a code check counts against, BEFORE the code is looked
+ * at: the user + IP, IP and daily hits (`./rate-limit.ts`), then, at sign-in,
+ * one slot on the challenge. Nothing is held when it fails: `rate_limited`
+ * when a limit is reached, `expired` when the challenge is gone or used up.
+ */
+export async function holdAttempt(
+  db: CmsDatabase,
+  userId: string,
+  context: SessionContext,
+  challengeId?: string,
+): Promise<{ ok: true; held: HeldAttempt } | { ok: false; error: 'rate_limited' | 'expired' }> {
+  const reserved = await reserveMfaAttempt(db, userId, ipOf(context));
+  if (!reserved.ok) return { ok: false, error: 'rate_limited' };
+  if (challengeId === undefined) return { ok: true, held: { reservation: reserved.reservation } };
+  const slot = await reserveChallengeAttempt(db, challengeId);
+  if (slot === null) {
+    await releaseMfaAttempt(db, reserved.reservation);
+    return { ok: false, error: 'expired' };
+  }
+  return {
+    ok: true,
+    held: { reservation: reserved.reservation, challenge: { id: challengeId, slot } },
+  };
+}
+
+/** Gives everything back: the check succeeded, or its result said nothing about the code. */
+export async function releaseAttempt(db: CmsDatabase, held: HeldAttempt): Promise<void> {
+  await releaseMfaAttempt(db, held.reservation);
+  if (held.challenge) await releaseChallengeAttempt(db, held.challenge.id);
+}
+
+/**
+ * Settles a failed second step: a guess keeps the hits and the challenge
+ * slot it reserved (the last slot deletes the challenge), and every failure
+ * is audited. Returns the error to show.
+ */
 export async function failedCode(
   db: CmsDatabase,
   user: Pick<CmsUserPublic, 'id' | 'email'>,
-  context: SessionContext,
   stage: string,
   reason: CodeFailure,
-  challengeId?: string,
+  held: HeldAttempt,
 ) {
   // An unreadable factor (key rotated or lost) is our fault, not a guess: it
   // must not use up the attempts the user needs for a recovery code.
-  const counts = reason !== 'unreadable';
-  if (counts) await recordMfaAttempt(db, user.id, ipOf(context), false);
-  const stillUsable = challengeId && counts ? await recordChallengeFailure(db, challengeId) : true;
+  let stillUsable = true;
+  if (reason === 'unreadable') await releaseAttempt(db, held);
+  else if (held.challenge) {
+    stillUsable = await settleChallengeFailure(db, held.challenge.id, held.challenge.slot);
+  }
   await recordAudit(db, user, {
     action: 'auth.mfa_failed',
     entityType: 'cms_user',

@@ -19,12 +19,21 @@ import { loadEmailSettings } from './settings';
  *  - Never throws: a failed send returns `{ sent: false, reason }` so a booking
  *    is never lost because a mail bounced. `sent: true` means Resend ACCEPTED
  *    the message, not that it was delivered.
- *  - Logs carry masked recipients and the subject, never the key; provider
- *    messages pass through `redactSecrets()`.
+ *  - Logs and `reason` carry only safe facts: the number of recipients, the
+ *    HTTP status, Resend's error code (its `name`, only when it is a plain
+ *    code such as `validation_error`) and the name of a thrown error
+ *    (`TimeoutError`, `TypeError`). Never the subject (booking subjects hold
+ *    the customer's name), an address (not even masked), the body, Resend's
+ *    error `message` (it can echo the request) or an error's message; never
+ *    the key. `redactSecrets()` still runs on top, as defence in depth.
  */
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 const REQUEST_TIMEOUT_MS = 10_000;
+/** Resend's error names are codes (`validation_error`, `rate_limit_exceeded`); anything else is dropped. */
+const PROVIDER_CODE_RE = /^[a-z_]{1,64}$/;
+/** A thrown error's name (`TimeoutError`, `AbortError`, `TypeError`); anything else is `unknown`. */
+const ERROR_NAME_RE = /^[A-Za-z]{1,64}$/;
 
 export type EmailAttachment = {
   filename: string;
@@ -42,13 +51,45 @@ export type SendEmailInput = {
   replyTo?: string | null;
 };
 
+/**
+ * `reason` is a fixed vocabulary, safe to log, audit and show an admin:
+ * `no_recipient`, `not_configured`, `missing_from`; `HTTP <status>` or
+ * `HTTP <status>: <Resend code>` when Resend refused; `request_failed:
+ * <ErrorName>` when no response came (timeout, network). Never free text from
+ * outside: `sendFailureCode()` and `describeSendFailure()` in `./config.ts`
+ * and the gift voucher's `reasonCode()` map it.
+ */
 export type SendEmailResult = { sent: true; id: string | null } | { sent: false; reason: string };
 
-/** `jan.peeters@example.com` → `j***@example.com` — for logs only. */
+/** `jan.peeters@example.com` → `j***@example.com` — for the test-mail audit entry; `sendEmail()` logs no address. */
 export function maskEmail(address: string): string {
   const [local, domain] = address.split('@');
   if (!domain) return '***';
   return `${local.slice(0, 1)}***@${domain}`;
+}
+
+function recipientCount(count: number): string {
+  return count === 1 ? '1 ontvanger' : `${count} ontvangers`;
+}
+
+/** `HTTP 422: validation_error`, or just `HTTP 422`: never Resend's `message`. */
+async function refusalReason(response: Response): Promise<string> {
+  let code: string | null = null;
+  try {
+    const body: unknown = await response.json();
+    const name = typeof body === 'object' && body !== null && 'name' in body ? body.name : null;
+    if (typeof name === 'string' && PROVIDER_CODE_RE.test(name)) code = name;
+  } catch {
+    // no JSON body: the status alone
+  }
+  return redactSecrets(code ? `HTTP ${response.status}: ${code}` : `HTTP ${response.status}`);
+}
+
+/** `request_failed: TimeoutError`: the error's name, never its message. */
+function failureReason(error: unknown): string {
+  const name = typeof error === 'object' && error !== null && 'name' in error ? error.name : null;
+  const safeName = typeof name === 'string' && ERROR_NAME_RE.test(name) ? name : 'unknown';
+  return redactSecrets(`request_failed: ${safeName}`);
 }
 
 /**
@@ -68,7 +109,7 @@ export async function sendEmail(
   const apiKey = config.apiKey;
   if (!apiKey) {
     console.info(
-      `[email] geen API-sleutel (RESEND_API_KEY of /admin/email) — niet verstuurd: “${input.subject}” → ${recipients.map(maskEmail).join(', ')}`,
+      `[email] geen API-sleutel (RESEND_API_KEY of /admin/email) — niet verstuurd (${recipientCount(recipients.length)}).`,
     );
     return { sent: false, reason: 'not_configured' };
   }
@@ -110,23 +151,18 @@ export async function sendEmail(
     });
 
     if (!response.ok) {
-      let detail = `HTTP ${response.status}`;
-      try {
-        const body = (await response.json()) as { message?: string; name?: string };
-        detail = body.message ?? body.name ?? detail;
-      } catch {
-        // keep the status line
-      }
-      detail = redactSecrets(detail);
-      console.error(`[email] Resend weigerde “${input.subject}”: ${detail}`);
-      return { sent: false, reason: detail };
+      const reason = await refusalReason(response);
+      console.error(
+        `[email] Resend weigerde het bericht (${reason}, ${recipientCount(recipients.length)}).`,
+      );
+      return { sent: false, reason };
     }
 
     const body = (await response.json().catch(() => ({}))) as { id?: string };
     return { sent: true, id: body.id ?? null };
   } catch (error) {
-    const reason = redactSecrets(error instanceof Error ? error.message : 'onbekende fout');
-    console.error(`[email] versturen mislukt “${input.subject}”: ${reason}`);
+    const reason = failureReason(error);
+    console.error(`[email] versturen mislukt (${reason}, ${recipientCount(recipients.length)}).`);
     return { sent: false, reason };
   }
 }

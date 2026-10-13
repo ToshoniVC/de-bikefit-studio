@@ -26,13 +26,14 @@ export async function loadMfaKit(ctx: MfaSectionContext) {
   const { and, eq, isNull, sql } = orm;
   const schema = await import('@/db/cms-schema');
   const { cmsAuditLog, cmsLoginAttempts, cmsPages, cmsSessions, cmsUsers } = schema;
-  const { cmsMfaAttempts, cmsMfaChallenges, cmsMfaFactors, cmsMfaRecoveryCodes } =
+  const { cmsMfaChallenges, cmsMfaFactors, cmsMfaRateLimits, cmsMfaRecoveryCodes } =
     await import('@/db/cms-mfa-schema');
   const auth = await import('@/lib/cms/auth');
   const users = await import('@/lib/cms/users');
   const flow = await import('@/lib/cms/mfa/flow');
   const manage = await import('@/lib/cms/mfa/manage');
   const repo = await import('@/lib/cms/mfa/repo');
+  const rateLimit = await import('@/lib/cms/mfa/rate-limit');
   const { openTotpSecret } = await import('@/lib/cms/mfa/crypto');
   const { base32Decode, base32Encode, hotp, totpStep } = await import('@/lib/cms/mfa/totp');
   const { resolveSession, createSession } = await import('@/lib/cms/session');
@@ -60,8 +61,21 @@ export async function loadMfaKit(ctx: MfaSectionContext) {
    * deliberately rate-limited this admin's e-mail for password sign-in).
    */
   const clearAttempts = async () => {
-    await db.delete(cmsMfaAttempts);
+    await db.delete(cmsMfaRateLimits);
     await db.delete(cmsLoginAttempts);
+  };
+  /** Whether a code check for this user from this IP would be refused now (nothing is kept). */
+  const limited = async (userId: string, ip: string): Promise<boolean> => {
+    const reserved = await rateLimit.reserveMfaAttempt(db, userId, ip);
+    if (reserved.ok) await rateLimit.releaseMfaAttempt(db, reserved.reservation);
+    return !reserved.ok;
+  };
+  /** One failed check per IP, kept, at `nowMs` (the production reservation, minus the code). */
+  const failFrom = async (userId: string, ips: string[], nowMs = Date.now()) => {
+    for (const ip of ips) {
+      const reserved = await rateLimit.reserveMfaAttempt(db, userId, ip, nowMs);
+      if (!reserved.ok) throw new Error(`reservation for ${ip} refused`);
+    }
   };
   const secretOf = (uri: string) => base32Decode(new URL(uri).searchParams.get('secret') ?? '')!;
   const codeAt = (secret: Buffer, offset = 0) => hotp(secret, totpStep(Date.now()) + offset);
@@ -111,15 +125,16 @@ export async function loadMfaKit(ctx: MfaSectionContext) {
     cmsPages,
     cmsSessions,
     cmsUsers,
-    cmsMfaAttempts,
     cmsMfaChallenges,
     cmsMfaFactors,
+    cmsMfaRateLimits,
     cmsMfaRecoveryCodes,
     auth,
     users,
     flow,
     manage,
     repo,
+    rateLimit,
     openTotpSecret,
     base32Decode,
     base32Encode,
@@ -136,6 +151,8 @@ export async function loadMfaKit(ctx: MfaSectionContext) {
     runMfaReset,
     outcome,
     clearAttempts,
+    limited,
+    failFrom,
     secretOf,
     codeAt,
     count,

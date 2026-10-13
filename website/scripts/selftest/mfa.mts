@@ -17,7 +17,8 @@
  *  E. TOTP sign-in: no re-enrolment over a challenge, replay, earlier step and
  *     concurrent use rejected, a later step accepted;
  *  F. challenge expiry, the five-failure challenge limit, user / IP / daily
- *     rate limits (a correct code is refused while limited);
+ *     rate limits (a correct code is refused while limited), filled through
+ *     the production reservation (`src/lib/cms/mfa/rate-limit.ts`);
  *  G. recovery-code sign-in: one use each, forgiving format;
  *  H. a changed encryption key: factor unreadable, recovery codes still work;
  *     a malformed key fails closed;
@@ -29,9 +30,10 @@
  *  K. editors unchanged: password-only session, no challenge;
  *  L. the break-glass CLI core (dry run, apply, audit), then re-enrolment.
  *
- * "Test-only" steps (moving a challenge's expiry, clearing the attempt log to
- * stand for the 15-minute window passing, verifying at an injected time) are
- * marked; everything else is the production code path.
+ * "Test-only" steps (moving a challenge's expiry, clearing the rate-limit
+ * counters to stand for the 15-minute window passing, verifying at an
+ * injected time) are marked; everything else is the production code path.
+ * The same flows under concurrency: section 5f (`./mfa-concurrency.mts`).
  */
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -59,7 +61,6 @@ async function signInChecks(kit: MfaKit): Promise<{ secret: Buffer; recoveryCode
     schema,
     cmsPages,
     cmsUsers,
-    cmsMfaAttempts,
     cmsMfaChallenges,
     cmsMfaFactors,
     cmsMfaRecoveryCodes,
@@ -82,6 +83,8 @@ async function signInChecks(kit: MfaKit): Promise<{ secret: Buffer; recoveryCode
     findActingAdmin,
     outcome,
     clearAttempts,
+    limited,
+    failFrom,
     secretOf,
     codeAt,
     count,
@@ -276,7 +279,7 @@ async function signInChecks(kit: MfaKit): Promise<{ secret: Buffer; recoveryCode
     .from(cmsMfaChallenges)
     .where(eq(cmsMfaChallenges.userId, admin.id));
   check(
-    'enrolment: a wrong code is refused and counted (challenge, attempt log, audit)',
+    'enrolment: a wrong code is refused and counted (challenge, rate-limit counters, audit)',
     !wrongEnrol.ok &&
       wrongEnrol.error === 'invalid_code' &&
       afterWrong?.failed === 1 &&
@@ -414,56 +417,51 @@ async function signInChecks(kit: MfaKit): Promise<{ secret: Buffer; recoveryCode
   );
   check(
     'someone guessing elsewhere does not block the owner on another IP',
-    (await repo.mfaRateLimited(db, admin.id, '10.20.5.5')) === false,
+    (await limited(admin.id, '10.20.5.5')) === false,
   );
+  // Another user's checks from one IP: only the IP rule can block the admin.
+  const throwaway = async (email: string) =>
+    (
+      await db
+        .insert(cmsUsers)
+        .values({ email, name: 'IP', role: 'editor', passwordHash: 'x', isActive: false })
+        .returning({ id: cmsUsers.id })
+    )[0].id;
+  const ipUsers = [
+    await throwaway('ip-test@selftest.local'),
+    await throwaway('ip-test-2@selftest.local'),
+  ];
+  // An unknown client IP is no shared address: the user's own `ip:unknown`
+  // bucket (5 per 15 minutes) and the daily backstop, no IP-wide rule.
+  const unknownOpen = (await limited(admin.id, 'unknown')) === false;
+  await failFrom(admin.id, Array(5).fill('unknown'));
   check(
-    'an unknown client IP is not one shared bucket (user rule alone applies)',
-    (await repo.mfaRateLimited(db, admin.id, 'unknown')) === true,
+    'an unknown client IP is not one shared bucket: its own user bucket, no IP-wide rule',
+    unknownOpen &&
+      (await limited(admin.id, 'unknown')) &&
+      (await limited(ipUsers[0], 'unknown')) === false,
   );
   await clearAttempts();
   const recentIp = '10.20.9.9';
-  // Another user's failures from one IP: only the IP rule can block the admin.
-  const [ipUser] = await db
-    .insert(cmsUsers)
-    .values({
-      email: 'ip-test@selftest.local',
-      name: 'IP',
-      role: 'editor',
-      passwordHash: 'x',
-      isActive: false,
-    })
-    .returning({ id: cmsUsers.id });
-  await db.insert(cmsMfaAttempts).values(
-    Array.from({ length: 10 }, () => ({
-      userId: ipUser.id,
-      ipAddress: recentIp,
-      successful: false,
-    })),
-  );
+  for (const ipUser of ipUsers) await failFrom(ipUser, Array(5).fill(recentIp));
   check(
     'IP rate limit: ten failures from one IP block that IP, not others',
-    (await repo.mfaRateLimited(db, admin.id, recentIp)) === true &&
-      (await repo.mfaRateLimited(db, admin.id, '10.20.9.10')) === false,
+    (await limited(admin.id, recentIp)) === true &&
+      (await limited(admin.id, '10.20.9.10')) === false,
   );
-  await db.delete(cmsUsers).where(eq(cmsUsers.id, ipUser.id));
+  for (const ipUser of ipUsers) await db.delete(cmsUsers).where(eq(cmsUsers.id, ipUser));
   await clearAttempts();
-  await db.insert(cmsMfaAttempts).values(
-    Array.from({ length: 50 }, () => ({
-      userId: admin.id,
-      ipAddress: `10.30.0.${Math.floor(Math.random() * 200)}`,
-      successful: false,
-      attemptedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    })),
+  await failFrom(
+    admin.id,
+    Array.from({ length: 50 }, (_, i) => `10.30.0.${i}`),
+    Date.now() - 2 * 60 * 60 * 1000,
   );
   check(
     'daily backstop: fifty failures in a day from many IPs block the user everywhere',
-    (await repo.mfaRateLimited(db, admin.id, '10.20.0.77')) === true,
+    (await limited(admin.id, '10.20.0.77')) === true,
   );
   await clearAttempts();
-  check(
-    'no limit with a clean log',
-    (await repo.mfaRateLimited(db, admin.id, CTX.ipAddress)) === false,
-  );
+  check('no limit with clean counters', (await limited(admin.id, CTX.ipAddress)) === false);
 
   return { secret, recoveryCodes };
 }

@@ -254,7 +254,11 @@ export function sendFailureCode(reason: string): string {
     : 'provider_error';
 }
 
-/** A send failure in Dutch for the admin (the provider's text, redacted and cut short). */
+/**
+ * A send failure in Dutch for the admin. `reason` is `sendEmail()`'s fixed
+ * vocabulary (`HTTP 422: validation_error`, `request_failed: TimeoutError`,
+ * …; never the provider's text), still redacted and cut short.
+ */
 export function describeSendFailure(reason: string): string {
   switch (reason) {
     case 'not_configured':

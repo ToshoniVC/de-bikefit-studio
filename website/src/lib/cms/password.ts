@@ -36,7 +36,7 @@ import {
  *   call fails fast with {@link PasswordHasherBusyError}.
  * - What one attacker can trigger is bounded by the database-backed rate
  *   limits: 10 failed sign-ins per 15 minutes per e-mail or IP (`./auth.ts`)
- *   and the re-authentication limits in `./mfa/repo.ts`. The limiter bounds
+ *   and the re-authentication limits in `./mfa/rate-limit.ts`. The limiter bounds
  *   what all callers together can do to one instance.
  */
 

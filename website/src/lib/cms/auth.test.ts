@@ -1,5 +1,17 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CmsRole, CmsUserPublic } from '@/db/cms-schema';
+import type { CmsUserPublic } from '@/db/cms-schema';
+import {
+  ABSOLUTE_END,
+  cmsUser,
+  fake,
+  mfa,
+  minutesAgo,
+  refusedFor,
+  resetDoubles,
+  session,
+  signedIn,
+  signIn,
+} from '@/test/doubles/cms-auth';
 import {
   CmsAuthError,
   changePassword,
@@ -15,153 +27,35 @@ import { hashPassword } from './password';
  * The guards as server actions call them, with the session lookup mocked: no
  * database, no cookies, no Next runtime. `./session` and `@/db/cms` are
  * replaced, so `getCurrentCmsUser()` resolves whatever `resolveSession` returns
- * here; the decision is the real one from `./guard`. `./mfa/challenge` and
- * `./mfa/repo` are replaced too, so `login()` can be observed choosing between
- * a challenge and a session. The flow on a real database is covered by
- * `npm run cms:selftest` (sections 5b and 5c).
+ * here; the decision is the real one from `./guard`. `./mfa/challenge`,
+ * `./mfa/repo` and `./mfa/rate-limit` are replaced too, so `login()` can be
+ * observed choosing between a challenge and a session, and a password change
+ * or reset ending the user's challenges and code counters. The doubles live in
+ * `src/test/doubles/cms-auth.ts`. The flow on a real database is covered by
+ * `npm run cms:selftest` (sections 5b, 5c and 5f).
  */
 
-const session = vi.hoisted(() => ({
-  readSessionCookie: vi.fn(async (): Promise<string | undefined> => undefined),
-  resolveSession: vi.fn(async (): Promise<unknown> => null),
-  setSessionCookie: vi.fn(async () => {}),
-  clearSessionCookie: vi.fn(async () => {}),
-  createSession: vi.fn(async () => ({
-    id: 'session-2',
-    token: 'fresh-token',
-    expiresAt: new Date(),
-    cookieExpiresAt: new Date(),
-  })),
-  revokeSession: vi.fn(async () => {}),
-  revokeAllUserSessions: vi.fn(async () => {}),
-  toPublicUser: vi.fn((user: unknown) => user),
-}));
-
-type Row = Record<string, unknown>;
-type FakeQuery = {
-  from: () => FakeQuery;
-  where: () => FakeQuery;
-  orderBy: () => FakeQuery;
-  limit: () => Promise<Row[]>;
-};
-
-/** Just enough of a Drizzle handle for the paths under test; records writes. */
-const fake = vi.hoisted(() => {
-  const state = {
-    rows: [] as Row[],
-    updates: [] as Row[],
-    inserts: [] as Row[],
-  };
-  const query: FakeQuery = {
-    from: () => query,
-    where: () => query,
-    orderBy: () => query,
-    limit: async () => state.rows,
-  };
-  const db = {
-    select: () => query,
-    update: () => ({
-      set: (values: Row) => {
-        state.updates.push(values);
-        return { where: async () => undefined };
-      },
-    }),
-    insert: () => ({
-      values: async (values: Row) => {
-        state.inserts.push(values);
-      },
-    }),
-    delete: () => ({ where: async () => undefined }),
-  };
-  return { state, db };
+// Factories are hoisted above every import, hence the inline dynamic imports.
+vi.mock('./session', async () => (await import('@/test/doubles/cms-auth')).session);
+vi.mock('./mfa/challenge', async () => (await import('@/test/doubles/cms-auth')).mfa);
+vi.mock('./mfa/repo', async () => {
+  const { mfa: doubles } = await import('@/test/doubles/cms-auth');
+  return { hasConfirmedFactor: doubles.hasConfirmedFactor };
 });
-
-const mfa = vi.hoisted(() => ({
-  createMfaChallenge: vi.fn(async () => ({
-    id: 'challenge-1',
-    token: 'challenge-token',
-    expiresAt: new Date(),
-  })),
-  setChallengeCookie: vi.fn(async () => {}),
-  readChallengeCookie: vi.fn(async (): Promise<string | undefined> => undefined),
-  resolveMfaChallenge: vi.fn(async (): Promise<unknown> => null),
-  deleteMfaChallenge: vi.fn(async () => {}),
-  clearChallengeCookie: vi.fn(async () => {}),
-  hasConfirmedFactor: vi.fn(async () => false),
-  clearMfaAttempts: vi.fn(async () => {}),
-}));
-
-vi.mock('./session', () => session);
-vi.mock('./mfa/challenge', () => mfa);
-vi.mock('./mfa/repo', () => ({
-  hasConfirmedFactor: mfa.hasConfirmedFactor,
-  clearMfaAttempts: mfa.clearMfaAttempts,
-}));
-vi.mock('@/db/cms', () => ({ getCmsDb: async () => fake.db }));
+vi.mock('./mfa/rate-limit', async () => {
+  const { mfa: doubles } = await import('@/test/doubles/cms-auth');
+  return { clearMfaAttempts: doubles.clearMfaAttempts };
+});
+vi.mock('@/db/cms', async () => {
+  const { fake: doubles } = await import('@/test/doubles/cms-auth');
+  return { getCmsDb: async () => doubles.db };
+});
 
 const SLOW = 30_000;
 const TEMPORARY = 'Tijdelijk-Wachtwoord-7';
 const CHOSEN = 'Eigen-Wachtwoord-2026';
 
-function cmsUser(role: CmsRole, mustChangePassword: boolean): CmsUserPublic {
-  const at = new Date('2026-10-13T08:00:00Z');
-  return {
-    id: `user-${role}`,
-    email: `${role}@example.com`,
-    name: role,
-    role,
-    mustChangePassword,
-    isActive: true,
-    createdAt: at,
-    updatedAt: at,
-    lastLoginAt: null,
-  };
-}
-
-/**
- * The request carries a valid session for `user` (or no cookie at all). By
- * default the session passed MFA, so the older blocks test what they did,
- * and has no recent step-up (`reauthenticatedAt`).
- */
-function signIn(
-  user: CmsUserPublic | null,
-  mfaVerified = true,
-  reauthenticatedAt: Date | null = null,
-) {
-  session.readSessionCookie.mockResolvedValue(user ? 'cookie-token' : undefined);
-  session.resolveSession.mockResolvedValue(
-    user
-      ? {
-          user,
-          sessionId: 'session-1',
-          mfaVerified,
-          reauthenticatedAt,
-          absoluteExpiresAt: ABSOLUTE_END,
-          expiresAt: new Date(),
-          cookieExpiresAt: ABSOLUTE_END,
-          renewed: false,
-        }
-      : null,
-  );
-}
-
-const ABSOLUTE_END = new Date('2026-10-13T16:00:00Z');
-const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60 * 1000);
-
-const signedIn = (user: CmsUserPublic, mfaVerified = true) => ({
-  ...user,
-  mfaVerified,
-  reauthenticatedAt: null,
-});
-
-const refusedFor = (code: string) => ({ name: 'CmsAuthError', code });
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  fake.state.rows = [];
-  fake.state.updates = [];
-  fake.state.inserts = [];
-});
+beforeEach(() => resetDoubles());
 
 describe('requireCmsUser / requirePermission with a temporary password', () => {
   it('refuses the session with password_change_required, whatever the role requirement', async () => {
@@ -389,6 +283,8 @@ describe('changePassword: the one write a temporary-password session may make', 
       expect(String(fake.state.updates[0].passwordHash)).toMatch(/^scrypt\$/);
       expect(session.revokeAllUserSessions).toHaveBeenCalledWith(fake.db, temporary.id);
       expect(mfa.clearMfaAttempts).toHaveBeenCalledWith(fake.db, temporary.id);
+      // A sign-in challenge opened with the old password cannot be finished.
+      expect(mfa.deleteUserMfaChallenges).toHaveBeenCalledWith(fake.db, temporary.id);
       // An editor session without MFA is replaced by one without MFA; an
       // editor needs no step-up for its own password (the current one is asked).
       expect(session.createSession).toHaveBeenCalledWith(
@@ -512,6 +408,20 @@ describe('user management needs a recent step-up (direct calls included)', () =>
     signIn(cmsUser('admin', false), true, null);
     await expect(requireCmsUser('admin')).resolves.toMatchObject({ role: 'admin' });
   });
+
+  it(
+    'a password reset also ends the sessions, code counters and sign-in challenges of that user',
+    async () => {
+      signIn(cmsUser('admin', false), true, minutesAgo(1));
+      fake.state.rows = [{ id: 'user-editor' }];
+      const result = await resetUserPassword('user-editor');
+      expect(result).toMatchObject({ ok: true });
+      expect(session.revokeAllUserSessions).toHaveBeenCalledWith(fake.db, 'user-editor');
+      expect(mfa.clearMfaAttempts).toHaveBeenCalledWith(fake.db, 'user-editor');
+      expect(mfa.deleteUserMfaChallenges).toHaveBeenCalledWith(fake.db, 'user-editor');
+    },
+    SLOW,
+  );
 });
 
 describe('logout', () => {

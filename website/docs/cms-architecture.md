@@ -34,7 +34,7 @@ File ownership during parallel work comes from the work-block file (see
 | Public site | `src/app/(studio)/**`, `src/components/studio/**`, `src/lib/studio/**`, `src/app/sitemap.ts`, `src/app/robots.ts` |
 | Booking | `src/lib/booking/**`, `src/lib/email/**`, `src/app/api/google/oauth/**` — see `booking-architecture.md` |
 | Analytics | `src/lib/analytics/{consent,ga4-tag,ga4}.ts(x)`, `src/components/studio/{analytics,consent-banner}.tsx`, `src/components/admin/analytics-panel.tsx` |
-| Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-rollout-aanbod,cms-patch-booking-cta,cms-patch-page-cleanup,cms-patch-cadeaubon,cms-mfa-reset,cms-selftest,cms-retention,import-editorial-image}.mts`, shared helpers in `scripts/lib/`, self-test sections 5b–5e and 15–19 in `scripts/selftest/` |
+| Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-rollout-aanbod,cms-patch-booking-cta,cms-patch-page-cleanup,cms-patch-cadeaubon,cms-mfa-reset,cms-selftest,cms-retention,import-editorial-image}.mts`, shared helpers in `scripts/lib/`, self-test sections 5b–5f and 15–19 in `scripts/selftest/` |
 | Shared | `src/middleware.ts`, `src/lib/env.ts`, `.env.example`, `next.config.ts`, `package.json`, `src/app/layout.tsx` |
 
 ---
@@ -103,9 +103,10 @@ Booking adds eight more tables — `cms_locations`, `cms_services`,
 `cms_providers`, `cms_provider_services`, `cms_business_hours`,
 `cms_availability_exceptions`, `cms_bookings`, `cms_booking_rate_limit` —
 described in [`booking-architecture.md`](./booking-architecture.md) §2.
-Two-step verification adds four — `cms_mfa_factors`, `cms_mfa_recovery_codes`,
-`cms_mfa_challenges`, `cms_mfa_attempts` — described in §4. That makes
-twenty-four `cms_*` tables in total.
+Two-step verification adds five — `cms_mfa_factors`, `cms_mfa_recovery_codes`,
+`cms_mfa_challenges`, `cms_mfa_rate_limits` (0007) and `cms_mfa_attempts` (no
+longer written since 0007, kept because migrations are additive) — described
+in §4. That makes twenty-five `cms_*` tables in total.
 
 Only two real Postgres enums exist (`cms_role` = `admin`, `editor`,
 `provider`; `cms_page_status`). Locale, menu key, block type, media storage and
@@ -137,15 +138,18 @@ URL prefix (`publicPathFor()` in `repo.ts` encodes that rule).
 | `drizzle/0004_integration_settings.sql` | `cms_integration_settings` + its FK to `cms_users`, guarded. Code treats a missing table as "nothing stored", so deploying before migrating is safe. |
 | `drizzle/0005_cms_admin_mfa.sql` | Two-step verification (§4, MFA): four `cms_mfa_*` tables and one nullable column `cms_sessions.mfa_verified_at`. Additive and guarded; existing sessions get `NULL`, which is what makes existing **admin** sessions sign in again. |
 | `drizzle/0006_cms_session_limits.sql` | Admin session limits and step-up (§4, Sessions): two nullable columns, `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at`. Additive and guarded (`ADD COLUMN IF NOT EXISTS`); existing rows get `NULL`, so an existing admin session ends at `created_at` + 8 h at the latest and has no recent step-up. |
+| `drizzle/0007_cms_mfa_rate_limits.sql` | Race-free second-step limits (§4, Rate limiting): the `cms_mfa_rate_limits` table (FK to `cms_users`, two indexes) and a **unique** index `cms_mfa_challenges_user_id_unique_idx` (one challenge per user; the old non-unique index stays). Guarded and re-runnable. Its one data change: duplicate challenge rows of a user (ephemeral sign-in state, at most 10 minutes old) are deleted, the newest kept, in the same locked statement that builds the index. No DROP, no webshop table. |
 
-**Rollout order of 0004–0006.** The e-mail settings (from `staging`) and the
+**Rollout order of 0004–0007.** The e-mail settings (from `staging`) and the
 security release met in one merge: the MFA and session migrations were
-renumbered from 0004/0005 to 0005/0006 with their journal timestamps kept, so
-the order is 0004 → 0005 → 0006 everywhere and one `db:migrate` applies
-whichever of them a database still lacks. Set `CMS_MFA_ENCRYPTION_KEY` first,
-migrate **before** deploying the security build (it breaks `/admin/login`
-without 0005 and `/admin` without 0006; 0004 is safe either way), then deploy,
-then let the first admin enrol; step by step in `staging-runbook.md` §16.
+renumbered from 0004/0005 to 0005/0006 with their journal timestamps kept, and
+0007 follows them, so the order is 0004 → 0005 → 0006 → 0007 everywhere and
+one `db:migrate` applies whichever of them a database still lacks. Set
+`CMS_MFA_ENCRYPTION_KEY` first, migrate **before** deploying the security
+build (it breaks `/admin/login` without 0005, `/admin` without 0006 and the
+admin second step without 0007, whose table and unique index the code checks
+against; 0004 is safe either way), then deploy, then let the first admin
+enrol; step by step in `staging-runbook.md` §16.
 Drizzle's migrator only applies journal entries newer than the last one a
 database recorded, so a database that already ran the security migrations
 under their old numbers never receives 0004 from `db:migrate`: apply
@@ -322,7 +326,7 @@ own `_ga*` cookies appear only after consent (§12.7).
 | Cookie | Set by | Contents | Flags / lifetime |
 | --- | --- | --- | --- |
 | `cms_session` | login (`session.ts`); for admins only after the second step | random session token; the DB stores only its HMAC | `httpOnly`, `sameSite=lax`, `path=/`, `secure` in production. Admins: expires at the absolute end (sign-in + 8 h; the 15-minute idle limit is enforced server-side). Editors and providers: 14 days, sliding |
-| `cms_mfa` | admin password sign-in (`src/lib/cms/mfa/challenge.ts`) | random challenge token for the second step; the DB stores only its HMAC. Not a session: no guard reads it | `httpOnly`, `sameSite=lax`, `path=/admin`, `secure` in production; 10 minutes, never extended, deleted on success, cancel, logout or 5 wrong codes |
+| `cms_mfa` | admin password sign-in (`src/lib/cms/mfa/challenge.ts`) | random challenge token for the second step; the DB stores only its HMAC. Not a session: no guard reads it | `httpOnly`, `sameSite=lax`, `path=/admin`, `secure` in production; 10 minutes, never extended; one per user (a new password sign-in replaces it); deleted on success, cancel, logout, 5 wrong codes, a password change or an admin's password or MFA reset |
 | `cms_google_oauth` | `GET /api/google/oauth/start` (`src/app/api/google/oauth/state.ts`) | provider id, CMS user id, nonce, return target, expiry; HMAC-SHA256 signed with `CMS_SESSION_SECRET` (domain-separated). The callback accepts only a valid signature, an unexpired state, a nonce equal to Google's `state` (constant-time) and the same signed-in user | `httpOnly`, `sameSite=lax`, `path=/api/google/oauth`, `secure` in production; 10 minutes |
 | `cms_consent` | the consent banner, client-side (`src/lib/analytics/consent.ts`) | `granted` or `denied` | `SameSite=Lax`, `path=/`, `Secure` on https; 365 days. Not `httpOnly`: the banner and the GA4 loader read it in the browser |
 
@@ -332,18 +336,71 @@ Password: 10 failed attempts per 15 minutes, counted per **email OR IP**
 (`LOGIN_MAX_ATTEMPTS` / `LOGIN_WINDOW_MS` in `auth.ts`). Exceeding it returns
 `error: 'rate_limited'`.
 
-Second step (sign-in codes, recovery codes and re-authentication alike,
-`cms_mfa_attempts`, `src/lib/cms/mfa/repo.ts`): blocked at 5 failures for a
-user **from one IP** or 10 from one IP for anyone in 15 minutes, or 50 for a
-user from anywhere in 24 hours (backstop against guessing from many
-addresses); while blocked even a correct code is refused. Each challenge also
-dies after 5 wrong codes, so the password must be entered again. Keying the
-short window on user + IP means someone who has the password cannot lock the
-owner out from elsewhere for long; a new password (`changePassword`, the
-challenge step, an admin's password or MFA reset, the break-glass CLI) clears
-the user's counter. An unknown client IP is not one shared bucket: only the
-user rule applies. An unreadable factor (key rotated) is not counted, so the
-recovery codes stay usable.
+Second step (sign-in, enrolment and replacement codes, recovery codes and
+re-authentication alike; policy in `src/lib/cms/mfa/rate-limit-policy.ts`,
+enforcement in `rate-limit.ts`): at most 5 counted checks (failed or still
+running; a success does not count) for a user **from one IP** or 10 from one
+IP for anyone in 15 minutes, or 50 for a user from anywhere in 24 hours
+(backstop against guessing from many addresses); while blocked even a correct
+code is refused. Each challenge also allows 5 checks
+(codes, or the password at the challenge's password step), then the password
+must be entered again. Keying the short window on user + IP means someone who
+has the password cannot lock the owner out from elsewhere for long; a new
+password (`changePassword`, the challenge step, an admin's password or MFA
+reset, the break-glass CLI) clears the user's counters (`clearMfaAttempts`;
+the IP-wide counter has no owner and runs out after 15 minutes). A new
+password **sign-in** resets nothing but the challenge's own 5 slots: the
+user/IP and daily counters stay, so signing in again buys no extra codes. An
+unknown client IP is not one shared bucket: the user gets one `ip:unknown`
+bucket (5 per 15 minutes) and the daily backstop, no IP rule. An unreadable
+factor (key rotated) is not counted, so the recovery codes stay usable.
+
+**Reserve, then check.** Every check first reserves one hit in each of its
+scopes (`user:<id>|ip:<ip>`, then `ip:<ip>`, then `user:<id>|day`) and, inside
+a challenge, one of the challenge's slots; only then is the code or password
+looked at. A failure keeps what it reserved; a success, an unreadable factor,
+a missing encryption key, a busy password hasher or a step that never checked
+anything gives it back. So however many requests run in parallel, at most 5
+checks per user + IP (10 per IP, 50 per user per day, 5 per challenge) are in
+flight or failed in the window, and successes never count. The consequence for
+honest users: a sixth request sent while five are still being checked is
+refused (`rate_limited`) even if those five will succeed. Self-test 5f fires
+20 parallel wrong codes at sign-in, enrolment, replacement and
+re-authentication and parallel password sign-ins, and counts the TOTP checks
+that actually ran: 5 each (the earlier count-then-check let all 20 through on
+each of the four).
+
+**One statement per reservation (neon-http).** The production driver has no
+interactive transactions: every statement is its own READ COMMITTED
+transaction (§2, Transactions). A count-then-act check cannot be made safe that
+way, not even inside one statement: a `count(*)` over a log table in an
+`INSERT … SELECT` or `UPDATE … WHERE` reads a snapshot that misses rows other
+requests insert at the same moment (Postgres re-checks only the target row).
+So each scope is one row of `cms_mfa_rate_limits` (`scope` primary key,
+`hits` an array of timestamps, an exact sliding window), and a reservation is
+the single statement
+
+```sql
+INSERT INTO cms_mfa_rate_limits (scope, user_id, hits, updated_at) VALUES ($scope, $user, ARRAY[$at], $at)
+ON CONFLICT (scope) DO UPDATE
+  SET hits = array_append(ARRAY(SELECT h FROM unnest(hits) h WHERE h > $at - $window ORDER BY h), $at)
+  WHERE (SELECT count(*) FROM unnest(hits) h WHERE h > $at - $window) < $limit
+RETURNING scope   -- no row: limited
+```
+
+Postgres locks the conflicting row and evaluates the `WHERE` and `SET` on its
+latest committed version, so concurrent reservations of one scope queue on
+that row and each sees the hits of those before it. When a later scope is
+full, the earlier ones are released. A release removes exactly one occurrence
+of its own timestamp (`hits[:pos-1] || hits[pos+1:]`), so equal timestamps of
+parallel requests stay correct. A challenge slot is the single
+`UPDATE cms_mfa_challenges SET failed_attempts = failed_attempts + 1 WHERE id = $id
+AND failed_attempts < 5 AND expires_at > now() RETURNING` (the column now
+counts reserved checks; a check that did not count decrements it), and the
+failure in the last slot deletes the challenge. Counter rows no reservation
+touched for a day are pruned on the way. `cms_mfa_attempts`, the log the old
+count-then-act check used, is no longer written (the audit log has every
+failure and success) and its remaining rows are pruned after a day as well.
 
 ### API
 
@@ -408,7 +465,7 @@ enrolled two-step verification** (`scripts/lib/cms-actor.mts`) and stop with an
 explanation when there is none: after `cms:bootstrap`, sign in once, replace
 the password and set up the authenticator before `cms:seed`. Their session is
 created with `mfaVerified`: the operator's database credentials are the
-authentication. Self-test sections 5b–5e run the flows on PGlite.
+authentication. Self-test sections 5b–5f run the flows on PGlite.
 
 ### Two-step verification (MFA) for admins
 
@@ -429,7 +486,13 @@ directly with both and checks nothing is written.
 **Sign-in** (`/admin/login` → `/admin/mfa`, `src/lib/cms/mfa/flow.ts`):
 
 1. Password correct → `cms_mfa_challenges` row + `cms_mfa` cookie (10 min).
-   Any session cookie this browser still had is revoked.
+   Any session cookie this browser still had is revoked. **One challenge per
+   user** (unique index on `user_id`, 0007): a new password sign-in replaces
+   the row in one upsert with a new id, token and expiry, so two sign-ins at
+   once leave one row, the previous cookie stops working, and an enrolment
+   bound to the old challenge id cannot be confirmed through the new one. The
+   replacement restarts only the challenge's 5 slots, never the user/IP and
+   daily counters (Rate limiting, above).
 2. `/admin/mfa` (outside the dashboard group, exempt from the middleware's
    cookie check) shows the next step for that challenge's user only:
    - **no authenticator, temporary password** → choose a password first
@@ -446,6 +509,22 @@ directly with both and checks nothing is written.
    with `mfa_verified_at`.
 3. A temporary password on an admin who already has an authenticator is
    changed after the code, on `/admin/password`, inside the full session.
+
+A challenge belongs to the password that opened it: a password change
+(`changePassword`) and an admin's password reset (`resetUserPassword`) delete
+the user's challenges, as the MFA reset and the break-glass CLI already did,
+so a browser that got past the old password cannot finish its second step
+afterwards (self-test 5f).
+
+**Input bounds.** The server actions (`src/lib/cms/actions/mfa.ts`) check the
+shape of every field first, with zod (`actions/mfa-input.ts`, unit-tested):
+a code field is trimmed and at most 64 characters (a recovery code typed with
+dashes and spaces fits easily), a password field at most
+`PASSWORD_MAX_LENGTH` (200, the longest password `validatePasswordStrength()`
+lets anyone set; never trimmed), the break-glass target user id at most 64; a
+file or any other non-text value fails. Oversized or invalid input gets the
+form's usual Dutch message ("Die code klopt niet …", "Je wachtwoord of je code
+klopt niet.", …) without any database work and without counting an attempt.
 
 **TOTP** (`totp.ts`, RFC 6238 test vectors in `totp.test.ts`): HMAC-SHA1, 6
 digits, 30 s, ±1 step (a code lives at most 90 s). `cms_mfa_factors.
@@ -469,6 +548,26 @@ so they still work after `CMS_MFA_ENCRYPTION_KEY` is rotated or lost. One use
 each (atomic `UPDATE … WHERE used_at IS NULL`); case, dashes and O/I/L
 look-alikes are forgiven. Signing in with one leads to *Mijn account*, which
 shows how many are left.
+
+*Why SHA-256 here and not scrypt (a justified exception to "scrypt via
+`password.ts`, no other hashing").* The rule is about passwords. A recovery
+code is a server-generated random secret of 80 bits (16 symbols × 5 bits, from
+`crypto.randomBytes`), not a user-chosen password: brute force against a
+leaked hash needs on the order of 2^76 (any of a user's ten) to 2^79 (one
+given code) SHA-256 evaluations, so a slow KDF adds cost without adding
+security. The stored value is a plain SHA-256 (no key, no
+HMAC; the domain prefix and the user id make it unique per user) and is looked
+up by equality on the unique `code_hash` column, which a salted KDF would make
+impossible. `password.ts` (scrypt) remains the only password hashing anywhere:
+a search of the repository for `scrypt`, `bcrypt`, `argon2`, `pbkdf2`,
+`createHash` and `createHmac` (13 Oct 2026) finds scrypt only in `password.ts`
+(plus the self-test's legacy-hash fixture), no other KDF, and hashes only of
+random tokens or non-secret data: session and challenge tokens (HMAC-SHA256,
+`session.ts`), booking cancel tokens (SHA-256), the OAuth state and booking
+confirmation references (HMAC signatures), TOTP itself (HMAC-SHA1, RFC 6238),
+key derivation from `CMS_SESSION_SECRET` (HKDF, `secrets.ts`), the gift
+voucher rate-limit key (SHA-256 of an e-mail address) and content fingerprints
+in two CMS scripts.
 
 **Signed-in management** (`manage.ts`, *Mijn account → Tweestapsverificatie*):
 replacing the authenticator and making new recovery codes both need the
@@ -520,12 +619,22 @@ types a password.
   password-only attempt by someone else is visible there; a burst of
   `auth.mfa_failed` after `auth.login` means the password is known to someone
   else: change it.
-- A challenge that expires between the code check and its consumption costs
-  that code (a TOTP step or one recovery code) or, during enrolment, the
-  display of the recovery codes; sign in again (and make new codes).
+- A challenge that expires, or is replaced by a new password sign-in, between
+  the code check and its consumption costs that code (a TOTP step or one
+  recovery code) or, during enrolment, the display of the recovery codes; sign
+  in again (and make new codes).
 - Re-authentication checks the password before the code, so its timing tells
   a holder of a stolen session cookie which one was wrong; every attempt counts
   against the limits above.
+- The limits count checks in flight as well as failures (Rate limiting,
+  above): an honest double submit can be answered `rate_limited` while the
+  first request is still being checked. The atomicity of a reservation rests
+  on Postgres's documented `ON CONFLICT DO UPDATE` row locking; the self-test
+  proves the logic on PGlite, which runs one statement at a time, not two
+  database sessions racing.
+- IPv6: someone rotating addresses (one /64 holds plenty) gets a fresh user +
+  IP and IP bucket per address; the daily backstop of 50 checks per user is
+  the bound that holds then.
 
 ### Permission matrix
 
@@ -1017,7 +1126,7 @@ Checks (all six are the Definition of Done in `CLAUDE.md` §2):
 ```bash
 npm run typecheck && npm run lint && npm run format:check
 npm test               # vitest unit tests
-npm run cms:selftest   # sections 1–19 + 5b–5e: migrations … forced password change, MFA, session limits … full booking flow, rollouts and patches, e-mail service, on a throwaway PGlite
+npm run cms:selftest   # sections 1–19 + 5b–5f: migrations … forced password change, MFA, session limits, MFA under concurrency … full booking flow, rollouts and patches, e-mail service, on a throwaway PGlite
 npm run build
 ```
 

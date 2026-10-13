@@ -312,6 +312,7 @@ getProviderAccessToken(provider): Promise<string | null>, isProviderConnected(pr
 ```ts
 sendEmail({ to, subject, html, text, attachments?, replyTo? })
   : Promise<{ sent: true; id } | { sent: false; reason }>   // never throws; no key → 'not_configured'
+  // reason: 'no_recipient' | 'not_configured' | 'missing_from' | 'HTTP <status>[: <Resend code>]' | 'request_failed: <ErrorName>'
 buildIcs({ uid, startsAt, endsAt, summary, description?, location?, url?, method?: 'PUBLISH'|'CANCEL', sequence?, reminderMinutes? })
 icsUidFor(bookingId, host?), icsDate, icsEscape, icsFold
 bookingConfirmationEmail(data), providerNotificationEmail(data), bookingCancellationEmail(data, 'customer'|'provider')
@@ -392,9 +393,19 @@ Sent by `notifications.ts` through `sendEmail()` (Resend REST API,
 `https://api.resend.com/emails`). Key, sender and reply-to come from `loadEmailSettings()`
 (`src/lib/email/settings.ts`): per field `RESEND_API_KEY` / `EMAIL_FROM` / `EMAIL_REPLY_TO`
 win over what an admin stored in `/admin/email` (see `cms-architecture.md`, "Site settings
-keys"). No key → one console line (recipients masked) and
+keys"). No key → one console line (only the number of recipients) and
 `{ sent: false, reason: 'not_configured' }`. A failing mail never fails a
-booking. Provider error text is passed through `redactSecrets()` before it is logged.
+booking.
+
+**What is logged.** `sendEmail()`'s log lines and its `reason` carry only the number of
+recipients, the HTTP status, Resend's error code (its `name`, only when it is a plain code such
+as `validation_error`) and the name of a thrown error (`TimeoutError`, `TypeError`): a refusal is
+`HTTP 422: validation_error` (or just `HTTP 502`), a request without a response
+`request_failed: TimeoutError`. Never logged or returned: the subject (booking subjects hold the
+customer's name), any address (not even masked), the body, Resend's error `message` (it can echo
+the request) or an error's message, and never the key; `redactSecrets()` still runs on top. The
+admin test mail shows that reason; its audit entry and the gift voucher log keep only a code
+(`provider_error` / `provider`). The full refusal text is in Resend's own dashboard.
 
 The gift voucher order form (`src/lib/gift-voucher/`, `booking-runbook.md` §12) uses the same
 `sendEmail()` with the opposite rule: there the mail *is* the order, so a skipped or failed send

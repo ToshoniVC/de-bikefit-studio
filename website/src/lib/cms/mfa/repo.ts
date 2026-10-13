@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, isNotNull, isNull, lt, ne, sql } from 'drizzle-orm';
 import type { CmsDatabase } from '@/db/cms';
-import { cmsMfaAttempts, cmsMfaFactors, cmsMfaRecoveryCodes } from '@/db/cms-mfa-schema';
+import { cmsMfaFactors, cmsMfaRecoveryCodes } from '@/db/cms-mfa-schema';
 import { openTotpSecret, sealTotpSecret } from './crypto';
 import { generateRecoveryCodes, hashRecoveryCode, normalizeRecoveryCode } from './recovery-codes';
 import {
@@ -12,11 +12,12 @@ import {
 } from './totp';
 
 /**
- * Database half of CMS two-step verification: factors, recovery codes and the
- * attempt log. Every function takes an explicit `db` and does no access
- * control of its own — callers are `./flow.ts` (which decides who may do what)
- * and the break-glass CLI. Not `server-only`, like `../session.ts`, so plain
- * Node scripts can load it.
+ * Database half of CMS two-step verification: factors and recovery codes.
+ * Every function takes an explicit `db` and does no access control of its
+ * own — callers are `./flow.ts` (which decides who may do what) and the
+ * break-glass CLI. Not `server-only`, like `../session.ts`, so plain Node
+ * scripts can load it. The rate limits every code check is reserved against
+ * before it calls in here live in `./rate-limit.ts`.
  *
  * Written for neon-http, which has no interactive transactions: every
  * state change that must happen once is a single conditional statement
@@ -25,82 +26,8 @@ import {
  * between leaves the account no less protected (see `confirmEnrolment`).
  */
 
-export const MFA_WINDOW_MS = 15 * 60 * 1000;
-/** Per user AND IP: someone else guessing from elsewhere does not block the owner's device. */
-export const MFA_MAX_FAILURES_PER_USER_IP = 5;
-export const MFA_MAX_FAILURES_PER_IP = 10;
-export const MFA_DAILY_WINDOW_MS = 24 * 60 * 60 * 1000;
-/** Per user, any IP: the backstop against guessing from many addresses. */
-export const MFA_MAX_DAILY_FAILURES_PER_USER = 50;
 /** An enrolment that is not confirmed within this time must be started again. */
 export const MFA_ENROLMENT_TTL_MS = 10 * 60 * 1000;
-
-// --- Rate limiting -------------------------------------------------------------
-
-/**
- * True when the second step is blocked: {@link MFA_MAX_FAILURES_PER_USER_IP}
- * failures for this user from this IP, or {@link MFA_MAX_FAILURES_PER_IP} from
- * this IP for anyone, in {@link MFA_WINDOW_MS}; or
- * {@link MFA_MAX_DAILY_FAILURES_PER_USER} for the user from anywhere in a day.
- * Counts sign-in codes and re-authentication alike.
- *
- * Someone who knows an admin's password can therefore not lock that admin out
- * from another address for more than the daily backstop, and the remedies for
- * a leaked password (a new password via `changePassword`, an admin's password
- * or MFA reset, the break-glass CLI) clear the user's counter
- * ({@link clearMfaAttempts}). An unknown client IP is not treated as one
- * shared address: the IP rules are skipped and the user rule applies alone.
- */
-export async function mfaRateLimited(
-  db: CmsDatabase,
-  userId: string,
-  ip: string,
-): Promise<boolean> {
-  const now = Date.now();
-  const since = new Date(now - MFA_WINDOW_MS);
-  const sinceDay = new Date(now - MFA_DAILY_WINDOW_MS);
-  const knownIp = ip !== '' && ip !== 'unknown';
-  const sameUser = sql`${cmsMfaAttempts.userId} = ${userId}`;
-  const sameIp = knownIp ? sql`${cmsMfaAttempts.ipAddress} = ${ip}` : sql`false`;
-  const recent = sql`${cmsMfaAttempts.attemptedAt} >= ${since}`;
-  const userHere = knownIp ? sql`${sameUser} and ${sameIp}` : sameUser;
-  const [row] = await db
-    .select({
-      userHere: sql<number>`count(*) filter (where ${userHere} and ${recent})::int`,
-      ip: sql<number>`count(*) filter (where ${sameIp} and ${recent})::int`,
-      day: sql<number>`count(*) filter (where ${sameUser})::int`,
-    })
-    .from(cmsMfaAttempts)
-    .where(
-      and(
-        eq(cmsMfaAttempts.successful, false),
-        gte(cmsMfaAttempts.attemptedAt, sinceDay),
-        sql`(${sameUser} OR ${sameIp})`,
-      ),
-    );
-  return (
-    Number(row?.userHere ?? 0) >= MFA_MAX_FAILURES_PER_USER_IP ||
-    Number(row?.ip ?? 0) >= MFA_MAX_FAILURES_PER_IP ||
-    Number(row?.day ?? 0) >= MFA_MAX_DAILY_FAILURES_PER_USER
-  );
-}
-
-/** Forget a user's failed second steps (after a password change or reset, see above). */
-export async function clearMfaAttempts(db: CmsDatabase, userId: string): Promise<void> {
-  await db.delete(cmsMfaAttempts).where(eq(cmsMfaAttempts.userId, userId));
-}
-
-export async function recordMfaAttempt(
-  db: CmsDatabase,
-  userId: string,
-  ip: string,
-  successful: boolean,
-): Promise<void> {
-  await db.insert(cmsMfaAttempts).values({ userId, ipAddress: ip, successful });
-  await db
-    .delete(cmsMfaAttempts)
-    .where(sql`${cmsMfaAttempts.attemptedAt} < now() - interval '1 day'`);
-}
 
 // --- Factors -----------------------------------------------------------------------
 

@@ -731,6 +731,37 @@ Steps:
    each admin screen, the response carries `Content-Security-Policy-Report-Only` with a fresh
    nonce per load, and the console shows **no** `[Report Only] Refused to …` line. Public pages
    carry **no** CSP header (GA4 unaffected). Record the result in the work-block report.
+
+   - [ ] **Clerk on staging (open validation item).** The admin policy is complete only where no
+         Clerk publishable key is set (`docs/admin-csp.md` §6). For staging that was assumed, never
+         checked on the deployment, and the docs disagree: §2 lists no Clerk keys, but
+         `DEPLOYMENT.md` §6 gives Clerk's Development instance to "staging and previews", and a
+         Preview variable without a branch filter reaches the `staging` branch too.
+         `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` alone is enough to mount `ClerkProvider` on every
+         page, `/admin` included. Check:
+     - Vercel → Settings → Environment Variables (names only, never values): is
+       `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` set for Preview (all branches, or branch `staging`)?
+       And for Production?
+     - On `/admin/login` signed out and `/admin` signed in: *View page source* has no `clerk-js`
+       script or preload, DevTools → Network filtered on `clerk` and `challenges.cloudflare.com`
+       shows no request, and no `[Report Only]` line names a Clerk host.
+
+     What the result means:
+     - **No key and nothing from Clerk:** the policy is complete for staging. Record "Clerk: not
+       loaded" with date and deployment URL. If Production does set the key, this result does
+       not cover production: its admin would load Clerk.
+     - **Anything from Clerk** (script, request or report), **or a key listed in Vercel** even if
+       the page shows nothing yet (the deployment predates the variable; the next one loads
+       Clerk): the policy is incomplete and step 4 has not passed, even if Clerk's lines are the
+       only ones. Fix it as `docs/admin-csp.md` §6 recommends (move `ClerkProvider` out of the
+       root layout into the webshop's layouts, on a feature branch), or remove the Clerk keys
+       from staging's scope with Toshoni's go if the shop need not work there, then repeat
+       step 4. Widening the policy for Clerk is the last resort (§6 of that doc).
+
+     Until this item is checked and recorded, enforcement stays **off**: `ADMIN_CSP_MODE` stays
+     `'report-only'` on staging, and on production until the same check passed with production's
+     Clerk configuration.
+
 5. **Switch to enforcement** only after step 4 passed on staging: the one-line change of
    `ADMIN_CSP_MODE` to `'enforce'` in `src/lib/security/admin-csp.ts`, as its own commit through
    the normal branch flow, then repeat step 4 (now nothing may break). Rollback: set it back
@@ -752,7 +783,7 @@ on staging.
 
 ---
 
-## 16. Security release on staging: migrations 0004 → 0005 → 0006 in one rollout
+## 16. Security release on staging: migrations 0004 → 0005 → 0006 → 0007 in one rollout
 
 The order to follow when the security branch (`feat/security-baseline-20261013`: §14 and §15)
 reaches staging after the e-mail service of §13, whether or not 0004 is already on the staging
@@ -772,17 +803,22 @@ after the release gate, production needs Toshoni's go.
    ```
 
    Applies, in this order, whatever the database still lacks: `0004_integration_settings`,
-   `0005_cms_admin_mfa`, `0006_cms_session_limits`. Expect `→ driver: neon-http (<host>)` and
-   `✓ migrations applied to Neon` (the script does not list file names). Check:
-   `cms_integration_settings` and the four `cms_mfa_*` tables exist, and
-   `cms_sessions.mfa_verified_at`, `absolute_expires_at` and `reauthenticated_at` are nullable
-   `timestamptz`. The live build keeps working on the extended schema. (A database that once
+   `0005_cms_admin_mfa`, `0006_cms_session_limits`, `0007_cms_mfa_rate_limits`. Expect
+   `→ driver: neon-http (<host>)` and `✓ migrations applied to Neon` (the script does not list
+   file names). Check: `cms_integration_settings` and the five `cms_mfa_*` tables exist
+   (`cms_mfa_rate_limits` from 0007), the unique index `cms_mfa_challenges_user_id_unique_idx`
+   exists, and `cms_sessions.mfa_verified_at`, `absolute_expires_at` and `reauthenticated_at`
+   are nullable `timestamptz`. 0007's only data change deletes duplicate sign-in challenges
+   (10-minute state), keeping the newest per user. The live build keeps working on the extended
+   schema. (A database that once
    ran the security migrations under their earlier numbers does not get 0004 this way:
    `cms-architecture.md` §2, Migrations.)
 
    **Migrate before deploying:** the security build reads the 0005 tables at sign-in and the
-   0006 columns on every admin request, so without them `/admin/login` and `/admin` break.
-   0004 is safe either way: the e-mail code treats a missing table as "nothing stored".
+   0006 columns on every admin request, so without them `/admin/login` and `/admin` break;
+   without 0007 the admin second step breaks (the challenge upsert needs the unique index, the
+   code limits need `cms_mfa_rate_limits`). 0004 is safe either way: the e-mail code treats a
+   missing table as "nothing stored".
 5. **Deploy** (merge to `staging`, wait for READY). Every existing admin session is refused
    from then on: admins sign in again.
 6. **Admin enrolment, right after the deploy** (Toshoni, `contact@toshoni.be`): password (a

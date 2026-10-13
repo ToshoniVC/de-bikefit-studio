@@ -105,7 +105,9 @@ On every page below:
       the toolbar, not the app. Disable the toolbar for the project (or the
       browser session) before the check, or ignore exactly those lines and
       note it in the report. With enforcement the toolbar does not load on
-      `/admin`, which is intended.
+      `/admin`, which is intended. Reports naming a Clerk host or
+      `challenges.cloudflare.com` are not noise: Clerk is mounted (§6) and
+      the check has failed.
 - [ ] Once per session, *View page source* (Ctrl+U): every `<script` has
       `nonce="…"` equal to the header's. (The Elements panel may show
       `nonce=""`: browsers hide the value from the DOM on purpose;
@@ -178,10 +180,17 @@ or migration is involved either way.
 ## 6. Clerk caveat
 
 `src/app/layout.tsx` wraps the whole app, admin included, in `ClerkProvider`
-whenever `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is set. Staging has no Clerk keys,
-so the admin loads nothing from Clerk and the policy above is complete.
+whenever `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is set (the secret key is not
+needed for that). The policy above is complete only where that key is not set.
+**For staging this is not verified:** the staging env table
+(`staging-runbook.md` §2) lists no Clerk keys, but `DEPLOYMENT.md` §6 gives
+Clerk's Development instance to "staging and previews" (a Preview variable
+without a branch filter reaches the `staging` branch too) and its Production
+instance to production. Open validation item, with what to check and what each
+result means: `staging-runbook.md` §15, step 4. Until it is checked and
+recorded, the policy stays report-only (§4).
 
-If keys are ever set, every admin page renders Clerk's
+Where the key is set, every admin page renders Clerk's
 `<script src="https://<frontend-api>/npm/@clerk/clerk-js…">` (plus a preload)
 without a nonce, which `'strict-dynamic'` reports (and blocks once enforced).
 Clerk's SDK then also needs `connect-src` to its Frontend API host,

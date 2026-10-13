@@ -397,12 +397,15 @@ the footer link **Cookies**).
 ### Mail does not arrive
 
 - Open `/admin/email`: the Status card says what is missing and where each value comes from.
-- No key (neither `RESEND_API_KEY` nor one stored in the admin) → mails are only logged
-  (Vercel → Logs, search `email`). Gift voucher orders then fail visibly ("niet verstuurd"),
-  see § 12.
+- No key (neither `RESEND_API_KEY` nor one stored in the admin) → mails are only logged, one
+  line each with the number of recipients (Vercel → Logs, search `email`). Gift voucher orders
+  then fail visibly ("niet verstuurd"), see § 12.
 - "kan niet meer ontsleuteld worden" → `CMS_SESSION_SECRET` was rotated; paste the key again.
-- *domain is not verified* → finish §6.4; the sender must use that domain.
-- **Testbericht versturen** in `/admin/email` shows Resend's refusal reason (keys redacted).
+- *domain is not verified* (Resend's text, in the Resend dashboard; the site shows only a code
+  such as `HTTP 403: validation_error`) → finish §6.4; the sender must use that domain.
+- **Testbericht versturen** in `/admin/email` shows the HTTP status and Resend's error code
+  (e.g. `HTTP 422: validation_error`), the server log the same. Never Resend's own text: it can
+  echo addresses. Read the full refusal in the Resend dashboard (*Logs*).
 - Check the spam folder and Resend → *Emails* for bounces.
 
 ## 11. GDPR en bewaartermijnen
@@ -497,7 +500,7 @@ them:
 | Bookings (`cms_bookings`: contact details, bike, complaints, address) | 3 years after the customer's **last** appointment | `scripts/cms-retention.mts`, monthly (below) |
 | Booking rate-limit rows (`cms_booking_rate_limit`: IP + e-mail) | 24 hours | pruned on every booking; the script is the backstop |
 | Admin login attempts (`cms_login_attempts`) | pruned on every login | automatic (`src/lib/cms/auth.ts`); the script does not touch it |
-| Admin two-step attempts (`cms_mfa_attempts`: user + IP) and sign-in challenges (`cms_mfa_challenges`) | 1 day / 10 minutes | pruned on every attempt and sign-in (`src/lib/cms/mfa/`); the script does not touch them |
+| Admin two-step code counters (`cms_mfa_rate_limits`: user id and IP in the key, attempt times; the older `cms_mfa_attempts` log is no longer written) and sign-in challenges (`cms_mfa_challenges`) | 1 day / 10 minutes | pruned on every code check and sign-in (`src/lib/cms/mfa/`); the script does not touch them |
 | Server logs (Vercel) | ≤ 30 days | Vercel's log retention for the plan |
 | GA4 | ≤ 14 months | GA4 Admin → Data retention: keep 2 or 14 months, never more |
 | Admin audit log, sessions, content | not personal customer data | never purged by the script |
@@ -650,8 +653,8 @@ without a second mail. The form disables "Bestel nu" while a request is in fligh
 
 **Privacy.** No order is stored on the site; the order exists only in the studio's mailbox.
 Server logs carry no visitor data (`[cadeaubon] aanvraag niet verstuurd (not_configured)`; the
-mail helper logs the subject, which holds only amount and reference, and the masked studio
-address). Server-action argument logging in `next dev` is switched off
+mail helper logs no subject and no address, only the number of recipients, the HTTP status and
+Resend's error code). Server-action argument logging in `next dev` is switched off
 (`logging.serverFunctions: false`), so neither visitor data nor a key typed into
 `/admin/email` reaches a local terminal. The form posts with `method="post"`, so a submit before
 the page has loaded its JavaScript never puts the visitor's data in a URL.

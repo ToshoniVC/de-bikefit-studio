@@ -32,7 +32,8 @@ export async function runMfaReset(input: {
   const { cmsUsers, cmsSessions } = await import('@/db/cms-schema');
   const { cmsMfaChallenges, cmsMfaFactors, cmsMfaRecoveryCodes } =
     await import('@/db/cms-mfa-schema');
-  const { clearMfaAttempts, removeAllFactors } = await import('@/lib/cms/mfa/repo');
+  const { removeAllFactors } = await import('@/lib/cms/mfa/repo');
+  const { clearMfaAttempts } = await import('@/lib/cms/mfa/rate-limit');
   const { hashPassword, validatePasswordStrength } = await import('@/lib/cms/password');
   const { deleteUserMfaChallenges } = await import('@/lib/cms/mfa/challenge');
   const { revokeAllUserSessions } = await import('@/lib/cms/session');

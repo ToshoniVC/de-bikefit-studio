@@ -20,9 +20,9 @@
  *  - `cms_booking_rate_limit`: attempts older than 24 hours are deleted (the
  *    public booking action also prunes these opportunistically).
  *  - Never touched: `cms_audit_log`, `cms_sessions`, `cms_login_attempts`,
- *    the `cms_mfa_*` tables (attempts and challenges prune themselves after a
- *    day / on expiry), users, providers, services, locations and every
- *    content table.
+ *    the `cms_mfa_*` tables (the code-check counters in `cms_mfa_rate_limits`
+ *    and the old attempt log prune themselves after a day, challenges on
+ *    expiry), users, providers, services, locations and every content table.
  *
  * Exit code 0 on a successful dry run or apply, 1 on any error. Nothing is
  * deleted without `--apply`.

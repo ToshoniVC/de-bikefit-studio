@@ -18,21 +18,20 @@ import {
   beginEnrolment,
   fail,
   failedCode,
-  ipOf,
+  holdAttempt,
   issueMfaSession,
   ok,
+  releaseAttempt,
   type EnrolmentDisplay,
   type MfaResult,
 } from './outcome';
+import { clearMfaAttempts } from './rate-limit';
 import { reauthenticate, type Reauthentication } from './reauth';
 import {
-  clearMfaAttempts,
   confirmEnrolment,
   getMfaStatus,
   hasConfirmedFactor,
   listEnrolledUserIds,
-  mfaRateLimited,
-  recordMfaAttempt,
   removeAllFactors,
   replaceRecoveryCodes,
   type MfaStatus,
@@ -84,20 +83,26 @@ export async function confirmFactorReplacement(
 ): Promise<MfaResult<{ recoveryCodes: string[] }>> {
   const { user, sessionId, absoluteExpiresAt } = await requireSession();
   const db = await getCmsDb();
-  if (await mfaRateLimited(db, user.id, ipOf(context))) return fail('rate_limited');
+  const hold = await holdAttempt(db, user.id, context);
+  if (!hold.ok) return fail(hold.error);
   let result;
   try {
     result = await confirmEnrolment(db, user.id, `session:${sessionId}`, code);
   } catch (error) {
-    if (error instanceof MfaConfigError) return fail('not_configured');
+    if (error instanceof MfaConfigError) {
+      await releaseAttempt(db, hold.held);
+      return fail('not_configured');
+    }
     throw error;
   }
   if (!result.ok) {
-    if (result.reason === 'no_enrolment')
+    if (result.reason === 'no_enrolment') {
+      await releaseAttempt(db, hold.held);
       return fail('not_allowed', 'Start het vervangen opnieuw.');
-    return failedCode(db, user, context, 'replace', result.reason);
+    }
+    return failedCode(db, user, 'replace', result.reason, hold.held);
   }
-  await recordMfaAttempt(db, user.id, ipOf(context), true);
+  await releaseAttempt(db, hold.held);
   await revokeAllUserSessions(db, user.id);
   await deleteUserMfaChallenges(db, user.id);
   // The replacement session keeps this one's absolute end and step-up time.

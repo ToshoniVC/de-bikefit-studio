@@ -77,11 +77,13 @@ describe('deliverGiftVoucherOrder', () => {
     expect(sent.has(order.requestId)).toBe(true);
   });
 
+  // The reasons `sendEmail()` returns (`src/lib/email/send.ts`).
   it.each([
     'not_configured',
     'missing_from',
     'HTTP 403',
-    'The operation was aborted due to timeout',
+    'HTTP 422: validation_error',
+    'request_failed: TimeoutError',
   ])('a skipped or failed send (%s) is "not sent", never success', async (reason) => {
     const { deps, sent, log } = setup({ sent: false, reason });
     const result = await deliverGiftVoucherOrder(order, deps);

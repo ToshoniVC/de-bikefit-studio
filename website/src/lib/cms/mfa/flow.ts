@@ -10,8 +10,10 @@ import {
   clearChallengeCookie,
   consumeMfaChallenge,
   readChallengeCookie,
-  recordChallengeFailure,
+  releaseChallengeAttempt,
+  reserveChallengeAttempt,
   resolveMfaChallenge,
+  settleChallengeFailure,
   type ResolvedChallenge,
 } from './challenge';
 import { mfaConfigured, MfaConfigError } from './crypto';
@@ -19,20 +21,15 @@ import {
   beginEnrolment,
   fail,
   failedCode,
-  ipOf,
+  holdAttempt,
   issueMfaSession,
   ok,
+  releaseAttempt,
   type EnrolmentDisplay,
   type MfaResult,
 } from './outcome';
-import {
-  clearMfaAttempts,
-  confirmEnrolment,
-  hasConfirmedFactor,
-  mfaRateLimited,
-  recordMfaAttempt,
-  verifySecondFactor,
-} from './repo';
+import { clearMfaAttempts, releaseMfaAttempt } from './rate-limit';
+import { confirmEnrolment, hasConfirmedFactor, verifySecondFactor } from './repo';
 
 /**
  * Request-scope MFA flows: what `/admin/mfa`, `/admin/account` and
@@ -53,9 +50,14 @@ import {
  *   user's MFA ({@link adminResetUserMfa}); with no admin left, an operator
  *   with database access runs `npm run cms:mfa-reset`.
  *
- * Every factor change revokes the user's sessions; every success and failure
- * is rate limited (`./repo.ts`) and audited. No secret, code or token is
- * logged; the enrolment secret leaves the server once, in the action response.
+ * Every factor change revokes the user's sessions. Every code check is
+ * RESERVED against the per-user/IP, IP and daily limits (`./rate-limit.ts`)
+ * and, inside a challenge, against the challenge's own slots
+ * (`./challenge.ts`) before the code is looked at, so parallel requests can
+ * never check more codes than the limits allow; a success or a result that
+ * says nothing about the code gives the reservation back, and every failure
+ * is audited. No secret, code or token is logged; the enrolment secret leaves
+ * the server once, in the action response.
  */
 
 // ---------------------------------------------------------------------------
@@ -120,11 +122,24 @@ export async function challengeChangePassword(input: {
     .where(eq(cmsUsers.id, challenge.user.id))
     .limit(1);
   if (!row) return fail('expired');
-  if (!(await verifyPassword(input.currentPassword, row.passwordHash))) {
-    return (await recordChallengeFailure(db, challenge.id))
+  // A wrong password uses up a challenge slot, reserved before the check so
+  // parallel guesses cannot take more than the challenge allows.
+  const slot = await reserveChallengeAttempt(db, challenge.id);
+  if (slot === null) return fail('expired');
+  let passwordOk: boolean;
+  try {
+    passwordOk = await verifyPassword(input.currentPassword, row.passwordHash);
+  } catch (error) {
+    // A busy or failing hasher says nothing about the password: not counted.
+    await releaseChallengeAttempt(db, challenge.id);
+    throw error;
+  }
+  if (!passwordOk) {
+    return (await settleChallengeFailure(db, challenge.id, slot))
       ? fail('invalid_password')
       : fail('expired');
   }
+  await releaseChallengeAttempt(db, challenge.id);
   const weak = validatePasswordStrength(input.newPassword);
   if (weak) return fail('weak_password', weak);
 
@@ -175,23 +190,30 @@ export async function challengeConfirmEnrolment(
   const { challenge, enrolled } = current;
   const user = challenge.user;
   if (challengeStep(user, enrolled) !== 'enrol') return fail('not_allowed');
-  if (await mfaRateLimited(db, user.id, ipOf(context))) return fail('rate_limited');
+  const hold = await holdAttempt(db, user.id, context, challenge.id);
+  if (!hold.ok) return fail(hold.error);
 
   let result;
   try {
     result = await confirmEnrolment(db, user.id, `challenge:${challenge.id}`, code);
   } catch (error) {
-    if (error instanceof MfaConfigError) return fail('not_configured');
+    if (error instanceof MfaConfigError) {
+      await releaseAttempt(db, hold.held);
+      return fail('not_configured');
+    }
     throw error;
   }
   if (!result.ok) {
-    if (result.reason === 'no_enrolment')
+    if (result.reason === 'no_enrolment') {
+      await releaseAttempt(db, hold.held);
       return fail('not_allowed', 'Start het instellen opnieuw.');
-    return failedCode(db, user, context, 'enrol', result.reason, challenge.id);
+    }
+    return failedCode(db, user, 'enrol', result.reason, hold.held);
   }
 
+  // A success does not count; the challenge itself is used up below.
+  await releaseMfaAttempt(db, hold.held.reservation);
   if (!(await consumeMfaChallenge(db, challenge.id))) return fail('expired');
-  await recordMfaAttempt(db, user.id, ipOf(context), true);
   await revokeAllUserSessions(db, user.id);
   await issueMfaSession(db, user.id, context);
   await recordAudit(db, user, {
@@ -213,19 +235,24 @@ export async function challengeVerify(
   const { challenge, enrolled } = current;
   const user = challenge.user;
   if (challengeStep(user, enrolled) !== 'verify') return fail('not_allowed');
-  if (await mfaRateLimited(db, user.id, ipOf(context))) return fail('rate_limited');
+  const hold = await holdAttempt(db, user.id, context, challenge.id);
+  if (!hold.ok) return fail(hold.error);
 
   let result;
   try {
     result = await verifySecondFactor(db, user.id, code);
   } catch (error) {
-    if (error instanceof MfaConfigError) return fail('not_configured');
+    if (error instanceof MfaConfigError) {
+      await releaseAttempt(db, hold.held);
+      return fail('not_configured');
+    }
     throw error;
   }
-  if (!result.ok) return failedCode(db, user, context, 'sign_in', result.reason, challenge.id);
+  if (!result.ok) return failedCode(db, user, 'sign_in', result.reason, hold.held);
 
+  // A success does not count; the challenge itself is used up below.
+  await releaseMfaAttempt(db, hold.held.reservation);
   if (!(await consumeMfaChallenge(db, challenge.id))) return fail('expired');
-  await recordMfaAttempt(db, user.id, ipOf(context), true);
   await issueMfaSession(db, user.id, context);
   await recordAudit(db, user, {
     action: 'auth.mfa_verify',

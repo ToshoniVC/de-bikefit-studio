@@ -231,4 +231,24 @@ describe('logs, audit and messages', () => {
     expect(provider).toMatch(/^Niet verstuurd: de e-maildienst weigerde/);
     expect(provider).not.toContain(KEY);
   });
+
+  it('maps the reasons sendEmail() returns to the same codes and messages as before', () => {
+    expect(sendFailureCode('no_recipient')).toBe('no_recipient');
+    expect(describeSendFailure('no_recipient')).toMatch(/geen ontvanger/);
+    // Refusals and requests without a response: one provider code, one Dutch
+    // message that names the status, Resend's error code or the error name.
+    for (const reason of [
+      'HTTP 422: validation_error',
+      'HTTP 403',
+      'HTTP 500',
+      'request_failed: TimeoutError',
+      'request_failed: TypeError',
+      'request_failed: unknown',
+    ]) {
+      expect(sendFailureCode(reason), reason).toBe('provider_error');
+      expect(describeSendFailure(reason), reason).toBe(
+        `Niet verstuurd: de e-maildienst weigerde het bericht of was niet bereikbaar (${reason}).`,
+      );
+    }
+  });
 });

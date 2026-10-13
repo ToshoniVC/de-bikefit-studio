@@ -13,11 +13,13 @@ import {
   clearChallengeCookie,
   createMfaChallenge,
   deleteMfaChallenge,
+  deleteUserMfaChallenges,
   readChallengeCookie,
   resolveMfaChallenge,
   setChallengeCookie,
 } from './mfa/challenge';
-import { clearMfaAttempts, hasConfirmedFactor } from './mfa/repo';
+import { clearMfaAttempts } from './mfa/rate-limit';
+import { hasConfirmedFactor } from './mfa/repo';
 import type { CmsPermission } from './permissions';
 import {
   hashPassword,
@@ -466,10 +468,11 @@ export async function changePassword(input: ChangePasswordInput): Promise<AuthRe
     })
     .where(eq(cmsUsers.id, row.id));
 
-  // Invalidate everything, including this browser, then re-issue. A new
-  // password also ends any lock-out someone caused by guessing codes.
+  // Invalidate everything, including this browser, then re-issue. A new password also ends a
+  // lock-out someone caused by guessing codes, and any sign-in challenge of the old password.
   await revokeAllUserSessions(db, row.id);
   await clearMfaAttempts(db, row.id);
+  await deleteUserMfaChallenges(db, row.id);
   const session = await createSession(
     db,
     row.id,

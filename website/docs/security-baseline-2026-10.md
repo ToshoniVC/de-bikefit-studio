@@ -10,11 +10,13 @@ patched, and the disposition of everything that remains. Re-check with
 | --- | --- | --- | --- |
 | `next` | 16.2.7 | 16.4.0 | Critical advisory batch against ≤ 16.3.7: unauthenticated RCE in the Image Optimization API (AVIF) and `next/og` (GHSA-2xp9-vwfh-vxw4, GHSA-vcvr-r3jv-pc5j), SSRF in server actions/rewrites/image optimizer, SSG/ISR cache poisoning, middleware bypass, server-action DoS. |
 | `eslint-config-next` | 16.2.7 | 16.4.0 | Kept in lockstep with `next`, as required. |
-| `sharp`, `postcss` (under `next`) | vulnerable | 0.35.5 / 8.5.28 | Pulled in by the `next` upgrade; clears the libvips/libheif CVEs and the PostCSS sourceMappingURL file-read advisories. |
+| `sharp`, `postcss` (under `next`) | vulnerable | 0.35.5 / 8.5.23 | Pulled in by the `next` upgrade (`next@16.4.0` pins `postcss` to exactly 8.5.23); clears the libvips/libheif CVEs and the PostCSS sourceMappingURL file-read advisories (see _PostCSS versions_ below). |
 | `shadcn` | runtime dependency | development dependency | Its Tailwind stylesheet is consumed at build time; the CLI and vulnerable transitive glob tooling are not needed in the production install. |
 | ~20 transitive packages | various | via `npm audit fix` | Semver-compatible fixes, notably **critical** `proxy-addr` IP spoofing (GHSA-jqcg-44mw-7w3h — relevant because login/booking rate limiting keys on client IP), `qs`, `body-parser`, `brace-expansion`, `source-map-js`, `@hono/node-server`, `@modelcontextprotocol/sdk`, `baseline-browser-mapping`. |
 
 Result: **30 vulnerabilities (2 critical / 18 high) → 15 (0 critical / 9 high / 6 moderate)** across development and production dependencies. `npm audit --omit=dev` reports **0 findings** after moving the build-only `shadcn` package to development dependencies. This is package classification, not a fix for its open advisories; CI and build hosts still install the full dependency set.
+
+**PostCSS versions** (checked 2026-10-13 with `npm ls postcss --all`, `package-lock.json` and `npm audit`). Two copies are installed: `node_modules/next/node_modules/postcss` **8.5.23**, pinned exactly by `next@16.4.0`, and the hoisted `node_modules/postcss` **8.5.28**, used by `sanitize-html` at runtime and by `@tailwindcss/postcss`, `vite` and `shadcn` at build and dev time. The sourceMappingURL advisories are GHSA-6g55-p6wh-862q (≤ 8.5.11), GHSA-r28c-9q8g-f849 (≤ 8.5.17) and its incomplete-fix follow-up GHSA-fxqj-rqcc-2cmp (≤ 8.5.22), so 8.5.23 is the first release outside all three; the older GHSA-7fh5-64p2-3v2j (< 8.4.31) and GHSA-qx2v-qp2m-jg93 (< 8.5.10) do not apply either. `npm audit` and `npm audit --omit=dev` report no `postcss` finding for either copy. The ranges are those of the npm advisory database on that date (queried with `npm audit` on a scratch lockfile listing postcss versions); re-check after every `next` upgrade, because `next` pins its own copy.
 
 ## Accepted (open) advisories
 

@@ -16,8 +16,15 @@ import {
   removeOwnFactor,
   startFactorReplacement,
 } from '@/lib/cms/mfa/manage';
-import type { EnrolmentDisplay } from '@/lib/cms/mfa/outcome';
+import { fail, type EnrolmentDisplay } from '@/lib/cms/mfa/outcome';
 import { confirmIdentity } from '@/lib/cms/mfa/reauth';
+import {
+  challengePasswordForm,
+  mfaCodeForm,
+  parseForm,
+  reauthForm,
+  resetUserMfaForm,
+} from './mfa-input';
 import { requestContext, safeAdminPath } from './request';
 import { runAction } from './run';
 import { actionError, actionOk, field, type ActionState } from './state';
@@ -28,6 +35,10 @@ import { actionError, actionOk, field, type ActionState } from './state';
  * the `cms_mfa` cookie) and `manage.ts` (signed-in, with re-authentication),
  * so a direct POST gets exactly the same checks as the form. Next's
  * Origin/Host check covers cross-site posts.
+ *
+ * Every field is shape-checked first (`./mfa-input.ts`): an oversized or
+ * non-text value gets the form's usual message, with no database work and no
+ * attempt counted.
  *
  * The enrolment secret and the recovery codes travel to the browser once, in
  * `payload` of the response. They never go into a URL, a log line or the
@@ -47,14 +58,10 @@ function codesPayload(codes: string[]): Record<string, string> {
   return { recoveryCodes: codes.join('\n') };
 }
 
-/** One field takes a six-digit code or a recovery code. */
-function codeField(form: FormData): string {
-  return String(form.get('code') ?? '').slice(0, 64);
-}
-
-function reauthFields(form: FormData) {
-  return { password: String(form.get('password') ?? ''), code: codeField(form) };
-}
+/** The usual answer to a code that does not fit: the same as for a wrong one. */
+const INVALID_CODE = fail('invalid_code').message;
+/** One generic answer for a password or code that does not fit, as for a wrong one. */
+const INVALID_REAUTH = fail('reauth_failed').message;
 
 // --- Sign-in challenge (/admin/mfa) -----------------------------------------
 
@@ -63,9 +70,13 @@ export async function mfaChangePasswordAction(
   form: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const currentPassword = String(form.get('currentPassword') ?? '');
-    const newPassword = String(form.get('newPassword') ?? '');
-    const repeatPassword = String(form.get('repeatPassword') ?? '');
+    const input = parseForm(challengePasswordForm, form);
+    if (!input.ok) {
+      return actionError(
+        fail(input.field === 'currentPassword' ? 'invalid_password' : 'weak_password').message,
+      );
+    }
+    const { currentPassword, newPassword, repeatPassword } = input.data;
     const next = safeAdminPath(field(form, 'next'));
 
     if (!currentPassword || !newPassword) return actionError('Vul alle velden in.');
@@ -95,9 +106,10 @@ export async function mfaConfirmEnrolmentAction(
   form: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const code = codeField(form);
-    if (!code.trim()) return actionError('Vul de code uit je app in.');
-    const result = await challengeConfirmEnrolment(code, await requestContext());
+    const input = parseForm(mfaCodeForm, form);
+    if (!input.ok) return actionError(INVALID_CODE);
+    if (!input.data.code) return actionError('Vul de code uit je app in.');
+    const result = await challengeConfirmEnrolment(input.data.code, await requestContext());
     if (!result.ok) return actionError(result.message);
     return actionOk(
       'Tweestapsverificatie is ingesteld. Bewaar je herstelcodes nu.',
@@ -111,10 +123,11 @@ export async function mfaVerifyAction(
   form: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const code = codeField(form);
+    const input = parseForm(mfaCodeForm, form);
     const next = safeAdminPath(field(form, 'next'));
-    if (!code.trim()) return actionError('Vul de code uit je app of een herstelcode in.');
-    const result = await challengeVerify(code, await requestContext());
+    if (!input.ok) return actionError(INVALID_CODE);
+    if (!input.data.code) return actionError('Vul de code uit je app of een herstelcode in.');
+    const result = await challengeVerify(input.data.code, await requestContext());
     if (!result.ok) return actionError(result.message);
     // A recovery code was spent: show what is left and how to make new ones.
     redirect(result.data.method === 'recovery' ? '/admin/account?herstelcode=gebruikt' : next);
@@ -139,7 +152,9 @@ export async function confirmIdentityAction(
   form: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const result = await confirmIdentity(reauthFields(form), await requestContext());
+    const input = parseForm(reauthForm, form);
+    if (!input.ok) return actionError(INVALID_REAUTH);
+    const result = await confirmIdentity(input.data, await requestContext());
     if (!result.ok) return actionError(result.message);
     refresh();
     const until = result.data.until.toLocaleTimeString('nl-BE', {
@@ -156,7 +171,9 @@ export async function mfaStartReplacementAction(
   form: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const result = await startFactorReplacement(reauthFields(form), await requestContext());
+    const input = parseForm(reauthForm, form);
+    if (!input.ok) return actionError(INVALID_REAUTH);
+    const result = await startFactorReplacement(input.data, await requestContext());
     if (!result.ok) return actionError(result.message);
     return actionOk(
       'Scan de QR-code met je nieuwe authenticator. Je huidige blijft werken tot je bevestigt.',
@@ -170,9 +187,10 @@ export async function mfaConfirmReplacementAction(
   form: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const code = codeField(form);
-    if (!code.trim()) return actionError('Vul de code uit je nieuwe app in.');
-    const result = await confirmFactorReplacement(code, await requestContext());
+    const input = parseForm(mfaCodeForm, form);
+    if (!input.ok) return actionError(INVALID_CODE);
+    if (!input.data.code) return actionError('Vul de code uit je nieuwe app in.');
+    const result = await confirmFactorReplacement(input.data.code, await requestContext());
     if (!result.ok) return actionError(result.message);
     return actionOk(
       'Je nieuwe authenticator is actief. Alle andere sessies zijn afgemeld. Bewaar je nieuwe herstelcodes.',
@@ -186,7 +204,9 @@ export async function mfaRegenerateRecoveryCodesAction(
   form: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const result = await regenerateRecoveryCodes(reauthFields(form), await requestContext());
+    const input = parseForm(reauthForm, form);
+    if (!input.ok) return actionError(INVALID_REAUTH);
+    const result = await regenerateRecoveryCodes(input.data, await requestContext());
     if (!result.ok) return actionError(result.message);
     revalidatePath('/admin/account');
     return actionOk(
@@ -201,7 +221,9 @@ export async function mfaRemoveOwnFactorAction(
   form: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const result = await removeOwnFactor(reauthFields(form), await requestContext());
+    const input = parseForm(reauthForm, form);
+    if (!input.ok) return actionError(INVALID_REAUTH);
+    const result = await removeOwnFactor(input.data, await requestContext());
     if (!result.ok) return actionError(result.message);
     revalidatePath('/admin/account');
     return actionOk('Tweestapsverificatie is uitgeschakeld. Andere sessies zijn afgemeld.');
@@ -215,9 +237,13 @@ export async function adminResetUserMfaAction(
   form: FormData,
 ): Promise<ActionState> {
   return runAction(async () => {
-    const userId = field(form, 'userId');
+    const input = parseForm(resetUserMfaForm, form);
+    if (!input.ok) {
+      return actionError(input.field === 'userId' ? 'Kies een gebruiker.' : INVALID_REAUTH);
+    }
+    const { userId, password, code } = input.data;
     if (!userId) return actionError('Kies een gebruiker.');
-    const result = await adminResetUserMfa(userId, reauthFields(form), await requestContext());
+    const result = await adminResetUserMfa(userId, { password, code }, await requestContext());
     if (!result.ok) return actionError(result.message);
     revalidatePath('/admin/users');
     return actionOk(

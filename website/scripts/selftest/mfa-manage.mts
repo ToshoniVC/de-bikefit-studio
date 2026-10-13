@@ -225,18 +225,15 @@ export async function managementChecks(
     `${selfReset} / ${badReset}`,
   );
   // Someone holding the old password locked the colleague out (daily backstop).
-  await kit.db.insert(kit.cmsMfaAttempts).values(
-    Array.from({ length: 50 }, (_, i) => ({
-      userId: secondId,
-      ipAddress: `10.40.0.${i}`,
-      successful: false,
-    })),
+  await kit.failFrom(
+    secondId,
+    Array.from({ length: 50 }, (_, i) => `10.40.0.${i}`),
   );
-  const lockedBefore = await repo.mfaRateLimited(db, secondId, '10.50.0.1');
+  const lockedBefore = await kit.limited(secondId, '10.50.0.1');
   const reset = await manage.adminResetUserMfa(secondId, { password, code: codes3[1] }, CTX);
   check(
-    'break-glass also lifts a lock-out caused by guessing (attempt log of the user cleared)',
-    lockedBefore && !(await repo.mfaRateLimited(db, secondId, '10.50.0.1')),
+    'break-glass also lifts a lock-out caused by guessing (counters of the user cleared)',
+    lockedBefore && !(await kit.limited(secondId, '10.50.0.1')),
   );
   const [secondRow] = await db.select().from(cmsUsers).where(eq(cmsUsers.id, secondId));
   check(

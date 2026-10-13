@@ -129,8 +129,9 @@ Three layers, all in CI ([`../CLAUDE.md`](../CLAUDE.md) §5):
 1. **Unit** — `npm test`. vitest, `*.test.ts` next to the module. Pure modules only: no
    database, no network, no Next runtime. Every bug fix starts with a failing test.
 2. **Integration** — `npm run cms:selftest`. Migrations, schema, passwords, sessions,
-   admin two-step verification (sign-in, replay, rate limits, recovery, break-glass), admin
-   session limits and step-up, permissions, block registry, publish, the booking schema, the
+   admin two-step verification (sign-in, replay, rate limits, recovery, break-glass, and the
+   same under parallel requests), admin session limits and step-up, permissions, block
+   registry, publish, the booking schema, the
    provider role, `computeSlots()`, e-mail/ICS/token encryption, the full booking flow, the
    offer rollout with service preselection, the content patches (booking CTA, page cleanup,
    gift voucher) and the e-mail service in `/admin/email`, on a throwaway PGlite. Section list

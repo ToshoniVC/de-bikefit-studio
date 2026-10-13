@@ -2,7 +2,8 @@ import { desc, eq } from 'drizzle-orm';
 import { getCmsDb } from '@/db/cms';
 import { cmsUsers, type CmsRole, type CmsUserPublic } from '@/db/cms-schema';
 import { authFail, normalizeEmail, recordAudit, requireCmsUser, type AuthResult } from './auth';
-import { clearMfaAttempts } from './mfa/repo';
+import { deleteUserMfaChallenges } from './mfa/challenge';
+import { clearMfaAttempts } from './mfa/rate-limit';
 import { generateTemporaryPassword, hashPassword, validatePasswordStrength } from './password';
 import { revokeAllUserSessions, toPublicUser } from './session';
 
@@ -66,7 +67,11 @@ export async function createUser(input: CreateUserInput): Promise<AuthResult<Cre
   return { ok: true, data: { user: toPublicUser(row), temporaryPassword: generated } };
 }
 
-/** Admin-only. Resets another user's password to a fresh temporary one. */
+/**
+ * Admin-only. Resets another user's password to a fresh temporary one, and
+ * ends what the old password opened: sessions, a lock-out from guessed codes,
+ * and a sign-in challenge still waiting for its code.
+ */
 export async function resetUserPassword(userId: string): Promise<AuthResult<string>> {
   const actor = await requireCmsUser('admin', { recentReauthentication: true });
   const db = await getCmsDb();
@@ -89,6 +94,7 @@ export async function resetUserPassword(userId: string): Promise<AuthResult<stri
     .where(eq(cmsUsers.id, userId));
   await revokeAllUserSessions(db, userId);
   await clearMfaAttempts(db, userId);
+  await deleteUserMfaChallenges(db, userId);
 
   await recordAudit(db, actor, {
     action: 'user.password_reset',

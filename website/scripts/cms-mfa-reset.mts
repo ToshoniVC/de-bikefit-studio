@@ -7,8 +7,8 @@
  *   npm run cms:mfa-reset -- --email <address> --apply --expect-host <host>
  *
  * With --apply it deletes the user's authenticators, recovery codes and
- * sign-in challenges, revokes every session, clears their failed-attempt log
- * and writes an audit entry (`auth.mfa_break_glass`, actor "cli"). It prints
+ * sign-in challenges, revokes every session, clears their code-check counters
+ * (rate limits) and writes an audit entry (`auth.mfa_break_glass`, actor "cli"). It prints
  * no secret. Recommended: pass a new temporary password inline,
  *
  *   CMS_BREAK_GLASS_PASSWORD='…' npm run cms:mfa-reset -- --email <address> --apply …

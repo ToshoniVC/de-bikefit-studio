@@ -45,7 +45,7 @@ export async function sessionLimitsSection(ctx: {
 
   const { and, eq, sql } = await import('drizzle-orm');
   const { cmsAuditLog, cmsLoginAttempts, cmsSessions, cmsUsers } = await import('@/db/cms-schema');
-  const { cmsMfaAttempts } = await import('@/db/cms-mfa-schema');
+  const { cmsMfaRateLimits } = await import('@/db/cms-mfa-schema');
   const auth = await import('@/lib/cms/auth');
   const users = await import('@/lib/cms/users');
   const { confirmIdentity } = await import('@/lib/cms/mfa/reauth');
@@ -74,7 +74,7 @@ export async function sessionLimitsSection(ctx: {
       .where(and(eq(cmsAuditLog.action, action), eq(cmsAuditLog.entityId, admin.id)));
   /** Test-only: stands for the 15-minute rate-limit windows passing. */
   const clearAttempts = async () => {
-    await db.delete(cmsMfaAttempts);
+    await db.delete(cmsMfaRateLimits);
     await db.delete(cmsLoginAttempts);
   };
   const near = (a: Date | null | undefined, b: number, slackMs = 5_000) =>
