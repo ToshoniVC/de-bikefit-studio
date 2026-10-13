@@ -27,7 +27,7 @@ export type CreatedUser = { user: CmsUserPublic; temporaryPassword: string | nul
  * returned `temporaryPassword` is the only time the plaintext is available.
  */
 export async function createUser(input: CreateUserInput): Promise<AuthResult<CreatedUser>> {
-  const actor = await requireCmsUser('admin');
+  const actor = await requireCmsUser('admin', { recentReauthentication: true });
   const db = await getCmsDb();
   const email = normalizeEmail(input.email);
 
@@ -68,7 +68,7 @@ export async function createUser(input: CreateUserInput): Promise<AuthResult<Cre
 
 /** Admin-only. Resets another user's password to a fresh temporary one. */
 export async function resetUserPassword(userId: string): Promise<AuthResult<string>> {
-  const actor = await requireCmsUser('admin');
+  const actor = await requireCmsUser('admin', { recentReauthentication: true });
   const db = await getCmsDb();
 
   const [row] = await db
@@ -104,7 +104,7 @@ export async function resetUserPassword(userId: string): Promise<AuthResult<stri
  * Admins cannot deactivate or demote themselves (prevents lock-out).
  */
 export async function setUserActive(userId: string, isActive: boolean): Promise<AuthResult<true>> {
-  const actor = await requireCmsUser('admin');
+  const actor = await requireCmsUser('admin', { recentReauthentication: true });
   if (actor.id === userId && !isActive) {
     return authFail('forbidden', 'Je kan je eigen account niet deactiveren.');
   }
@@ -122,7 +122,7 @@ export async function setUserActive(userId: string, isActive: boolean): Promise<
 }
 
 export async function setUserRole(userId: string, role: CmsRole): Promise<AuthResult<true>> {
-  const actor = await requireCmsUser('admin');
+  const actor = await requireCmsUser('admin', { recentReauthentication: true });
   if (actor.id === userId && role !== 'admin') {
     return authFail('forbidden', 'Je kan je eigen beheerdersrol niet afnemen.');
   }

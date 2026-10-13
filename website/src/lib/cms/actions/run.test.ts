@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CmsAuthError, type CmsAuthErrorCode } from '@/lib/cms/guard';
+import { PasswordHasherBusyError } from '@/lib/cms/password';
 import { runAction } from './run';
 import { actionOk } from './state';
 
@@ -29,6 +30,8 @@ describe('runAction', () => {
       password_change_required:
         'Je gebruikt nog een tijdelijk wachtwoord. Kies eerst een nieuw wachtwoord.',
       forbidden: 'Je hebt geen toestemming voor deze actie.',
+      reauth_required:
+        'Bevestig eerst je identiteit (wachtwoord en code) en probeer het dan opnieuw.',
     };
     for (const [code, message] of Object.entries(expected) as Array<[CmsAuthErrorCode, string]>) {
       await expect(failWith(new CmsAuthError(code))(), code).resolves.toEqual({
@@ -51,6 +54,15 @@ describe('runAction', () => {
       ok: false,
       message: 'Je hebt geen toestemming voor deze actie.',
     });
+  });
+
+  it('answers "try again" to a full password hasher, without logging it as a failure', async () => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(failWith(new PasswordHasherBusyError())()).resolves.toEqual({
+      ok: false,
+      message: 'Het is even druk. Probeer het over een minuut opnieuw.',
+    });
+    expect(log).not.toHaveBeenCalled();
   });
 
   it('logs other failures with a prefix and shows a generic message', async () => {

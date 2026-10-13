@@ -3,10 +3,13 @@ import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { SectionCard } from '@/components/admin/form';
 import { MfaAccountPanel } from '@/components/admin/mfa/account-panel';
+import { StepUpPanel } from '@/components/admin/mfa/step-up';
 import { PasswordForm } from '@/components/admin/password-form';
 import { PageHeading } from '@/components/admin/shell';
 import { requireCmsUser } from '@/lib/cms/auth';
+import { roleRequiresMfa } from '@/lib/cms/guard';
 import { getOwnMfaStatus } from '@/lib/cms/mfa/manage';
+import { getStepUpStatus } from '@/lib/cms/mfa/reauth';
 import { ROLE_LABELS } from '@/lib/cms/permissions';
 
 export const metadata = { title: 'Mijn account' };
@@ -18,6 +21,8 @@ export default async function AdminAccountPage({
 }) {
   const user = await requireCmsUser();
   const mfa = await getOwnMfaStatus();
+  // Admins change their password only after a recent step-up (server-enforced).
+  const stepUp = roleRequiresMfa(user.role) ? await getStepUpStatus() : null;
   const { herstelcode } = await searchParams;
 
   return (
@@ -57,6 +62,15 @@ export default async function AdminAccountPage({
           title="Wachtwoord wijzigen"
           description="Na het wijzigen worden alle andere sessies afgemeld."
         >
+          {stepUp ? (
+            <div className="mb-4">
+              <StepUpPanel
+                until={stepUp.until ? stepUp.until.toISOString() : null}
+                needsCode={stepUp.needsCode}
+                what="je wachtwoord wijzigen"
+              />
+            </div>
+          ) : null}
           <PasswordForm />
         </SectionCard>
 

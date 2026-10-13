@@ -7,6 +7,8 @@ import {
   cmsAccessDenial,
   type CmsAuthErrorCode,
   type CmsGuardSubject,
+  REAUTH_WINDOW_MS,
+  reauthenticationIsRecent,
   roleRequiresMfa,
 } from './guard';
 import { CMS_PERMISSIONS, can, roleAtLeast } from './permissions';
@@ -201,6 +203,56 @@ describe('cmsAccessDenial: no user', () => {
       expect(cmsAccessDenial(nobody, { role: 'provider' })).toBe('unauthenticated');
       expect(cmsAccessDenial(nobody, { permission: 'service.read' })).toBe('unauthenticated');
     }
+  });
+});
+
+describe('cmsAccessDenial: recent re-authentication for sensitive changes', () => {
+  const NOW = new Date('2026-10-13T12:00:00Z');
+  const ago = (ms: number) => new Date(NOW.getTime() - ms);
+  const stepped = (role: CmsRole, at: Date | null | undefined): CmsGuardSubject => ({
+    ...user(role, false),
+    reauthenticatedAt: at,
+  });
+  const SENSITIVE = { role: 'admin' as const, recentReauthentication: true };
+
+  it('needs a full authentication within the last 5 minutes, boundary included', () => {
+    expect(REAUTH_WINDOW_MS).toBe(5 * 60 * 1000);
+    expect(cmsAccessDenial(stepped('admin', ago(0)), SENSITIVE, NOW)).toBeNull();
+    expect(cmsAccessDenial(stepped('admin', ago(REAUTH_WINDOW_MS)), SENSITIVE, NOW)).toBeNull();
+    expect(cmsAccessDenial(stepped('admin', ago(REAUTH_WINDOW_MS + 1)), SENSITIVE, NOW)).toBe(
+      'reauth_required',
+    );
+  });
+
+  it('fails closed on a missing, odd or future stamp', () => {
+    for (const at of [null, undefined, ago(-10 * 60 * 1000)]) {
+      expect(cmsAccessDenial(stepped('admin', at), SENSITIVE, NOW), String(at)).toBe(
+        'reauth_required',
+      );
+    }
+    const odd = {
+      ...user('admin', false),
+      reauthenticatedAt: 'gisteren',
+    } as unknown as CmsGuardSubject;
+    expect(cmsAccessDenial(odd, SENSITIVE, NOW)).toBe('reauth_required');
+    // A few seconds of clock difference between instances is tolerated.
+    expect(reauthenticationIsRecent(ago(-5_000), NOW)).toBe(true);
+  });
+
+  it('comes after MFA, the temporary password and the role', () => {
+    const noMfa = { ...stepped('admin', null), mfaVerified: false };
+    expect(cmsAccessDenial(noMfa, SENSITIVE, NOW)).toBe('mfa_required');
+    const temporary = { ...stepped('admin', null), mustChangePassword: true };
+    expect(cmsAccessDenial(temporary, SENSITIVE, NOW)).toBe('password_change_required');
+    expect(cmsAccessDenial(temporary, { ...SENSITIVE, allowMustChangePassword: true }, NOW)).toBe(
+      'reauth_required',
+    );
+    expect(cmsAccessDenial(stepped('editor', ago(0)), SENSITIVE, NOW)).toBe('forbidden');
+  });
+
+  it('is only asked where the call site asks for it', () => {
+    expect(cmsAccessDenial(stepped('admin', null), { role: 'admin' }, NOW)).toBeNull();
+    expect(cmsAccessDenial(stepped('admin', null), { permission: 'user.manage' }, NOW)).toBeNull();
   });
 });
 

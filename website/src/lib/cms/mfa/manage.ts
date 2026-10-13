@@ -1,10 +1,10 @@
 import 'server-only';
 import { eq } from 'drizzle-orm';
-import { getCmsDb, type CmsDatabase } from '@/db/cms';
-import { cmsUsers, type CmsUserPublic } from '@/db/cms-schema';
+import { getCmsDb } from '@/db/cms';
+import { cmsUsers } from '@/db/cms-schema';
 import { getCurrentCmsSession, recordAudit, requireCmsUser } from '../auth';
 import { roleRequiresMfa } from '../guard';
-import { generateTemporaryPassword, hashPassword, verifyPassword } from '../password';
+import { generateTemporaryPassword, hashPassword } from '../password';
 import {
   createSession,
   revokeAllUserSessions,
@@ -24,6 +24,7 @@ import {
   type EnrolmentDisplay,
   type MfaResult,
 } from './outcome';
+import { reauthenticate, type Reauthentication } from './reauth';
 import {
   clearMfaAttempts,
   confirmEnrolment,
@@ -34,59 +35,16 @@ import {
   recordMfaAttempt,
   removeAllFactors,
   replaceRecoveryCodes,
-  verifySecondFactor,
   type MfaStatus,
 } from './repo';
 
 /**
  * Signed-in MFA management and the admin break-glass path. The access rules
- * are described once, in `./flow.ts`.
+ * are described once, in `./flow.ts`; the re-authentication each change asks
+ * for lives in `./reauth.ts`.
  */
 
-export type Reauthentication = { password: string; code: string };
-
-/**
- * The current password AND a current code (or recovery code), checked in
- * that order so a wrong password never burns a recovery code. Rate limited
- * with the sign-in codes; one generic message for either mistake.
- */
-async function reauthenticate(
-  db: CmsDatabase,
-  user: Pick<CmsUserPublic, 'id' | 'email'>,
-  input: Reauthentication,
-  context: SessionContext,
-): Promise<MfaResult<true>> {
-  if (await mfaRateLimited(db, user.id, ipOf(context))) return fail('rate_limited');
-  const [row] = await db
-    .select({ passwordHash: cmsUsers.passwordHash })
-    .from(cmsUsers)
-    .where(eq(cmsUsers.id, user.id))
-    .limit(1);
-  if (!row) return fail('not_found');
-
-  const passwordOk = await verifyPassword(input.password, row.passwordHash);
-  let code: Awaited<ReturnType<typeof verifySecondFactor>> | null = null;
-  try {
-    code = passwordOk ? await verifySecondFactor(db, user.id, input.code) : null;
-  } catch (error) {
-    if (error instanceof MfaConfigError) return fail('not_configured');
-    throw error;
-  }
-  if (!code?.ok) {
-    await recordMfaAttempt(db, user.id, ipOf(context), false);
-    await recordAudit(db, user, {
-      action: 'auth.mfa_reauth_failed',
-      entityType: 'cms_user',
-      entityId: user.id,
-      metadata: {
-        reason: passwordOk ? (code?.ok === false ? code.reason : 'invalid') : 'password',
-      },
-    });
-    return fail('reauth_failed');
-  }
-  await recordMfaAttempt(db, user.id, ipOf(context), true);
-  return ok(true);
-}
+export type { Reauthentication } from './reauth';
 
 /** Status for the signed-in user's own account page. */
 export async function getOwnMfaStatus(): Promise<MfaStatus & { required: boolean }> {
@@ -99,7 +57,7 @@ async function requireSession() {
   const user = await requireCmsUser();
   const current = await getCurrentCmsSession();
   if (!current || current.user.id !== user.id) throw new Error('session vanished');
-  return { user, sessionId: current.sessionId };
+  return { user, sessionId: current.sessionId, absoluteExpiresAt: current.absoluteExpiresAt };
 }
 
 /** Replace the authenticator (new phone, new app), step 1: re-authenticate, then a new secret to scan. */
@@ -124,7 +82,7 @@ export async function confirmFactorReplacement(
   code: string,
   context: SessionContext,
 ): Promise<MfaResult<{ recoveryCodes: string[] }>> {
-  const { user, sessionId } = await requireSession();
+  const { user, sessionId, absoluteExpiresAt } = await requireSession();
   const db = await getCmsDb();
   if (await mfaRateLimited(db, user.id, ipOf(context))) return fail('rate_limited');
   let result;
@@ -142,7 +100,11 @@ export async function confirmFactorReplacement(
   await recordMfaAttempt(db, user.id, ipOf(context), true);
   await revokeAllUserSessions(db, user.id);
   await deleteUserMfaChallenges(db, user.id);
-  await issueMfaSession(db, user.id, context);
+  // The replacement session keeps this one's absolute end and step-up time.
+  await issueMfaSession(db, user.id, context, {
+    absoluteExpiresAt,
+    reauthenticatedAt: user.reauthenticatedAt,
+  });
   await recordAudit(db, user, {
     action: 'auth.mfa_replace',
     entityType: 'cms_user',
@@ -181,7 +143,7 @@ export async function removeOwnFactor(
   input: Reauthentication,
   context: SessionContext,
 ): Promise<MfaResult<true>> {
-  const { user } = await requireSession();
+  const { user, absoluteExpiresAt } = await requireSession();
   if (roleRequiresMfa(user.role)) return fail('not_allowed');
   const db = await getCmsDb();
   if (!(await hasConfirmedFactor(db, user.id))) return fail('not_allowed');
@@ -190,8 +152,10 @@ export async function removeOwnFactor(
   await removeAllFactors(db, user.id);
   await deleteUserMfaChallenges(db, user.id);
   await revokeAllUserSessions(db, user.id);
-  const session = await createSession(db, user.id, context);
-  await setSessionCookie(session.token, session.expiresAt);
+  const session = await createSession(db, user.id, context, {
+    replaces: { absoluteExpiresAt, reauthenticatedAt: user.reauthenticatedAt },
+  });
+  await setSessionCookie(session.token, session.cookieExpiresAt);
   await recordAudit(db, user, {
     action: 'auth.mfa_remove',
     entityType: 'cms_user',

@@ -521,7 +521,9 @@ Not covered by the script, to handle by hand:
 
 ### 11.4 Security headers
 
-Set for every route in `next.config.ts` (`headers()`):
+The first four are set in `next.config.ts` (`headers()`); the admin's
+Content-Security-Policy comes from `src/middleware.ts`, because it carries a
+fresh nonce on every request:
 
 | Header | Value | Where |
 | --- | --- | --- |
@@ -529,13 +531,22 @@ Set for every route in `next.config.ts` (`headers()`):
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | all routes |
 | `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=()` | all routes |
 | `X-Frame-Options` | `DENY` | `/admin` and everything under it |
+| `Content-Security-Policy-Report-Only` | the admin policy: scripts and `<style>` elements only with the response's nonce, no third-party hosts ([`admin-csp.md`](./admin-csp.md)) | `/admin` and everything under it; renamed `Content-Security-Policy` once enforced |
 
 Check after a deploy: DevTools → Network → the document request → *Response
 headers* (or `curl -sI <origin>/` and `curl -sI <origin>/admin/login` when the
-deployment is not behind Vercel protection).
+deployment is not behind Vercel protection). The admin policy must be on
+`/admin/login` with a different `'nonce-…'` on every reload, and on no public
+page.
 
-**No Content-Security-Policy yet.** The GA4 tag and Next's own inline scripts
-would need per-request nonces (which also makes every page dynamic). That is a
+**Admin CSP: report-only for now.** In this mode the browser lists every
+violation in the console and blocks nothing. It becomes enforcing only after
+the staging browser check in [`admin-csp.md`](./admin-csp.md) §3 comes back
+clean. Switching it on and rolling it back are each a one-line change (§4 there).
+
+**The public site has no Content-Security-Policy.** The consent-gated GA4 tag
+and Next's own inline scripts would need per-request nonces (which also makes
+every page dynamic) and a policy that admits the Google hosts. That is a
 separate piece of work; do it before production if the lawyer or a security
 review asks for it. `payment=()` is fine while the site uses redirect
 checkouts only; relax it if an embedded wallet (Apple Pay / Google Pay) is

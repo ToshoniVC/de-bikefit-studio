@@ -300,7 +300,8 @@ production step (database, env vars, DNS, deploy) needs an explicit go; Arend ex
 - [ ] **Pricing** decided: real prices entered and the flag cleared, or deliberately hidden.
 - [ ] **Photography** replaced with real studio photos via *Media*, Dutch alt text on every
       image.
-- [ ] **Content-Security-Policy** decided (not set yet; `booking-runbook.md` §11.4).
+- [ ] **Content-Security-Policy**: the admin CSP enforced and validated on staging (§12,
+      `admin-csp.md`); public-site CSP decided (not set yet; `booking-runbook.md` §11.4).
 
 **Go-live**
 
@@ -512,3 +513,67 @@ staging admins enrol anew.
 Production, `db:migrate` against Neon `production` after a snapshot, deploy, then the first
 admin enrols immediately.
 
+
+## 12. Admin session limits, step-up, stronger password hashing and admin CSP, 13 Oct 2026
+
+Security block 3, on the same branch as §11 (`feat/security-baseline-20261013`) and rolled out
+together with it or right after it. Design: `cms-architecture.md` §4 (Passwords, Sessions,
+Step-up) and `docs/admin-csp.md`. No new secret. Arend executes; staging is autonomous after
+the release gate, production needs Toshoni's go.
+
+What changes for people:
+
+- **Admins** are signed out after **15 minutes without a request** and **8 hours after
+  signing in** at the latest. Editors and providers keep their 14-day sessions (a separate
+  decision, not changed silently).
+- **Sensitive admin changes** (create a user, change a role, (de)activate, reset a password,
+  change your own password) need *Bevestig je identiteit* (password + code) within the last
+  5 minutes. Signing in counts; the form sits above those forms.
+- **Password hashes** get stronger at the next sign-in of each user (automatic, nothing to do).
+- **`/admin` sends a Content-Security-Policy in report-only mode**: nothing is blocked yet.
+
+Steps:
+
+1. **Snapshot**, then migrate (additive, guarded; old builds ignore the two new columns):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run db:migrate
+   ```
+
+   Expect `0005_cms_session_limits` (and `0004_cms_admin_mfa` if §11 has not run yet) to be
+   applied. Check: `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at`
+   exist as nullable `timestamptz`. Nothing else changes.
+
+   **Order matters:** the new build reads both columns on every admin request, so deploying it
+   before the migration breaks `/admin`. Migrate first.
+2. **Deploy** (release gate, READY). Existing admin sessions that have been idle for more than
+   15 minutes, or are older than 8 hours, end at once: sign in again.
+3. **Checks** (Toshoni or Winston, on the staging URL):
+   - sign in as admin (password + code); *Gebruikers* shows "Identiteit bevestigd: je kan tot
+     HH:MM gebruikers beheren";
+   - wait 6 minutes (or sign in more than 5 minutes earlier), try *Rol wijzigen*: the form
+     answers "Bevestig eerst je identiteit …"; confirm with password + code; the change works;
+   - leave the admin untouched for 16 minutes, then click a menu item: back to the login page;
+   - an editor stays signed in as before;
+   - audit log: `auth.step_up`, and `auth.mfa_reauth_failed` after a deliberately wrong code.
+4. **CSP browser validation** — `docs/admin-csp.md` has the checklist. In short: DevTools on
+   each admin screen, the response carries `Content-Security-Policy-Report-Only` with a fresh
+   nonce per load, and the console shows **no** `[Report Only] Refused to …` line. Public pages
+   carry **no** CSP header (GA4 unaffected). Record the result in the work-block report.
+5. **Switch to enforcement** only after step 4 passed on staging: the one-line change of
+   `ADMIN_CSP_MODE` to `'enforce'` in `src/lib/security/admin-csp.ts`, as its own commit through
+   the normal branch flow, then repeat step 4 (now nothing may break). Rollback: set it back
+   to `'report-only'` and redeploy.
+
+**CLI note.** `cms:seed`, `cms:rollout-aanbod` and `cms:patch-booking-cta` act through an admin
+session, which now also ends after 15 idle minutes; they make requests continuously, so this
+only matters if a run is paused for that long — run it again.
+
+**Rollback.** Code first: redeploy the previous build; it ignores the two columns (sessions
+then behave as before: 14 days, sliding, no step-up) and sends no admin CSP. The migration does
+not need to be undone. Upgraded password hashes stay valid for the old build (same format,
+the parameters are read from the hash itself).
+
+**Production** (after Toshoni's go): the same steps against Neon `production` after a
+snapshot, then deploy; CSP enforcement on production only after it was enforced and validated
+on staging.

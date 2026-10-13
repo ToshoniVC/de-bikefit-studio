@@ -1,10 +1,12 @@
 import { SectionCard } from '@/components/admin/form';
 import { ForbiddenNotice } from '@/components/admin/forbidden';
 import { MfaResetUserForm } from '@/components/admin/mfa/reset-user-form';
+import { StepUpPanel } from '@/components/admin/mfa/step-up';
 import { UsersManager, type UserRow } from '@/components/admin/users-manager';
 import { PageHeading } from '@/components/admin/shell';
 import { requireCmsUser } from '@/lib/cms/auth';
 import { listMfaEnrolledUserIds } from '@/lib/cms/mfa/manage';
+import { getStepUpStatus } from '@/lib/cms/mfa/reauth';
 import { listCmsUsers } from '@/lib/cms/users';
 import { can } from '@/lib/cms/permissions';
 
@@ -15,6 +17,7 @@ export default async function AdminUsersPage() {
   if (!can(user.role, 'user.read')) return <ForbiddenNotice what="het gebruikersbeheer" />;
 
   const enrolled = await listMfaEnrolledUserIds();
+  const stepUp = await getStepUpStatus();
   const users: UserRow[] = (await listCmsUsers()).map((row) => ({
     id: row.id,
     email: row.email,
@@ -32,6 +35,18 @@ export default async function AdminUsersPage() {
         title="Gebruikers"
         description="Beheerders kunnen alles; redacteurs kunnen inhoud bewerken maar niet publiceren; aanbieders beheren hun eigen agenda en afspraken."
       />
+      <div className="mb-4">
+        <SectionCard
+          title="Bevestig je identiteit"
+          description="Gebruikers aanmaken, rollen wijzigen, (de)activeren en wachtwoorden resetten vraagt een recente bevestiging."
+        >
+          <StepUpPanel
+            until={stepUp.until ? stepUp.until.toISOString() : null}
+            needsCode={stepUp.needsCode}
+            what="gebruikers beheren"
+          />
+        </SectionCard>
+      </div>
       <UsersManager users={users} currentUserId={user.id} />
       <div className="mt-4">
         <SectionCard

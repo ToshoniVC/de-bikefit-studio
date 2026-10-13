@@ -131,6 +131,7 @@ URL prefix (`publicPathFor()` in `repo.ts` encodes that rule).
 | `drizzle/0002_role_provider.sql` | `ALTER TYPE cms_role ADD VALUE IF NOT EXISTS 'provider'`, nothing else. |
 | `drizzle/0003_booking.sql` | The eight booking tables, FKs and indexes, all guarded. |
 | `drizzle/0004_cms_admin_mfa.sql` | Two-step verification (§4, MFA): four `cms_mfa_*` tables and one nullable column `cms_sessions.mfa_verified_at`. Additive and guarded; existing sessions get `NULL`, which is what makes existing **admin** sessions sign in again. |
+| `drizzle/0005_cms_session_limits.sql` | Admin session limits and step-up (§4, Sessions): two nullable columns, `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at`. Additive and guarded (`ADD COLUMN IF NOT EXISTS`); existing rows get `NULL`, so an existing admin session ends at `created_at` + 8 h at the latest and has no recent step-up. |
 
 `drizzle.config.ts` lists the schema files (`schema.ts`, `cms-schema.ts`,
 `cms-mfa-schema.ts`) and falls back to a placeholder URL
@@ -186,12 +187,35 @@ self-describing envelope so parameters can be raised later without a
 migration:
 
 ```
-scrypt$32768$8$1$<salt-base64>$<hash-base64>
+scrypt$131072$8$1$<salt-base64>$<hash-base64>
 ```
 
+New hashes use N = 2^17, r = 8, p = 1 (raised on 13 Oct 2026 from N = 2^15).
+scrypt needs about 128 · N · r bytes: **~128 MiB per hash** (the old
+parameters were ~32 MiB). Legacy `scrypt$32768$8$1$…` hashes still verify;
+`verifyPassword()` refuses parameters outside N ∈ [2^14, 2^17] (power of two)
+or above the current memory and CPU cost before running scrypt, so a corrupted
+row cannot make it allocate more. After a **successful** sign-in or
+re-authentication a legacy hash is replaced by a new one
+(`src/lib/cms/password-upgrade.ts`, conditional `UPDATE … WHERE password_hash
+= <old>` so a concurrent password change is never overwritten; a failed
+upgrade never fails the sign-in). An admin's hash is upgraded at the password
+step, before the second step.
+
+Memory and concurrency are bounded per server instance: every scrypt call
+(hash and verify) goes through an in-process limiter
+(`src/lib/cms/concurrency.ts`) of two at a time (≈ 256 MiB peak) with a short
+bounded queue; beyond it sign-in answers "even te druk" instead of piling up
+work. With the database-backed login and code rate limits that keeps one
+attacker's cost to us small. Details and the numbers in the comment at the top
+of `password.ts`.
+
 Verification is constant-time and returns `false` (never throws) on a
-malformed hash. An unknown email is still verified against a dummy hash, so
-login timing does not reveal which accounts exist.
+malformed hash. An unknown email is still verified against a dummy hash with
+the current parameters, so login timing does not reveal which accounts exist.
+Residual: until an account signs in once after this change, its legacy hash
+answers a wrong password faster (~60 ms against ~250 ms), which tells a
+patient guesser, within the rate limits, that the account exists.
 
 Minimum 12 chars, needs lower + upper + digit (`validatePasswordStrength`).
 
@@ -201,14 +225,70 @@ Minimum 12 chars, needs lower + upper + digit (`validatePasswordStrength`).
 - The database stores only `HMAC-SHA256(token, CMS_SESSION_SECRET)`.
   Rotating the secret signs everyone out; a leaked DB dump is not replayable.
 - Cookie: `httpOnly`, `sameSite=lax`, `path=/`, `secure` in production.
-- 14-day expiry with **sliding renewal**: once past the halfway point, using
-  the session pushes expiry back to a full 14 days.
+- Lifetime by role, decided on every request from the user's **current** role
+  by the pure `src/lib/cms/session-policy.ts` (unit-tested), applied in
+  `resolveSession()`:
+  - **Admins** (and, failing closed, any role that requires MFA): the session
+    ends after **15 minutes without a request** and **8 hours after sign-in**
+    at the latest, however active the admin is. Each request moves
+    `expires_at` to now + 15 min, but never past `absolute_expires_at`
+    (stored at sign-in; capped at `created_at` + 8 h, which also covers rows
+    from before 0005). The cookie expires at the absolute end, so the browser
+    never keeps it longer than the server would accept it; the idle limit is
+    enforced on the server (a cookie cannot be refreshed during a plain page
+    render). An expired row is deleted on the spot.
+  - **Editors and providers**: unchanged, 14 days with sliding renewal (past
+    the halfway point a request pushes the expiry back to 14 days). Whether
+    they get limits too is a separate decision for the owner; nothing changes
+    for them silently.
+- `last_used_at` is written at most every 30 seconds, with a conditional
+  `UPDATE` that only moves it forward and never touches an expired row, so
+  parallel requests cannot rewind it or revive a dead session. Consequence:
+  the idle limit can end a session up to 30 s early.
+- A session that **replaces** another (password change, new authenticator,
+  removed factor) inherits its absolute end and its step-up time: replacing a
+  session never extends either.
 - `mfa_verified_at` is set when the session was created after a successful
   second step. A session is never upgraded in place: the MFA flow creates a new
   one. The guard refuses an admin session without it.
+- `reauthenticated_at` is the last **full** authentication on the session:
+  the sign-in itself (password and code for admins, password for editors and
+  providers) or a step-up (below). It never comes from a password alone for
+  an admin.
 - Password change, deactivation and every second-factor change revoke every
   session for that user (`changePassword()` re-issues this browser's session
   with the same MFA state it had).
+- UX consequence: an admin who types in an editor for more than 15 minutes
+  without saving loses the session; saving then says "Je sessie is verlopen".
+
+### Step-up for sensitive changes ("Bevestig je identiteit")
+
+Some admin changes need a **recent full authentication on this session**,
+within the last **5 minutes** (`REAUTH_WINDOW_MS` in `guard.ts`): creating a
+user, changing a role, (de)activating an account, resetting a password, and an
+admin's own password change. They call `requireCmsUser('admin', {
+recentReauthentication: true })` inside the library function (`users.ts`,
+`changePassword()` in `auth.ts`), so a forged or replayed server-action POST
+gets exactly the same check as the form; the guard answers `reauth_required`
+after the MFA, temporary-password and role checks (an editor still gets
+`forbidden`). A stamp in the future (beyond 30 s of clock skew) or of the wrong
+type counts as none.
+
+Signing in opens the window. After that, *Bevestig je identiteit* on
+*Gebruikers*, *Mijn account* and `/admin/password` (`StepUpPanel`,
+`confirmIdentity()` in `src/lib/cms/mfa/reauth.ts`) asks for the current
+password **and** a code or recovery code (admins and anyone with an
+authenticator; password only otherwise), checked in that order, rate limited
+with the sign-in codes and audited (`auth.step_up`, failures as
+`auth.mfa_reauth_failed`), and stamps **this session only**: another browser
+of the same admin is not unlocked. A step-up changes neither the idle nor the
+absolute end.
+
+The MFA management actions (replace the authenticator, new recovery codes,
+remove a factor) and the break-glass reset keep their **inline**
+re-authentication: password and code in the same request as the change,
+stricter than the window. There are no administrative personal-data exports
+in the CMS today; any that is added must use `recentReauthentication`.
 
 ### Cookies
 
@@ -217,7 +297,7 @@ own `_ga*` cookies appear only after consent (§12.7).
 
 | Cookie | Set by | Contents | Flags / lifetime |
 | --- | --- | --- | --- |
-| `cms_session` | login (`session.ts`); for admins only after the second step | random session token; the DB stores only its HMAC | `httpOnly`, `sameSite=lax`, `path=/`, `secure` in production; 14 days, sliding |
+| `cms_session` | login (`session.ts`); for admins only after the second step | random session token; the DB stores only its HMAC | `httpOnly`, `sameSite=lax`, `path=/`, `secure` in production. Admins: expires at the absolute end (sign-in + 8 h; the 15-minute idle limit is enforced server-side). Editors and providers: 14 days, sliding |
 | `cms_mfa` | admin password sign-in (`src/lib/cms/mfa/challenge.ts`) | random challenge token for the second step; the DB stores only its HMAC. Not a session: no guard reads it | `httpOnly`, `sameSite=lax`, `path=/admin`, `secure` in production; 10 minutes, never extended, deleted on success, cancel, logout or 5 wrong codes |
 | `cms_google_oauth` | `GET /api/google/oauth/start` (`src/app/api/google/oauth/state.ts`) | provider id, CMS user id, nonce, return target, expiry; HMAC-SHA256 signed with `CMS_SESSION_SECRET` (domain-separated). The callback accepts only a valid signature, an unexpired state, a nonce equal to Google's `state` (constant-time) and the same signed-in user | `httpOnly`, `sameSite=lax`, `path=/api/google/oauth`, `secure` in production; 10 minutes |
 | `cms_consent` | the consent banner, client-side (`src/lib/analytics/consent.ts`) | `granted` or `denied` | `SameSite=Lax`, `path=/`, `Secure` on https; 365 days. Not `httpOnly`: the banner and the GA4 loader read it in the browser |
@@ -258,16 +338,18 @@ login(input: { email: string; password: string; context?: { userAgent?, ipAddres
   // secondStep true (admins): only the cms_mfa challenge cookie, NO session
   // secondStep false (editors, providers): the cms_session cookie, as before
 logout(): Promise<void>                           // session + challenge; always succeeds
-getCurrentCmsUser(): Promise<CmsSessionUser | null> // CmsUserPublic & { mfaVerified }; React.cache'd
-requireCmsUser(role?: CmsRole, options?: { allowMustChangePassword?: boolean })
-  : Promise<CmsSessionUser>                       // throws CmsAuthError
+getCurrentCmsUser(): Promise<CmsSessionUser | null> // CmsUserPublic & { mfaVerified, reauthenticatedAt }; React.cache'd
+requireCmsUser(role?: CmsRole, options?: {
+  allowMustChangePassword?: boolean;
+  recentReauthentication?: boolean;               // sensitive change: step-up within 5 min
+}): Promise<CmsSessionUser>                       // throws CmsAuthError
 requirePermission(permission: CmsPermission): Promise<CmsSessionUser>
 changePassword(input: { currentPassword: string; newPassword: string }): Promise<AuthResult<true>>
 createUser(input: { email; name; role; password? }): Promise<AuthResult<{ user; temporaryPassword: string | null }>>
 ```
 
 `CmsAuthError.code` is `'unauthenticated' | 'mfa_required' |
-'password_change_required' | 'forbidden'`. The dashboard layout
+'password_change_required' | 'forbidden' | 'reauth_required'`. The dashboard layout
 `src/app/admin/(dashboard)/layout.tsx` calls `requireCmsUser()` and redirects
 `password_change_required` to `/admin/password`, `mfa_required` to
 `/admin/login?mfa=1` and every other `CmsAuthError` to `/admin/login`; each
@@ -286,8 +368,9 @@ The guard decision (`cmsAccessDenial()` / `assertCmsAccess()` in
 `src/lib/cms/guard.ts`, pure and unit-tested) makes `requireCmsUser()` and
 `requirePermission()` throw `password_change_required` for such a session, so
 every page, server action and repo call refuses it, including a POST that
-never renders the layout. Order: unauthenticated → temporary password →
-role/permission. The only ways through are
+never renders the layout. Order: unauthenticated → admin without MFA →
+temporary password → role/permission → recent re-authentication (only where
+asked). The only ways through are
 `requireCmsUser(role, { allowMustChangePassword: true })`, used solely by
 `changePassword()` and the `/admin/password` page (it grants no role or
 permission), and `login()` / `logout()`, which use no guard. The GA4 panel and
@@ -299,7 +382,7 @@ enrolled two-step verification** (`scripts/lib/cms-actor.mts`) and stop with an
 explanation when there is none: after `cms:bootstrap`, sign in once, replace
 the password and set up the authenticator before `cms:seed`. Their session is
 created with `mfaVerified`: the operator's database credentials are the
-authentication. Self-test sections 5b and 5c run the flows on PGlite.
+authentication. Self-test sections 5b–5e run the flows on PGlite.
 
 ### Two-step verification (MFA) for admins
 
@@ -389,7 +472,8 @@ alone and whoever knows it can enrol first.
 stage and reason), `auth.mfa_enrol`, `auth.mfa_verify` (method `totp` or
 `recovery`, codes left), `auth.mfa_reauth_failed`, `auth.mfa_replace`,
 `auth.mfa_recovery_regenerate`, `auth.mfa_remove`, `user.mfa_reset`,
-`auth.mfa_break_glass`, `auth.password_change` (also during the challenge).
+`auth.mfa_break_glass`, `auth.password_change` (also during the challenge),
+`auth.step_up`.
 
 **Existing admins (upgrade).** After 0004 and the deploy, an admin's old
 session is refused; the dashboard sends them to sign in again, which leads to
@@ -920,9 +1004,10 @@ the CMS gone from a database, drop the nineteen `cms_*` tables and the two
 3. **`cookies()`, `headers()` and route `params` are async.** `await cookies()`,
    `const { id } = await params`.
 4. Cookie writes are only legal in a server action or route handler. The
-   sliding-session cookie refresh in `getCurrentCmsUser()` is wrapped in
-   try/catch for exactly that reason — during a plain render the session is
-   still extended in the database, just not in the cookie.
+   sliding-session cookie refresh in `getCurrentCmsUser()` (editors and
+   providers) is wrapped in try/catch for exactly that reason — during a plain
+   render the session is still extended in the database, just not in the
+   cookie. Admin cookies need no refresh: they expire at the absolute end.
 5. **Turbopack is the default builder.** `serverExternalPackages` is what keeps
    `@electric-sql/pglite` out of the bundles.
 6. Folders starting with `_` are private and are **not** routed.
@@ -1071,9 +1156,13 @@ Setup of the GA4 property, stream and service account:
 `next.config.ts` `headers()` sets `X-Content-Type-Options: nosniff`,
 `Referrer-Policy: strict-origin-when-cross-origin` and
 `Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()` on
-every route, and `X-Frame-Options: DENY` on `/admin` and below. There is no
-Content-Security-Policy yet (see §13). How to verify after a deploy:
-`booking-runbook.md` §11.4.
+every route, and `X-Frame-Options: DENY` on `/admin` and below. `/admin` and
+below also get a per-request nonce Content-Security-Policy from the middleware,
+in report-only mode until it is validated in a browser on staging
+([`admin-csp.md`](./admin-csp.md)); the whole admin subtree renders
+dynamically (`src/app/admin/layout.tsx`) so every load gets its own nonce. The
+public pages have no CSP (GA4 and static rendering; see §13). How to verify
+after a deploy: `booking-runbook.md` §11.4.
 
 ---
 
@@ -1103,8 +1192,13 @@ above the fields; `offer` and `team` use it to point editors at the register.
 - **Testimonials are illustrative copy** from the copy deck, not real reviews.
 - **The legal texts are templates** until a lawyer has reviewed them
   (`booking-runbook.md` §11.5).
-- **No Content-Security-Policy yet** (`next.config.ts` sets the other security
-  headers); the GA4 tag and Next's inline scripts would need nonces.
+- **No Content-Security-Policy on the public site.** The admin has one
+  (report-only until staging validation, [`admin-csp.md`](./admin-csp.md)); the
+  public pages would need GA4's hosts and nonces on statically rendered pages,
+  a separate piece of work.
+- **Editor and provider sessions** still last 14 days with sliding renewal;
+  only admin sessions have the 15-minute idle and 8-hour absolute limits (§4).
+  Whether editors and providers get limits too is an owner decision.
 - Session rows are only pruned opportunistically. If volume ever matters, add a
   scheduled `pruneExpiredSessions()` call.
 

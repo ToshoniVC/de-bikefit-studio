@@ -24,9 +24,16 @@ const nextConfig: NextConfig = {
   /**
    * Minimal security headers (GDPR pass, 24 Sep 2026; see §11.4 "Security
    * headers", part of §11 "GDPR en bewaartermijnen", in
-   * docs/booking-runbook.md). Deliberately no Content-Security-Policy yet: the
-   * GA4 tag and Next's inline scripts would need nonces, which is a separate
-   * piece of work.
+   * docs/booking-runbook.md).
+   *
+   * No Content-Security-Policy here. The admin (`/admin` and below) gets a
+   * per-request nonce CSP from `src/middleware.ts`
+   * (`src/lib/security/admin-csp.ts`, `docs/admin-csp.md`): a nonce cannot
+   * come from this static header list. The public site still has no CSP: it
+   * runs the consent-gated GA4 tag and prerenders pages, and a nonce policy
+   * would make every page dynamic; out of scope for now. X-Frame-Options
+   * stays on the admin for browsers without `frame-ancestors`, and because
+   * the CSP is report-only for now.
    */
   async headers() {
     return [

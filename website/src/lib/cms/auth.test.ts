@@ -30,6 +30,7 @@ const session = vi.hoisted(() => ({
     id: 'session-2',
     token: 'fresh-token',
     expiresAt: new Date(),
+    cookieExpiresAt: new Date(),
   })),
   revokeSession: vi.fn(async () => {}),
   revokeAllUserSessions: vi.fn(async () => {}),
@@ -119,18 +120,39 @@ function cmsUser(role: CmsRole, mustChangePassword: boolean): CmsUserPublic {
 
 /**
  * The request carries a valid session for `user` (or no cookie at all). By
- * default the session passed MFA, so the older blocks test what they did.
+ * default the session passed MFA, so the older blocks test what they did,
+ * and has no recent step-up (`reauthenticatedAt`).
  */
-function signIn(user: CmsUserPublic | null, mfaVerified = true) {
+function signIn(
+  user: CmsUserPublic | null,
+  mfaVerified = true,
+  reauthenticatedAt: Date | null = null,
+) {
   session.readSessionCookie.mockResolvedValue(user ? 'cookie-token' : undefined);
   session.resolveSession.mockResolvedValue(
     user
-      ? { user, sessionId: 'session-1', mfaVerified, expiresAt: new Date(), renewed: false }
+      ? {
+          user,
+          sessionId: 'session-1',
+          mfaVerified,
+          reauthenticatedAt,
+          absoluteExpiresAt: ABSOLUTE_END,
+          expiresAt: new Date(),
+          cookieExpiresAt: ABSOLUTE_END,
+          renewed: false,
+        }
       : null,
   );
 }
 
-const signedIn = (user: CmsUserPublic, mfaVerified = true) => ({ ...user, mfaVerified });
+const ABSOLUTE_END = new Date('2026-10-13T16:00:00Z');
+const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60 * 1000);
+
+const signedIn = (user: CmsUserPublic, mfaVerified = true) => ({
+  ...user,
+  mfaVerified,
+  reauthenticatedAt: null,
+});
 
 const refusedFor = (code: string) => ({ name: 'CmsAuthError', code });
 
@@ -312,7 +334,9 @@ describe('login(): a password alone never creates an admin session', () => {
       fake.state.rows = asStored(cmsUser('editor', false));
       const result = await login({ email: 'editor@example.com', password: CHOSEN });
       expect(result).toMatchObject({ ok: true, data: { secondStep: false } });
-      expect(session.createSession).toHaveBeenCalledWith(fake.db, 'user-editor', undefined);
+      expect(session.createSession).toHaveBeenCalledWith(fake.db, 'user-editor', undefined, {
+        reauthenticated: true,
+      });
       expect(session.setSessionCookie).toHaveBeenCalledWith('fresh-token', expect.any(Date));
       expect(mfa.createMfaChallenge).not.toHaveBeenCalled();
     },
@@ -365,13 +389,15 @@ describe('changePassword: the one write a temporary-password session may make', 
       expect(String(fake.state.updates[0].passwordHash)).toMatch(/^scrypt\$/);
       expect(session.revokeAllUserSessions).toHaveBeenCalledWith(fake.db, temporary.id);
       expect(mfa.clearMfaAttempts).toHaveBeenCalledWith(fake.db, temporary.id);
-      // An editor session without MFA is replaced by one without MFA.
+      // An editor session without MFA is replaced by one without MFA; an
+      // editor needs no step-up for its own password (the current one is asked).
       expect(session.createSession).toHaveBeenCalledWith(
         fake.db,
         temporary.id,
         {},
         {
           mfaVerified: false,
+          replaces: { absoluteExpiresAt: ABSOLUTE_END, reauthenticatedAt: null },
         },
       );
       expect(session.setSessionCookie).toHaveBeenCalledWith('fresh-token', expect.any(Date));
@@ -386,7 +412,7 @@ describe('changePassword: the one write a temporary-password session may make', 
     'refuses a wrong current password and changes nothing',
     async () => {
       const temporary = cmsUser('admin', true);
-      signIn(temporary);
+      signIn(temporary, true, minutesAgo(1));
       fake.state.rows = [{ ...temporary, passwordHash: temporaryHash }];
 
       const result = await changePassword({
@@ -402,30 +428,89 @@ describe('changePassword: the one write a temporary-password session may make', 
   );
 
   it(
-    'an admin session that passed MFA gets a fresh session that keeps it',
+    'an admin session that passed MFA gets a fresh session that keeps it, never more',
     async () => {
       const admin = cmsUser('admin', true);
-      signIn(admin, true);
+      const steppedUp = minutesAgo(2);
+      signIn(admin, true, steppedUp);
       fake.state.rows = [{ ...admin, passwordHash: temporaryHash }];
       const result = await changePassword({ currentPassword: TEMPORARY, newPassword: CHOSEN });
       expect(result).toEqual({ ok: true, data: true });
+      // Same absolute end, same step-up time: a password change extends neither.
       expect(session.createSession).toHaveBeenCalledWith(
         fake.db,
         admin.id,
         {},
         {
           mfaVerified: true,
+          replaces: { absoluteExpiresAt: ABSOLUTE_END, reauthenticatedAt: steppedUp },
         },
       );
     },
     SLOW,
   );
 
+  it('an admin without a recent step-up is refused before anything is checked or written', async () => {
+    for (const reauthenticatedAt of [null, minutesAgo(6)]) {
+      signIn(cmsUser('admin', false), true, reauthenticatedAt);
+      fake.state.rows = [{ ...cmsUser('admin', false), passwordHash: temporaryHash }];
+      await expect(
+        changePassword({ currentPassword: TEMPORARY, newPassword: CHOSEN }),
+      ).rejects.toMatchObject(refusedFor('reauth_required'));
+    }
+    expect(fake.state.updates).toEqual([]);
+    expect(session.revokeAllUserSessions).not.toHaveBeenCalled();
+    expect(session.createSession).not.toHaveBeenCalled();
+  });
+
   it('still needs a session', async () => {
     signIn(null);
     await expect(
       changePassword({ currentPassword: TEMPORARY, newPassword: CHOSEN }),
     ).rejects.toMatchObject(refusedFor('unauthenticated'));
+  });
+});
+
+describe('user management needs a recent step-up (direct calls included)', () => {
+  const calls: Array<[string, () => Promise<unknown>]> = [
+    ['createUser', () => createUser({ email: 'x@example.com', name: 'X', role: 'admin' })],
+    ['resetUserPassword', () => resetUserPassword('user-editor')],
+    ['setUserRole', () => setUserRole('user-editor', 'admin')],
+    ['setUserActive', () => setUserActive('user-editor', false)],
+  ];
+
+  it('refuses an MFA-verified admin without one, or with one older than 5 minutes', async () => {
+    for (const reauthenticatedAt of [null, minutesAgo(5.5), minutesAgo(60)]) {
+      signIn(cmsUser('admin', false), true, reauthenticatedAt);
+      for (const [name, call] of calls) {
+        await expect(call(), name).rejects.toMatchObject(refusedFor('reauth_required'));
+      }
+    }
+    expect(fake.state.updates).toEqual([]);
+    expect(fake.state.inserts).toEqual([]);
+    expect(session.revokeAllUserSessions).not.toHaveBeenCalled();
+  });
+
+  it('does not trust a step-up stamp from the future', async () => {
+    signIn(cmsUser('admin', false), true, new Date(Date.now() + 10 * 60 * 1000));
+    await expect(setUserActive('user-editor', false)).rejects.toMatchObject(
+      refusedFor('reauth_required'),
+    );
+  });
+
+  it('reports forbidden, not reauth_required, to an editor', async () => {
+    signIn(cmsUser('editor', false), false, minutesAgo(1));
+    for (const [name, call] of calls) {
+      await expect(call(), name).rejects.toMatchObject(refusedFor('forbidden'));
+    }
+  });
+
+  it('lets a recent step-up through; plain admin access never needs one', async () => {
+    signIn(cmsUser('admin', false), true, minutesAgo(4));
+    await expect(setUserActive('user-editor', false)).resolves.toEqual({ ok: true, data: true });
+    expect(session.revokeAllUserSessions).toHaveBeenCalledWith(fake.db, 'user-editor');
+    signIn(cmsUser('admin', false), true, null);
+    await expect(requireCmsUser('admin')).resolves.toMatchObject({ role: 'admin' });
   });
 });
 

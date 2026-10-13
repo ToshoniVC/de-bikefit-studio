@@ -1,6 +1,7 @@
 import 'server-only';
 import { unstable_rethrow } from 'next/navigation';
 import { CmsAuthError, type CmsAuthErrorCode } from '@/lib/cms/auth';
+import { PasswordHasherBusyError } from '@/lib/cms/password';
 import { actionError, type ActionState } from './state';
 
 /** What a form shows per guard failure: short, Dutch, nothing internal. */
@@ -10,6 +11,7 @@ const AUTH_ERROR_MESSAGES: Record<CmsAuthErrorCode, string> = {
   password_change_required:
     'Je gebruikt nog een tijdelijk wachtwoord. Kies eerst een nieuw wachtwoord.',
   forbidden: 'Je hebt geen toestemming voor deze actie.',
+  reauth_required: 'Bevestig eerst je identiteit (wachtwoord en code) en probeer het dan opnieuw.',
 };
 
 /**
@@ -30,6 +32,11 @@ export async function runAction(body: () => Promise<ActionState>): Promise<Actio
     unstable_rethrow(error);
     if (error instanceof CmsAuthError) {
       return actionError(AUTH_ERROR_MESSAGES[error.code] ?? AUTH_ERROR_MESSAGES.forbidden);
+    }
+    // Too many password checks at once on this instance: says nothing about
+    // the password and is not counted as a failed attempt.
+    if (error instanceof PasswordHasherBusyError) {
+      return actionError('Het is even druk. Probeer het over een minuut opnieuw.');
     }
     console.error('[cms] action failed', error);
     return actionError('Er ging iets mis. Probeer het opnieuw.');

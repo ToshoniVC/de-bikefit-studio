@@ -4,7 +4,12 @@ import type { CmsDatabase } from '@/db/cms';
 import { cmsUsers, type CmsUserPublic } from '@/db/cms-schema';
 import { env, isProduction } from '@/lib/env';
 import { recordAudit } from '../auth';
-import { createSession, setSessionCookie, type SessionContext } from '../session';
+import {
+  createSession,
+  setSessionCookie,
+  type CreateSessionOptions,
+  type SessionContext,
+} from '../session';
 import { clearChallengeCookie, recordChallengeFailure } from './challenge';
 import { qrSvgPath } from './qr';
 import { recordMfaAttempt, startEnrolment, type CodeFailure } from './repo';
@@ -110,9 +115,24 @@ export async function failedCode(
   return stillUsable ? fail(codeError(reason)) : fail('expired');
 }
 
-export async function issueMfaSession(db: CmsDatabase, userId: string, context: SessionContext) {
-  const session = await createSession(db, userId, context, { mfaVerified: true });
-  await setSessionCookie(session.token, session.expiresAt);
+/**
+ * The session after a completed second step: MFA-verified. A sign-in (no
+ * `replaces`) opens the step-up window; a session that replaces another
+ * inherits that one's absolute end and step-up time instead, so replacing a
+ * session never extends either.
+ */
+export async function issueMfaSession(
+  db: CmsDatabase,
+  userId: string,
+  context: SessionContext,
+  replaces?: CreateSessionOptions['replaces'],
+) {
+  const session = await createSession(db, userId, context, {
+    mfaVerified: true,
+    reauthenticated: !replaces,
+    replaces,
+  });
+  await setSessionCookie(session.token, session.cookieExpiresAt);
   await clearChallengeCookie();
   await db.update(cmsUsers).set({ lastLoginAt: new Date() }).where(eq(cmsUsers.id, userId));
 }

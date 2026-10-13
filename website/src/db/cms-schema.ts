@@ -124,6 +124,21 @@ export const cmsSessions = pgTable(
      * without it (`src/lib/cms/guard.ts`). Added by 0004_cms_admin_mfa.sql.
      */
     mfaVerifiedAt: timestamp('mfa_verified_at', { withTimezone: true }),
+    /**
+     * Hard end of the session, set at sign-in and never moved later; a session
+     * that replaces another (password or authenticator change) inherits it.
+     * Null for roles without an absolute lifetime (editors, providers); admin
+     * rows without it fall back to `created_at` + 8 h
+     * (`src/lib/cms/session-policy.ts`). Added by 0005_cms_session_limits.sql.
+     */
+    absoluteExpiresAt: timestamp('absolute_expires_at', { withTimezone: true }),
+    /**
+     * Last full authentication on this session (password plus second step for
+     * admins): the sign-in itself or the "Bevestig je identiteit" step-up.
+     * Sensitive admin changes require it to be recent
+     * (`src/lib/cms/guard.ts`). Added by 0005_cms_session_limits.sql.
+     */
+    reauthenticatedAt: timestamp('reauthenticated_at', { withTimezone: true }),
   },
   (t) => [
     index('cms_sessions_user_id_idx').on(t.userId),

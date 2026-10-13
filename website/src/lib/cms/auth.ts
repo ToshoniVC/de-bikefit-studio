@@ -19,7 +19,13 @@ import {
 } from './mfa/challenge';
 import { clearMfaAttempts, hasConfirmedFactor } from './mfa/repo';
 import type { CmsPermission } from './permissions';
-import { hashPassword, validatePasswordStrength, verifyPassword } from './password';
+import {
+  hashPassword,
+  PASSWORD_HASH_PARAMS,
+  validatePasswordStrength,
+  verifyPassword,
+} from './password';
+import { upgradePasswordHashIfNeeded } from './password-upgrade';
 import {
   clearSessionCookie,
   createSession,
@@ -80,17 +86,18 @@ export function normalizeEmail(email: string): string {
 }
 
 /**
- * A well-formed hash that nothing can match. Verifying against it when the
- * email is unknown makes a missing user cost the same scrypt work as a wrong
- * password, so response time does not reveal which accounts exist.
+ * A well-formed hash that nothing can match, with the current parameters.
+ * Verifying against it when the email is unknown makes a missing user cost the
+ * same scrypt work as a wrong password, so response time does not reveal which
+ * accounts exist.
  */
 const DUMMY_HASH = [
   'scrypt',
-  2 ** 15,
-  8,
-  1,
+  PASSWORD_HASH_PARAMS.N,
+  PASSWORD_HASH_PARAMS.r,
+  PASSWORD_HASH_PARAMS.p,
   Buffer.from('cms-timing-equaliser').toString('base64'),
-  Buffer.alloc(64).toString('base64'),
+  Buffer.alloc(PASSWORD_HASH_PARAMS.keyBytes).toString('base64'),
 ].join('$');
 
 async function recentFailedAttempts(db: CmsDatabase, email: string, ip: string): Promise<number> {
@@ -204,8 +211,11 @@ export async function login(input: LoginInput): Promise<AuthResult<LoginOutcome>
     return { ok: true, data: { user: result.data, secondStep: true } };
   }
 
-  const session = await createSession(db, result.data.id, input.context);
-  await setSessionCookie(session.token, session.expiresAt);
+  // For a role without a second step, the password is the full authentication.
+  const session = await createSession(db, result.data.id, input.context, {
+    reauthenticated: true,
+  });
+  await setSessionCookie(session.token, session.cookieExpiresAt);
 
   return { ok: true, data: { user: result.data, secondStep: false } };
 }
@@ -247,6 +257,8 @@ export async function verifyCredentials(
   }
 
   await recordAttempt(db, email, ip, true);
+  // A hash from older, weaker parameters is replaced now that the password is known.
+  await upgradePasswordHashIfNeeded(db, user.id, password, user.passwordHash);
   await db.update(cmsUsers).set({ lastLoginAt: new Date() }).where(eq(cmsUsers.id, user.id));
   await recordAudit(db, user, { action: 'auth.login', entityType: 'cms_user', entityId: user.id });
 
@@ -276,6 +288,16 @@ export async function logout(): Promise<void> {
 export type CmsSessionUser = CmsUserPublic & {
   /** The session passed the second step (`cms_sessions.mfa_verified_at`). */
   mfaVerified: boolean;
+  /** Last full authentication on the session (`cms_sessions.reauthenticated_at`). */
+  reauthenticatedAt: Date | null;
+};
+
+/** The current session as `getCurrentCmsSession()` returns it. */
+export type CurrentCmsSession = {
+  user: CmsSessionUser;
+  sessionId: string;
+  /** Stored absolute end; a replacement session inherits it. */
+  absoluteExpiresAt: Date | null;
 };
 
 /**
@@ -284,29 +306,32 @@ export type CmsSessionUser = CmsUserPublic & {
  * session id; the MFA management in `./mfa/flow.ts` needs the id to bind an
  * authenticator replacement to the session that asked for it.
  */
-export const getCurrentCmsSession = cache(
-  async (): Promise<{ user: CmsSessionUser; sessionId: string } | null> => {
-    const token = await readSessionCookie();
-    if (!token) return null;
+export const getCurrentCmsSession = cache(async (): Promise<CurrentCmsSession | null> => {
+  const token = await readSessionCookie();
+  if (!token) return null;
 
-    const db = await getCmsDb();
-    const resolved = await resolveSession(db, token);
-    if (!resolved) return null;
+  const db = await getCmsDb();
+  const resolved = await resolveSession(db, token);
+  if (!resolved) return null;
 
-    if (resolved.renewed) {
-      try {
-        await setSessionCookie(token, resolved.expiresAt);
-      } catch {
-        // Read-only render context — the DB-side expiry was still extended.
-      }
+  if (resolved.renewed) {
+    try {
+      await setSessionCookie(token, resolved.cookieExpiresAt);
+    } catch {
+      // Read-only render context — the DB-side expiry was still extended.
     }
+  }
 
-    return {
-      user: { ...resolved.user, mfaVerified: resolved.mfaVerified === true },
-      sessionId: resolved.sessionId,
-    };
-  },
-);
+  return {
+    user: {
+      ...resolved.user,
+      mfaVerified: resolved.mfaVerified === true,
+      reauthenticatedAt: resolved.reauthenticatedAt ?? null,
+    },
+    sessionId: resolved.sessionId,
+    absoluteExpiresAt: resolved.absoluteExpiresAt ?? null,
+  };
+});
 
 /**
  * Resolves the signed-in CMS user for the current request, or null.
@@ -317,10 +342,12 @@ export const getCurrentCmsSession = cache(
  * `requireCmsUser()` / `requirePermission()` (or `cmsAccessDenial()` from
  * `./guard`, which reads the `mfaVerified` flag carried here).
  *
- * Sliding renewal writes a refreshed cookie when the session passes its
- * halfway point. Cookie writes are only legal in a server action or route
- * handler, so the attempt is wrapped in try/catch: in a plain server component
- * render the session stays valid, it just is not extended on that request.
+ * Lifetime rules (idle and absolute limits for admins, sliding renewal for
+ * editors and providers) are applied by `resolveSession()`. A standard
+ * session's renewal writes a refreshed cookie; cookie writes are only legal in
+ * a server action or route handler, so the attempt is wrapped in try/catch: in
+ * a plain server component render the database expiry still moves. Admin
+ * cookies need no refresh: they expire at the absolute end.
  */
 export const getCurrentCmsUser = cache(async (): Promise<CmsSessionUser | null> => {
   return (await getCurrentCmsSession())?.user ?? null;
@@ -335,13 +362,19 @@ export type RequireCmsUserOptions = {
    * the `/admin/password` page. Everything else leaves it off.
    */
   allowMustChangePassword?: boolean;
+  /**
+   * A sensitive change: refuse with `reauth_required` unless this session had
+   * a full authentication in the last five minutes (sign-in or step-up).
+   */
+  recentReauthentication?: boolean;
 };
 
 /**
  * Returns the signed-in user, or throws `CmsAuthError`: `unauthenticated`
  * without a session, `mfa_required` for an admin session that did not pass
  * the second step, `password_change_required` while the password is still
- * temporary, `forbidden` when the role ranks too low. The decision is
+ * temporary, `forbidden` when the role ranks too low, `reauth_required` for a
+ * sensitive change without a recent step-up. The decision is
  * `assertCmsAccess()` in `./guard`.
  *
  * ```ts
@@ -360,6 +393,7 @@ export async function requireCmsUser(
   return assertCmsAccess(await getCurrentCmsUser(), {
     role,
     allowMustChangePassword: options.allowMustChangePassword,
+    recentReauthentication: options.recentReauthentication,
   });
 }
 
@@ -382,13 +416,21 @@ export type ChangePasswordInput = {
 /**
  * Changes the signed-in user's password. Revokes every other session, then
  * issues a fresh one so the current browser stays signed in. The fresh
- * session carries over the MFA state of the one it replaces, never more.
+ * session carries over the MFA state, the absolute end and the step-up time
+ * of the one it replaces, never more.
  *
  * The one write a temporary-password session may make: it is how such a user
- * gets out of that state, hence `allowMustChangePassword`.
+ * gets out of that state, hence `allowMustChangePassword`. For roles with a
+ * second step (admins) it is a sensitive change: besides the current password
+ * it needs a recent full authentication (sign-in or step-up, password plus
+ * code), so a hijacked session plus a phished password is not enough.
  */
 export async function changePassword(input: ChangePasswordInput): Promise<AuthResult<true>> {
-  const current = await requireCmsUser(undefined, { allowMustChangePassword: true });
+  const signedIn = await getCurrentCmsSession();
+  const current = await requireCmsUser(undefined, {
+    allowMustChangePassword: true,
+    recentReauthentication: signedIn ? roleRequiresMfa(signedIn.user.role) : false,
+  });
   const db = await getCmsDb();
 
   const [row] = await db.select().from(cmsUsers).where(eq(cmsUsers.id, current.id)).limit(1);
@@ -414,8 +456,19 @@ export async function changePassword(input: ChangePasswordInput): Promise<AuthRe
   // password also ends any lock-out someone caused by guessing codes.
   await revokeAllUserSessions(db, row.id);
   await clearMfaAttempts(db, row.id);
-  const session = await createSession(db, row.id, {}, { mfaVerified: current.mfaVerified });
-  await setSessionCookie(session.token, session.expiresAt);
+  const session = await createSession(
+    db,
+    row.id,
+    {},
+    {
+      mfaVerified: current.mfaVerified,
+      replaces: {
+        absoluteExpiresAt: signedIn?.absoluteExpiresAt ?? null,
+        reauthenticatedAt: current.reauthenticatedAt,
+      },
+    },
+  );
+  await setSessionCookie(session.token, session.cookieExpiresAt);
 
   await recordAudit(db, current, {
     action: 'auth.password_change',

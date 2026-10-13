@@ -19,6 +19,11 @@
  *      password → challenge only, enrolment, replay / expiry / rate limits,
  *      recovery codes, key change, re-authenticated management, break-glass
  *      (admin and CLI), editors unchanged (`scripts/selftest/mfa.mts`)
+ *  5d. password hash upgrade: a legacy scrypt hash is re-hashed at sign-in
+ *      (`scripts/selftest/password-kdf.mts`)
+ *  5e. admin session limits and step-up: 15-minute idle and 8-hour absolute
+ *      end on real rows, editors unchanged, sensitive changes refused without
+ *      a recent re-authentication (`scripts/selftest/session-limits.mts`)
  *   6. block registry: every block's defaultData validates, unknown type fails
  *   7. permissions: admin / editor content matrix
  *   8. draft → publish snapshot: draft blocks freeze into a published snapshot
@@ -115,6 +120,7 @@ const STUB_SOURCES: Record<string, string> = {
     export function revalidateTag() {}
     export function updateTag() {}
     export function revalidatePath() {}
+    export function refresh() {}
   `,
 };
 const STUB_PREFIX = 'bikefit-selftest-stub:';
@@ -303,12 +309,15 @@ async function main() {
     'resolved user carries no password hash',
     resolved !== null && !('passwordHash' in resolved.user),
   );
+  // The self-test user is an admin: 15 minutes idle, 8 hours absolute (section 5e).
+  const minutesOut = resolved ? (resolved.expiresAt.getTime() - Date.now()) / 60_000 : 0;
   check(
-    'expiry is ~14 days out',
+    'admin expiry is ~15 minutes out, absolute end ~8 hours',
     resolved !== null &&
-      daysFromNow(resolved.expiresAt) > 13 &&
-      daysFromNow(resolved.expiresAt) < 15,
-    resolved ? `${daysFromNow(resolved.expiresAt).toFixed(1)} days` : '',
+      minutesOut > 14 &&
+      minutesOut <= 15 &&
+      Math.abs((resolved.absoluteExpiresAt?.getTime() ?? 0) - Date.now() - 8 * 3_600_000) < 60_000,
+    `${minutesOut.toFixed(1)} min`,
   );
 
   check('garbage token does not resolve', (await resolveSession(db, 'garbage')) === null);
@@ -329,6 +338,21 @@ async function main() {
   // 5c: two-step verification; leaves the admin enrolled for sections 14–16.
   const { mfaSection } = await import('./selftest/mfa.mjs');
   await mfaSection({ db, admin: user, password: ADMIN_NEW_PASSWORD, check, section, cookieJar });
+
+  // 5d: a legacy N=2^15 hash is upgraded at sign-in (throwaway editor, removed again).
+  const { passwordKdfSection } = await import('./selftest/password-kdf.mjs');
+  await passwordKdfSection({ db, check, section });
+
+  // 5e: admin idle/absolute session limits and step-up re-authentication.
+  const { sessionLimitsSection } = await import('./selftest/session-limits.mjs');
+  await sessionLimitsSection({
+    db,
+    admin: user,
+    password: ADMIN_NEW_PASSWORD,
+    check,
+    section,
+    cookieJar,
+  });
 
   section('6. block registry');
   check(
@@ -993,12 +1017,14 @@ async function bookingSections(
 
   // The admin enrolled two-step verification in section 5c, so its sessions
   // carry `mfaVerified`; the provider's never do (providers are unchanged).
+  // Each stands for a fresh full sign-in, so the step-up window is open (a new
+  // provider login is a user account: section 5e).
   const signInAs = async (userId: string) => {
     const session = await createSession(
       db,
       userId,
       { userAgent: 'selftest' },
-      { mfaVerified: userId === admin.id },
+      { mfaVerified: userId === admin.id, reauthenticated: true },
     );
     cookieJar.set('cms_session', session.token);
   };
@@ -1406,10 +1432,6 @@ async function listTables(db: Awaited<ReturnType<typeof getCmsDb>>): Promise<str
   const rows = Array.isArray(result) ? result : (result?.rows ?? []);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return rows.map((row: any) => row.table_name as string);
-}
-
-function daysFromNow(date: Date): number {
-  return (new Date(date).getTime() - Date.now()) / 86_400_000;
 }
 
 main()

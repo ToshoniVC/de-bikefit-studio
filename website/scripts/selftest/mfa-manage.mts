@@ -108,6 +108,7 @@ export async function managementChecks(
     (await outcome(() => manage.confirmFactorReplacement(codeAt(secret2), CTX))) === 'not_allowed',
   );
   cookieJar.set('cms_session', current);
+  const beforeReplace = await resolveSession(db, current);
   const replaced = await manage.confirmFactorReplacement(codeAt(secret2), CTX);
   const newCodes = replaced.ok ? replaced.data.recoveryCodes : [];
   const factorsNow = await db
@@ -127,6 +128,13 @@ export async function managementChecks(
     (await resolveSession(db, otherDevice.token)) === null &&
       (await resolveSession(db, current)) === null &&
       (await sessionUser())?.mfaVerified === true,
+  );
+  const afterReplace = await sessionUser();
+  check(
+    'replacement: the new session keeps the absolute end and the step-up time (no extension)',
+    !!beforeReplace?.absoluteExpiresAt &&
+      afterReplace?.absoluteExpiresAt?.getTime() === beforeReplace.absoluteExpiresAt.getTime() &&
+      afterReplace?.reauthenticatedAt?.getTime() === beforeReplace.reauthenticatedAt?.getTime(),
   );
   check(
     'replacement: audited (auth.mfa_replace)',

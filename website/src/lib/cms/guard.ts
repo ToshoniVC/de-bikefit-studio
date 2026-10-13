@@ -18,9 +18,14 @@ import { can, roleAtLeast, type CmsPermission } from './permissions';
  *  3. password still temporary         → `password_change_required`, unless
  *     the call site opts in with `allowMustChangePassword`. Only the forced
  *     password change does: `changePassword()` and the `/admin/password` page;
- *  4. role rank or permission missing  → `forbidden`.
+ *  4. role rank or permission missing  → `forbidden`;
+ *  5. a sensitive change (`recentReauthentication`) by a user whose session
+ *     has no full authentication in the last 5 minutes → `reauth_required`.
+ *     Sign-in sets it; after that only the step-up ("Bevestig je
+ *     identiteit": password plus code for admins) renews it. A session that
+ *     replaces another inherits its time, never a fresh one.
  *
- * Steps 2 and 3 make MFA and `must_change_password` server-side rules. A
+ * Steps 2, 3 and 5 make MFA, `must_change_password` and step-up server-side rules. A
  * layout redirect alone does not stop a session from posting a server action
  * directly. Login, logout and the MFA challenge steps never pass through this
  * guard, so such a user can still sign in, finish the second step, change the
@@ -28,7 +33,7 @@ import { can, roleAtLeast, type CmsPermission } from './permissions';
  */
 
 export type CmsAuthErrorCode =
-  'unauthenticated' | 'mfa_required' | 'password_change_required' | 'forbidden';
+  'unauthenticated' | 'mfa_required' | 'password_change_required' | 'forbidden' | 'reauth_required';
 
 /** Short Dutch messages, safe to show to the signed-in user. */
 export const CMS_AUTH_MESSAGES: Record<CmsAuthErrorCode, string> = {
@@ -36,6 +41,7 @@ export const CMS_AUTH_MESSAGES: Record<CmsAuthErrorCode, string> = {
   mfa_required: 'Bevestig je aanmelding eerst met tweestapsverificatie.',
   password_change_required: 'Kies eerst een nieuw wachtwoord.',
   forbidden: 'Je hebt geen toestemming voor deze actie.',
+  reauth_required: 'Bevestig eerst je identiteit met je wachtwoord en je code.',
 };
 
 export class CmsAuthError extends Error {
@@ -58,6 +64,12 @@ export type CmsAccessRequirement = {
    * forced password change itself; it never grants a role or a permission.
    */
   allowMustChangePassword?: boolean;
+  /**
+   * A sensitive change: password, second factor, user accounts and roles.
+   * Requires a full authentication on this session within the last
+   * {@link REAUTH_WINDOW_MS}, checked after the role.
+   */
+  recentReauthentication?: boolean;
 };
 
 /**
@@ -66,6 +78,8 @@ export type CmsAccessRequirement = {
  */
 export type CmsGuardSubject = Pick<CmsUserPublic, 'role' | 'mustChangePassword'> & {
   mfaVerified?: boolean;
+  /** Last full authentication on the session; anything missing counts as never. */
+  reauthenticatedAt?: Date | null;
 };
 
 /**
@@ -77,10 +91,28 @@ export function roleRequiresMfa(role: CmsRole | string): boolean {
   return role !== 'editor' && role !== 'provider';
 }
 
+/** How long a full (re-)authentication unlocks sensitive changes. */
+export const REAUTH_WINDOW_MS = 5 * 60 * 1000;
+/** Tolerated clock difference between server instances for a fresh stamp. */
+const CLOCK_SKEW_MS = 30 * 1000;
+
+/** Whether `reauthenticatedAt` still unlocks sensitive changes at `now`. */
+export function reauthenticationIsRecent(
+  reauthenticatedAt: Date | null | undefined,
+  now: Date,
+): boolean {
+  if (!(reauthenticatedAt instanceof Date)) return false;
+  const age = now.getTime() - reauthenticatedAt.getTime();
+  if (!Number.isFinite(age)) return false;
+  // A stamp further in the future than clock skew explains is not trusted.
+  return age >= -CLOCK_SKEW_MS && age <= REAUTH_WINDOW_MS;
+}
+
 /** Why `user` may not go ahead under `requirement`, or `null` when it may. */
 export function cmsAccessDenial(
   user: CmsGuardSubject | null | undefined,
   requirement: CmsAccessRequirement = {},
+  now: Date = new Date(),
 ): CmsAuthErrorCode | null {
   if (!user) return 'unauthenticated';
   if (roleRequiresMfa(user.role) && user.mfaVerified !== true) return 'mfa_required';
@@ -90,6 +122,12 @@ export function cmsAccessDenial(
   }
   if (requirement.role && !roleAtLeast(user.role, requirement.role)) return 'forbidden';
   if (requirement.permission && !can(user.role, requirement.permission)) return 'forbidden';
+  if (
+    requirement.recentReauthentication === true &&
+    !reauthenticationIsRecent(user.reauthenticatedAt, now)
+  ) {
+    return 'reauth_required';
+  }
   return null;
 }
 
@@ -97,8 +135,9 @@ export function cmsAccessDenial(
 export function assertCmsAccess<T extends CmsGuardSubject>(
   user: T | null | undefined,
   requirement: CmsAccessRequirement = {},
+  now: Date = new Date(),
 ): T {
-  const denial = cmsAccessDenial(user, requirement);
+  const denial = cmsAccessDenial(user, requirement, now);
   if (denial !== null || !user) throw new CmsAuthError(denial ?? 'unauthenticated');
   return user;
 }

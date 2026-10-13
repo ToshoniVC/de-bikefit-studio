@@ -50,3 +50,25 @@ the change `npm audit` is unchanged: **15 findings (0 critical / 9 high / 6 mode
 development tooling, the same three accepted root causes as above, and
 `npm audit --omit=dev` reports **0 findings**.
 
+
+## Admin session limits, step-up, scrypt cost and admin CSP (block 3)
+
+Shipped in the same branch, no new dependency (`node:crypto`, Web Crypto and Next's own
+`connection()` only):
+
+- **Admin sessions** end after 15 minutes without a request and 8 hours after sign-in at the
+  latest, enforced on the server (`src/lib/cms/session-policy.ts`); editors and providers keep
+  14 days, sliding. Migration `0005_cms_session_limits` (two nullable columns).
+- **Step-up**: user management and an admin's own password change need a full
+  re-authentication (password + code) within 5 minutes, checked inside the library functions
+  (`recentReauthentication` in `src/lib/cms/guard.ts`).
+- **scrypt** N = 2^17, r = 8, p = 1 for new hashes (~128 MiB each), legacy hashes verified and
+  upgraded at the next successful sign-in, stored parameters bounded before use, at most two
+  hashes at a time per instance.
+- **Admin Content-Security-Policy**, nonce per request, report-only until validated on
+  staging (`docs/admin-csp.md`). Public pages unchanged (no CSP).
+
+Design in `docs/cms-architecture.md` §4, rollout in `docs/staging-runbook.md` §12. After the
+change `npm audit` is unchanged: **15 findings (0 critical / 9 high / 6 moderate)**, the same
+three accepted root causes (`braces`, `esbuild` via drizzle-kit, `postcss-selector-parser`);
+`npm audit --omit=dev` reports **0 findings**.

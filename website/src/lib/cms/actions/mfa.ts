@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { refresh, revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import {
   challengeChangePassword,
@@ -17,6 +17,7 @@ import {
   startFactorReplacement,
 } from '@/lib/cms/mfa/manage';
 import type { EnrolmentDisplay } from '@/lib/cms/mfa/outcome';
+import { confirmIdentity } from '@/lib/cms/mfa/reauth';
 import { requestContext, safeAdminPath } from './request';
 import { runAction } from './run';
 import { actionError, actionOk, field, type ActionState } from './state';
@@ -126,6 +127,28 @@ export async function mfaCancelAction(): Promise<void> {
 }
 
 // --- Signed in (/admin/account) ---------------------------------------------
+
+/**
+ * "Bevestig je identiteit" (step-up) on `/admin/users`, `/admin/account` and
+ * `/admin/password`. The window is recorded on the session; the sensitive
+ * changes check it themselves (`recentReauthentication` in the guard).
+ */
+export async function confirmIdentityAction(
+  _prevState: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const result = await confirmIdentity(reauthFields(form), await requestContext());
+    if (!result.ok) return actionError(result.message);
+    refresh();
+    const until = result.data.until.toLocaleTimeString('nl-BE', {
+      timeZone: 'Europe/Brussels',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    return actionOk(`Identiteit bevestigd. Je kan tot ${until} gevoelige wijzigingen doen.`);
+  });
+}
 
 export async function mfaStartReplacementAction(
   _prevState: ActionState,

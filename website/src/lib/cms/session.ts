@@ -1,9 +1,16 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { eq, lt } from 'drizzle-orm';
+import { and, eq, gt, lt } from 'drizzle-orm';
 import type { CmsDatabase } from '@/db/cms';
 import { cmsSessions, cmsUsers, type CmsUser, type CmsUserPublic } from '@/db/cms-schema';
 import { isProduction } from '@/lib/env';
 import { sessionSecret } from '@/lib/secrets';
+import {
+  adminAbsoluteEnd,
+  evaluateSession,
+  initialSessionTimes,
+  sessionCookieExpiry,
+  sessionPolicyFor,
+} from './session-policy';
 
 /**
  * Opaque server-side sessions for the CMS.
@@ -14,8 +21,11 @@ import { sessionSecret } from '@/lib/secrets';
  *   (`sessionSecret()` in `src/lib/secrets.ts`), so a
  *   leaked `cms_sessions` dump cannot be replayed, and rotating the secret
  *   invalidates every live session at once.
- * - 14-day lifetime with sliding renewal: once a session is past its halfway
- *   point, using it pushes the expiry back out to a full 14 days.
+ * - Lifetime by role (`./session-policy.ts`): admin sessions end after 15
+ *   minutes without a request and 8 hours after sign-in at the latest;
+ *   editor and provider sessions keep 14 days with sliding renewal.
+ * - `reauthenticated_at` records the last full authentication (sign-in or
+ *   step-up); sensitive admin changes need it to be recent.
  * - `mfa_verified_at` records that the session passed the second step. A
  *   session is only ever created after it (`createSession(…, { mfaVerified })`),
  *   never upgraded in place, so a password-only token can never become an
@@ -28,9 +38,6 @@ import { sessionSecret } from '@/lib/secrets';
  */
 
 export const SESSION_COOKIE_NAME = 'cms_session';
-export const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
-/** Renew when less than half the lifetime remains. */
-export const SESSION_RENEW_AFTER_MS = SESSION_TTL_MS / 2;
 
 const TOKEN_BYTES = 32;
 
@@ -53,6 +60,8 @@ export type CreatedSession = {
   id: string;
   token: string;
   expiresAt: Date;
+  /** What the `cms_session` cookie gets (`sessionCookieExpiry()`). */
+  cookieExpiresAt: Date;
 };
 
 export type SessionContext = {
@@ -69,6 +78,18 @@ export type CreateSessionOptions = {
    * database credentials (`scripts/lib/cms-actor.mts`).
    */
   mfaVerified?: boolean;
+  /**
+   * A full authentication just happened (password and, for admins, the second
+   * step): opens the step-up window for sensitive changes. Set by the MFA
+   * sign-in and by the CLIs, never by a password-only sign-in of an admin.
+   */
+  reauthenticated?: boolean;
+  /**
+   * The session this one replaces (password change, new authenticator). The
+   * new session inherits its absolute end and its step-up time, so replacing
+   * a session never extends either.
+   */
+  replaces?: { absoluteExpiresAt: Date | null; reauthenticatedAt: Date | null } | null;
 };
 
 export async function createSession(
@@ -77,23 +98,42 @@ export async function createSession(
   context: SessionContext = {},
   options: CreateSessionOptions = {},
 ): Promise<CreatedSession> {
+  const [user] = await db
+    .select({ role: cmsUsers.role })
+    .from(cmsUsers)
+    .where(eq(cmsUsers.id, userId))
+    .limit(1);
+  if (!user) throw new Error('createSession: unknown user');
+
   const token = generateSessionToken();
   const now = new Date();
-  const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
+  const times = initialSessionTimes(user.role, now, options.replaces);
+  const reauthenticatedAt =
+    options.reauthenticated === true ? now : (options.replaces?.reauthenticatedAt ?? null);
 
   const [row] = await db
     .insert(cmsSessions)
     .values({
       userId,
       tokenHash: hashSessionToken(token),
-      expiresAt,
+      expiresAt: times.expiresAt,
+      absoluteExpiresAt: times.absoluteExpiresAt,
+      // One clock for all three: the absolute cap is computed from created_at.
+      createdAt: now,
+      lastUsedAt: now,
+      reauthenticatedAt,
       userAgent: context.userAgent?.slice(0, 500) ?? null,
       ipAddress: context.ipAddress ?? null,
       mfaVerifiedAt: options.mfaVerified === true ? now : null,
     })
     .returning({ id: cmsSessions.id });
 
-  return { id: row.id, token, expiresAt };
+  return {
+    id: row.id,
+    token,
+    expiresAt: times.expiresAt,
+    cookieExpiresAt: sessionCookieExpiry(user.role, { createdAt: now, ...times }),
+  };
 }
 
 export type ResolvedSession = {
@@ -101,18 +141,30 @@ export type ResolvedSession = {
   sessionId: string;
   /** The session completed the second step (`mfa_verified_at` is set). */
   mfaVerified: boolean;
+  /** Last full authentication on this session; drives the step-up window. */
+  reauthenticatedAt: Date | null;
+  /** Effective absolute end (admins), to hand on when this session is replaced. */
+  absoluteExpiresAt: Date | null;
   expiresAt: Date;
-  /** True when the expiry was just slid forward — refresh the cookie. */
+  cookieExpiresAt: Date;
+  /** True when a standard session's expiry just slid forward — refresh the cookie. */
   renewed: boolean;
 };
 
 /**
- * Looks a raw cookie token up, validates it and applies sliding renewal.
- * Returns null for unknown, expired or deactivated-user sessions.
+ * Looks a raw cookie token up and applies the lifetime rules of
+ * `./session-policy.ts` for the user's current role. Returns null for
+ * unknown, expired (idle, absolute or plain) or deactivated-user sessions;
+ * expired rows are deleted on the spot.
+ *
+ * Use is recorded with a conditional UPDATE that only moves `last_used_at`
+ * forward and never touches a row that has already expired, so concurrent
+ * requests cannot rewind it or bring a dead session back.
  */
 export async function resolveSession(
   db: CmsDatabase,
   token: string | undefined | null,
+  now: Date = new Date(),
 ): Promise<ResolvedSession | null> {
   if (!token) return null;
 
@@ -126,33 +178,58 @@ export async function resolveSession(
   const row = rows[0];
   if (!row) return null;
 
-  const now = Date.now();
-  if (row.session.expiresAt.getTime() <= now) {
-    await db.delete(cmsSessions).where(eq(cmsSessions.id, row.session.id));
-    return null;
-  }
   if (!row.user.isActive) {
     await db.delete(cmsSessions).where(eq(cmsSessions.userId, row.user.id));
     return null;
   }
 
-  let expiresAt = row.session.expiresAt;
-  const renewed = expiresAt.getTime() - now < SESSION_RENEW_AFTER_MS;
-  if (renewed) {
-    expiresAt = new Date(now + SESSION_TTL_MS);
+  const decision = evaluateSession(row.user.role, row.session, now);
+  if (!decision.valid) {
+    await db.delete(cmsSessions).where(eq(cmsSessions.id, row.session.id));
+    return null;
+  }
+
+  if (decision.touch) {
     await db
       .update(cmsSessions)
-      .set({ expiresAt, lastUsedAt: new Date(now) })
-      .where(eq(cmsSessions.id, row.session.id));
+      .set({ lastUsedAt: now, expiresAt: decision.expiresAt })
+      .where(
+        and(
+          eq(cmsSessions.id, row.session.id),
+          lt(cmsSessions.lastUsedAt, now),
+          gt(cmsSessions.expiresAt, now),
+        ),
+      );
   }
 
   return {
     user: toPublicUser(row.user),
     sessionId: row.session.id,
     mfaVerified: row.session.mfaVerifiedAt !== null,
-    expiresAt,
-    renewed,
+    reauthenticatedAt: row.session.reauthenticatedAt ?? null,
+    absoluteExpiresAt:
+      sessionPolicyFor(row.user.role) === 'admin'
+        ? adminAbsoluteEnd(row.session)
+        : (row.session.absoluteExpiresAt ?? null),
+    expiresAt: decision.expiresAt,
+    cookieExpiresAt: sessionCookieExpiry(row.user.role, {
+      ...row.session,
+      expiresAt: decision.expiresAt,
+    }),
+    renewed: decision.renewed,
   };
+}
+
+/** Records a successful step-up ("Bevestig je identiteit") on one session. */
+export async function markSessionReauthenticated(
+  db: CmsDatabase,
+  sessionId: string,
+  at: Date = new Date(),
+): Promise<void> {
+  await db
+    .update(cmsSessions)
+    .set({ reauthenticatedAt: at })
+    .where(and(eq(cmsSessions.id, sessionId), gt(cmsSessions.expiresAt, at)));
 }
 
 export async function revokeSession(db: CmsDatabase, token: string): Promise<void> {

@@ -156,11 +156,13 @@ export async function passwordGateSection(ctx: {
   );
 
   // --- 4. The forced change itself ---------------------------------------------
+  // As right after a full sign-in (password + code): an admin's own password
+  // change also needs a recent re-authentication (section 5e).
   const second = await createSession(
     db,
     admin.id,
     { userAgent: 'selftest-password-gate' },
-    { mfaVerified: true },
+    { mfaVerified: true, reauthenticated: true },
   );
   cookieJar.set('cms_session', second.token);
   const wrong = await auth.changePassword({
