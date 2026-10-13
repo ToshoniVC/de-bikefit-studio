@@ -1,9 +1,8 @@
 'use server';
 
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { changePassword, login, logout } from '@/lib/cms/auth';
-import { clientIpFromHeaders } from '@/lib/request-ip';
+import { requestContext, safeAdminPath } from './request';
 import { runAction } from './run';
 import { actionError, actionOk, field, type ActionState } from './state';
 
@@ -12,21 +11,6 @@ import { actionError, actionOk, field, type ActionState } from './state';
  * their own, which is what protects these against cross-site posts — there is
  * deliberately no custom POST route handler for login or logout.
  */
-
-/** Only ever redirect inside the admin, never to an attacker-supplied origin. */
-function safeAdminPath(value: string, fallback = '/admin'): string {
-  if (!value.startsWith('/admin')) return fallback;
-  if (value.startsWith('//') || value.includes('\\')) return fallback;
-  return value;
-}
-
-async function requestContext() {
-  const headerList = await headers();
-  return {
-    userAgent: headerList.get('user-agent') ?? undefined,
-    ipAddress: clientIpFromHeaders(headerList) ?? 'unknown',
-  };
-}
 
 export async function loginAction(_prevState: ActionState, form: FormData): Promise<ActionState> {
   return runAction(async () => {
@@ -41,7 +25,10 @@ export async function loginAction(_prevState: ActionState, form: FormData): Prom
     // account exists, and rate limiting has its own message.
     if (!result.ok) return actionError(result.message);
 
-    redirect(result.data.mustChangePassword ? '/admin/password' : next);
+    // Admins: the password only opened a short-lived challenge; the second
+    // step happens on /admin/mfa (no session exists yet).
+    if (result.data.secondStep) redirect(`/admin/mfa?next=${encodeURIComponent(next)}`);
+    redirect(result.data.user.mustChangePassword ? '/admin/password' : next);
   });
 }
 

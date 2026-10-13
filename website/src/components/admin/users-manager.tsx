@@ -30,6 +30,7 @@ export type UserRow = {
   role: CmsRole;
   isActive: boolean;
   mustChangePassword: boolean;
+  mfaEnrolled: boolean;
   lastLoginAt: string | null;
 };
 
@@ -102,6 +103,15 @@ export function UsersManager({
                 {user.mustChangePassword ? (
                   <Badge variant="warning" className={badgeTone('warning')}>
                     Moet wachtwoord wijzigen
+                  </Badge>
+                ) : null}
+                {user.mfaEnrolled ? (
+                  <Badge variant="success" className={badgeTone('success')}>
+                    Tweestapsverificatie aan
+                  </Badge>
+                ) : user.role === 'admin' ? (
+                  <Badge variant="warning" className={badgeTone('warning')}>
+                    Moet tweestapsverificatie instellen
                   </Badge>
                 ) : null}
                 {user.id === currentUserId ? <Badge variant="outline">Jijzelf</Badge> : null}

@@ -15,6 +15,10 @@
  *  5b. forced password change: a temporary-password session is refused by the
  *      guards, both repos and the CLI actor lookup; the allow-path, logout()
  *      and changePassword() still work (`scripts/selftest/password-gate.mts`)
+ *  5c. two-step verification for admins: migration, legacy-session upgrade,
+ *      password → challenge only, enrolment, replay / expiry / rate limits,
+ *      recovery codes, key change, re-authenticated management, break-glass
+ *      (admin and CLI), editors unchanged (`scripts/selftest/mfa.mts`)
  *   6. block registry: every block's defaultData validates, unknown type fails
  *   7. permissions: admin / editor content matrix
  *   8. draft → publish snapshot: draft blocks freeze into a published snapshot
@@ -312,7 +316,7 @@ async function main() {
   check('revoked session no longer resolves', (await resolveSession(db, created.token)) === null);
 
   // 5b: clears the admin's temporary password through the real flow.
-  const { passwordGateSection } = await import('./selftest/password-gate.mjs');
+  const { passwordGateSection, ADMIN_NEW_PASSWORD } = await import('./selftest/password-gate.mjs');
   await passwordGateSection({
     db,
     admin: user,
@@ -321,6 +325,10 @@ async function main() {
     section,
     cookieJar,
   });
+
+  // 5c: two-step verification; leaves the admin enrolled for sections 14–16.
+  const { mfaSection } = await import('./selftest/mfa.mjs');
+  await mfaSection({ db, admin: user, password: ADMIN_NEW_PASSWORD, check, section, cookieJar });
 
   section('6. block registry');
   check(
@@ -983,8 +991,15 @@ async function bookingSections(
   const schema = await import('@/db/cms-schema');
   const { changeTemporaryPassword } = await import('./selftest/password-gate.mjs');
 
+  // The admin enrolled two-step verification in section 5c, so its sessions
+  // carry `mfaVerified`; the provider's never do (providers are unchanged).
   const signInAs = async (userId: string) => {
-    const session = await createSession(db, userId, { userAgent: 'selftest' });
+    const session = await createSession(
+      db,
+      userId,
+      { userAgent: 'selftest' },
+      { mfaVerified: userId === admin.id },
+    );
     cookieJar.set('cms_session', session.token);
   };
 

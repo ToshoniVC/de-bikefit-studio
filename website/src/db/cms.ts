@@ -6,6 +6,7 @@ import { neon } from '@neondatabase/serverless';
 import { env, isProduction } from '@/lib/env';
 import * as webshopSchema from './schema';
 import * as cmsSchema from './cms-schema';
+import * as cmsMfaSchema from './cms-mfa-schema';
 
 /**
  * CMS database client.
@@ -28,7 +29,7 @@ import * as cmsSchema from './cms-schema';
  * middleware/edge graph entirely).
  */
 
-export const schema = { ...webshopSchema, ...cmsSchema };
+export const schema = { ...webshopSchema, ...cmsSchema, ...cmsMfaSchema };
 export type CmsSchema = typeof schema;
 
 /**

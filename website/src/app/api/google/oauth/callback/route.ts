@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { exchangeCode, fetchGoogleEmail, type GoogleTokens } from '@/lib/booking/google';
 import { storeGoogleConnection } from '@/lib/booking/repo';
 import { CmsAuthError, getCurrentCmsUser } from '@/lib/cms/auth';
+import { cmsAccessDenial } from '@/lib/cms/guard';
 import { features } from '@/lib/env';
 
 import {
@@ -66,9 +67,10 @@ export async function GET(request: NextRequest) {
   if (!state || !nonceMatches(state, url.searchParams.get('state'))) return fail('state');
 
   const user = await getCurrentCmsUser();
-  // A temporary-password session could not store the tokens (the repo below
-  // refuses it); stop before exchanging the code, like the start route does.
-  if (!user || user.id !== state.userId || user.mustChangePassword) return fail('session');
+  // A temporary-password or pre-MFA session could not store the tokens (the
+  // repo below refuses it); stop before exchanging the code, like the start
+  // route does.
+  if (!user || user.id !== state.userId || cmsAccessDenial(user) !== null) return fail('session');
 
   // 3: the provider declined, or Google reported a problem.
   const googleError = url.searchParams.get('error');

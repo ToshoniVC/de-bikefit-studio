@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, eq, gte, sql } from 'drizzle-orm';
 import { cache } from 'react';
 import { getCmsDb, type CmsDatabase } from '@/db/cms';
 import {
@@ -8,14 +8,18 @@ import {
   type CmsRole,
   type CmsUserPublic,
 } from '@/db/cms-schema';
-import { assertCmsAccess, CMS_AUTH_MESSAGES } from './guard';
-import type { CmsPermission } from './permissions';
+import { assertCmsAccess, CMS_AUTH_MESSAGES, roleRequiresMfa } from './guard';
 import {
-  hashPassword,
-  validatePasswordStrength,
-  verifyPassword,
-  generateTemporaryPassword,
-} from './password';
+  clearChallengeCookie,
+  createMfaChallenge,
+  deleteMfaChallenge,
+  readChallengeCookie,
+  resolveMfaChallenge,
+  setChallengeCookie,
+} from './mfa/challenge';
+import { clearMfaAttempts, hasConfirmedFactor } from './mfa/repo';
+import type { CmsPermission } from './permissions';
+import { hashPassword, validatePasswordStrength, verifyPassword } from './password';
 import {
   clearSessionCookie,
   createSession,
@@ -66,7 +70,8 @@ const MESSAGES: Record<AuthError, string> = {
   forbidden: CMS_AUTH_MESSAGES.forbidden,
 };
 
-function fail(error: AuthError, message = MESSAGES[error]) {
+/** An `AuthResult` failure with the standard Dutch message (or `message`). */
+export function authFail(error: AuthError, message = MESSAGES[error]) {
   return { ok: false as const, error, message };
 }
 
@@ -150,22 +155,59 @@ export type LoginInput = {
   context?: SessionContext;
 };
 
+export type LoginOutcome = {
+  user: CmsUserPublic;
+  /**
+   * `true`: no session was created. The password only bought a short-lived
+   * MFA challenge (`cms_mfa` cookie); the browser continues at `/admin/mfa`.
+   */
+  secondStep: boolean;
+};
+
 /**
- * Verifies credentials, records the attempt, creates a session and writes the
- * `cms_session` cookie. Safe to call from a server action.
+ * Whether a password sign-in must be followed by the second step: always for
+ * roles that require MFA (admins), and for anyone else who has an
+ * authenticator (e.g. a former admin), so a factor once set is always asked.
+ */
+export async function requiresSecondStep(
+  db: CmsDatabase,
+  user: Pick<CmsUserPublic, 'id' | 'role'>,
+): Promise<boolean> {
+  return roleRequiresMfa(user.role) || (await hasConfirmedFactor(db, user.id));
+}
+
+/**
+ * Verifies credentials and records the attempt. Then either:
+ *  - second step required (admins): creates an MFA challenge and writes the
+ *    `cms_mfa` cookie. **No session is created.** Any session this browser
+ *    still had is revoked, so a pre-MFA session cannot linger next to it;
+ *  - otherwise (editors, providers, unchanged): creates a session and writes
+ *    the `cms_session` cookie.
+ * Safe to call from a server action.
  *
  * Rate limited to {@link LOGIN_MAX_ATTEMPTS} failures per
  * {@link LOGIN_WINDOW_MS} per email *or* IP.
  */
-export async function login(input: LoginInput): Promise<AuthResult<CmsUserPublic>> {
+export async function login(input: LoginInput): Promise<AuthResult<LoginOutcome>> {
   const db = await getCmsDb();
   const result = await verifyCredentials(db, input.email, input.password, input.context);
   if (!result.ok) return result;
 
+  if (await requiresSecondStep(db, result.data)) {
+    const previous = await readSessionCookie();
+    if (previous) {
+      await revokeSession(db, previous);
+      await clearSessionCookie();
+    }
+    const challenge = await createMfaChallenge(db, result.data.id, input.context);
+    await setChallengeCookie(challenge.token, challenge.expiresAt);
+    return { ok: true, data: { user: result.data, secondStep: true } };
+  }
+
   const session = await createSession(db, result.data.id, input.context);
   await setSessionCookie(session.token, session.expiresAt);
 
-  return result;
+  return { ok: true, data: { user: result.data, secondStep: false } };
 }
 
 /**
@@ -185,7 +227,7 @@ export async function verifyCredentials(
   const ip = context.ipAddress ?? 'unknown';
 
   if ((await recentFailedAttempts(db, email, ip)) >= LOGIN_MAX_ATTEMPTS) {
-    return fail('rate_limited');
+    return authFail('rate_limited');
   }
 
   const [user] = await db.select().from(cmsUsers).where(eq(cmsUsers.email, email)).limit(1);
@@ -197,11 +239,11 @@ export async function verifyCredentials(
 
   if (!user || !passwordOk) {
     await recordAttempt(db, email, ip, false);
-    return fail('invalid_credentials');
+    return authFail('invalid_credentials');
   }
   if (!user.isActive) {
     await recordAttempt(db, email, ip, false);
-    return fail('inactive');
+    return authFail('inactive');
   }
 
   await recordAttempt(db, email, ip, true);
@@ -211,48 +253,77 @@ export async function verifyCredentials(
   return { ok: true, data: toPublicUser(user) };
 }
 
-/** Revokes the current session and clears the cookie. Always succeeds. */
+/**
+ * Revokes the current session and any half-finished MFA challenge of this
+ * browser, and clears both cookies. Always succeeds.
+ */
 export async function logout(): Promise<void> {
   const token = await readSessionCookie();
-  if (token) {
+  const challengeToken = await readChallengeCookie();
+  if (token || challengeToken) {
     const db = await getCmsDb();
-    await revokeSession(db, token);
+    if (token) await revokeSession(db, token);
+    const challenge = await resolveMfaChallenge(db, challengeToken);
+    if (challenge) await deleteMfaChallenge(db, challenge.id);
   }
   await clearSessionCookie();
+  if (challengeToken) await clearChallengeCookie();
 }
 
 // --- Current user ------------------------------------------------------------
+
+/** The signed-in user plus what the guard needs to know about the session. */
+export type CmsSessionUser = CmsUserPublic & {
+  /** The session passed the second step (`cms_sessions.mfa_verified_at`). */
+  mfaVerified: boolean;
+};
+
+/**
+ * The current session: user, session id and MFA state, or null. Memoised per
+ * request via `React.cache`. `getCurrentCmsUser()` is the same without the
+ * session id; the MFA management in `./mfa/flow.ts` needs the id to bind an
+ * authenticator replacement to the session that asked for it.
+ */
+export const getCurrentCmsSession = cache(
+  async (): Promise<{ user: CmsSessionUser; sessionId: string } | null> => {
+    const token = await readSessionCookie();
+    if (!token) return null;
+
+    const db = await getCmsDb();
+    const resolved = await resolveSession(db, token);
+    if (!resolved) return null;
+
+    if (resolved.renewed) {
+      try {
+        await setSessionCookie(token, resolved.expiresAt);
+      } catch {
+        // Read-only render context — the DB-side expiry was still extended.
+      }
+    }
+
+    return {
+      user: { ...resolved.user, mfaVerified: resolved.mfaVerified === true },
+      sessionId: resolved.sessionId,
+    };
+  },
+);
 
 /**
  * Resolves the signed-in CMS user for the current request, or null.
  * Memoised per request via `React.cache`.
  *
- * Identity only: it does NOT apply the temporary-password rule. Anything that
- * returns CMS data or changes something goes through `requireCmsUser()` /
- * `requirePermission()` (or `cmsAccessDenial()` from `./guard`).
+ * Identity only: it does NOT apply the MFA or temporary-password rules.
+ * Anything that returns CMS data or changes something goes through
+ * `requireCmsUser()` / `requirePermission()` (or `cmsAccessDenial()` from
+ * `./guard`, which reads the `mfaVerified` flag carried here).
  *
  * Sliding renewal writes a refreshed cookie when the session passes its
  * halfway point. Cookie writes are only legal in a server action or route
  * handler, so the attempt is wrapped in try/catch: in a plain server component
  * render the session stays valid, it just is not extended on that request.
  */
-export const getCurrentCmsUser = cache(async (): Promise<CmsUserPublic | null> => {
-  const token = await readSessionCookie();
-  if (!token) return null;
-
-  const db = await getCmsDb();
-  const resolved = await resolveSession(db, token);
-  if (!resolved) return null;
-
-  if (resolved.renewed) {
-    try {
-      await setSessionCookie(token, resolved.expiresAt);
-    } catch {
-      // Read-only render context — the DB-side expiry was still extended.
-    }
-  }
-
-  return resolved.user;
+export const getCurrentCmsUser = cache(async (): Promise<CmsSessionUser | null> => {
+  return (await getCurrentCmsSession())?.user ?? null;
 });
 
 export { CmsAuthError, type CmsAuthErrorCode } from './guard';
@@ -268,7 +339,8 @@ export type RequireCmsUserOptions = {
 
 /**
  * Returns the signed-in user, or throws `CmsAuthError`: `unauthenticated`
- * without a session, `password_change_required` while the password is still
+ * without a session, `mfa_required` for an admin session that did not pass
+ * the second step, `password_change_required` while the password is still
  * temporary, `forbidden` when the role ranks too low. The decision is
  * `assertCmsAccess()` in `./guard`.
  *
@@ -284,7 +356,7 @@ export type RequireCmsUserOptions = {
 export async function requireCmsUser(
   role?: CmsRole,
   options: RequireCmsUserOptions = {},
-): Promise<CmsUserPublic> {
+): Promise<CmsSessionUser> {
   return assertCmsAccess(await getCurrentCmsUser(), {
     role,
     allowMustChangePassword: options.allowMustChangePassword,
@@ -296,7 +368,7 @@ export async function requireCmsUser(
  * temporary-password opt-in here: no permission-gated path is part of the
  * forced password change.
  */
-export async function requirePermission(permission: CmsPermission): Promise<CmsUserPublic> {
+export async function requirePermission(permission: CmsPermission): Promise<CmsSessionUser> {
   return assertCmsAccess(await getCurrentCmsUser(), { permission });
 }
 
@@ -309,7 +381,8 @@ export type ChangePasswordInput = {
 
 /**
  * Changes the signed-in user's password. Revokes every other session, then
- * issues a fresh one so the current browser stays signed in.
+ * issues a fresh one so the current browser stays signed in. The fresh
+ * session carries over the MFA state of the one it replaces, never more.
  *
  * The one write a temporary-password session may make: it is how such a user
  * gets out of that state, hence `allowMustChangePassword`.
@@ -319,14 +392,14 @@ export async function changePassword(input: ChangePasswordInput): Promise<AuthRe
   const db = await getCmsDb();
 
   const [row] = await db.select().from(cmsUsers).where(eq(cmsUsers.id, current.id)).limit(1);
-  if (!row) return fail('not_found');
+  if (!row) return authFail('not_found');
 
   if (!(await verifyPassword(input.currentPassword, row.passwordHash))) {
-    return fail('invalid_credentials', 'Het huidige wachtwoord is onjuist.');
+    return authFail('invalid_credentials', 'Het huidige wachtwoord is onjuist.');
   }
 
   const weak = validatePasswordStrength(input.newPassword);
-  if (weak) return fail('weak_password', weak);
+  if (weak) return authFail('weak_password', weak);
 
   await db
     .update(cmsUsers)
@@ -337,9 +410,11 @@ export async function changePassword(input: ChangePasswordInput): Promise<AuthRe
     })
     .where(eq(cmsUsers.id, row.id));
 
-  // Invalidate everything, including this browser, then re-issue.
+  // Invalidate everything, including this browser, then re-issue. A new
+  // password also ends any lock-out someone caused by guessing codes.
   await revokeAllUserSessions(db, row.id);
-  const session = await createSession(db, row.id);
+  await clearMfaAttempts(db, row.id);
+  const session = await createSession(db, row.id, {}, { mfaVerified: current.mfaVerified });
   await setSessionCookie(session.token, session.expiresAt);
 
   await recordAudit(db, current, {
@@ -349,138 +424,6 @@ export async function changePassword(input: ChangePasswordInput): Promise<AuthRe
   });
 
   return { ok: true, data: true };
-}
-
-export type CreateUserInput = {
-  email: string;
-  name: string;
-  role: CmsRole;
-  /** Omit to have a temporary password generated and returned once. */
-  password?: string;
-};
-
-export type CreatedUser = { user: CmsUserPublic; temporaryPassword: string | null };
-
-/**
- * Admin-only. New users always start with `mustChangePassword = true`; the
- * returned `temporaryPassword` is the only time the plaintext is available.
- */
-export async function createUser(input: CreateUserInput): Promise<AuthResult<CreatedUser>> {
-  const actor = await requireCmsUser('admin');
-  const db = await getCmsDb();
-  const email = normalizeEmail(input.email);
-
-  const [existing] = await db
-    .select({ id: cmsUsers.id })
-    .from(cmsUsers)
-    .where(eq(cmsUsers.email, email))
-    .limit(1);
-  if (existing) return fail('email_taken');
-
-  const generated = input.password ? null : generateTemporaryPassword();
-  const password = input.password ?? generated!;
-
-  const weak = validatePasswordStrength(password);
-  if (weak) return fail('weak_password', weak);
-
-  const [row] = await db
-    .insert(cmsUsers)
-    .values({
-      email,
-      name: input.name.trim(),
-      role: input.role,
-      passwordHash: await hashPassword(password),
-      mustChangePassword: true,
-      isActive: true,
-    })
-    .returning();
-
-  await recordAudit(db, actor, {
-    action: 'user.create',
-    entityType: 'cms_user',
-    entityId: row.id,
-    summary: `${email} (${input.role})`,
-  });
-
-  return { ok: true, data: { user: toPublicUser(row), temporaryPassword: generated } };
-}
-
-/** Admin-only. Resets another user's password to a fresh temporary one. */
-export async function resetUserPassword(userId: string): Promise<AuthResult<string>> {
-  const actor = await requireCmsUser('admin');
-  const db = await getCmsDb();
-
-  const [row] = await db
-    .select({ id: cmsUsers.id })
-    .from(cmsUsers)
-    .where(eq(cmsUsers.id, userId))
-    .limit(1);
-  if (!row) return fail('not_found');
-
-  const temporary = generateTemporaryPassword();
-  await db
-    .update(cmsUsers)
-    .set({
-      passwordHash: await hashPassword(temporary),
-      mustChangePassword: true,
-      updatedAt: new Date(),
-    })
-    .where(eq(cmsUsers.id, userId));
-  await revokeAllUserSessions(db, userId);
-
-  await recordAudit(db, actor, {
-    action: 'user.password_reset',
-    entityType: 'cms_user',
-    entityId: userId,
-  });
-
-  return { ok: true, data: temporary };
-}
-
-/**
- * Admin-only. Deactivating revokes every session for that user.
- * Admins cannot deactivate or demote themselves (prevents lock-out).
- */
-export async function setUserActive(userId: string, isActive: boolean): Promise<AuthResult<true>> {
-  const actor = await requireCmsUser('admin');
-  if (actor.id === userId && !isActive) {
-    return fail('forbidden', 'Je kan je eigen account niet deactiveren.');
-  }
-
-  const db = await getCmsDb();
-  await db.update(cmsUsers).set({ isActive, updatedAt: new Date() }).where(eq(cmsUsers.id, userId));
-  if (!isActive) await revokeAllUserSessions(db, userId);
-
-  await recordAudit(db, actor, {
-    action: isActive ? 'user.activate' : 'user.deactivate',
-    entityType: 'cms_user',
-    entityId: userId,
-  });
-  return { ok: true, data: true };
-}
-
-export async function setUserRole(userId: string, role: CmsRole): Promise<AuthResult<true>> {
-  const actor = await requireCmsUser('admin');
-  if (actor.id === userId && role !== 'admin') {
-    return fail('forbidden', 'Je kan je eigen beheerdersrol niet afnemen.');
-  }
-
-  const db = await getCmsDb();
-  await db.update(cmsUsers).set({ role, updatedAt: new Date() }).where(eq(cmsUsers.id, userId));
-  await recordAudit(db, actor, {
-    action: 'user.role_change',
-    entityType: 'cms_user',
-    entityId: userId,
-    summary: role,
-  });
-  return { ok: true, data: true };
-}
-
-export async function listCmsUsers(): Promise<CmsUserPublic[]> {
-  await requireCmsUser('admin');
-  const db = await getCmsDb();
-  const rows = await db.select().from(cmsUsers).orderBy(desc(cmsUsers.createdAt));
-  return rows.map(toPublicUser);
 }
 
 export { can, roleAtLeast } from './permissions';

@@ -64,7 +64,8 @@ cp .env.example .env.local        # optional: local dev needs no variables at al
 npm run db:migrate                # creates website/.pglite/ (PGlite)
 CMS_BOOTSTRAP_PASSWORD='<strong password>' npm run cms:bootstrap
 npm run dev                       # http://localhost:3000, admin at /admin/login
-# …sign in at /admin/login and set a permanent password, stop the dev server, then:
+# …sign in at /admin/login, set a permanent password and link an authenticator app,
+# stop the dev server, then:
 npm run cms:seed                  # Dutch pages, menus, redirect; published
 npm run cms:seed-booking          # first provider; prints its temporary password once
 ```
@@ -72,10 +73,12 @@ npm run cms:seed-booking          # first provider; prints its temporary passwor
 PowerShell has no inline env prefix: `$env:CMS_BOOTSTRAP_PASSWORD='…'; npm run cms:bootstrap;
 Remove-Item Env:CMS_BOOTSTRAP_PASSWORD`. Never store that password in `.env.local` or Vercel.
 
-Sign in as `contact@toshoni.be` with the bootstrap password; the first login forces a new one.
-The write scripts (`cms:seed`, rollouts) act as the oldest active admin with a permanent
-password and stop with a message while every admin still has a temporary one — so change the
-bootstrap password before seeding. Stop the dev server first: both open the same `.pglite/`.
+Sign in as `contact@toshoni.be` with the bootstrap password; the first login forces a new one
+and then the set-up of two-step verification (admins always sign in with a password and a code
+from an authenticator app such as 1Password; locally the encryption key for it is derived, no
+variable needed). The write scripts (`cms:seed`, rollouts) act as the oldest active admin with
+a permanent password and an authenticator and stop with a message while there is none — so
+finish the first sign-in before seeding. Stop the dev server first: both open the same `.pglite/`.
 Reset the local database by deleting `website/.pglite/` and repeating the commands.
 
 With no variables set: the CMS and booking run on PGlite, availability uses business hours
@@ -110,6 +113,7 @@ Run inside `website/`. Scripts that touch a database use PGlite unless `DATABASE
 | `npm run images:import -- --slot <slot> --src <file>` | Compress a delivered editorial image into `public/images/editorial/` and record it (`docs/editorial-images.md`) |
 | `npm run cms:selftest` | Integration checks on a throwaway PGlite in `.pglite-selftest/` |
 | `npm run cms:retention` | GDPR retention purge, dry run; `-- --apply` deletes, `-- --json` for a report |
+| `npm run cms:mfa-reset -- --email <address>` | Break-glass: remove a user's two-step verification when no other admin can; dry run by default, `-- --apply --expect-host <host>`. See `docs/staging-runbook.md` §11 |
 
 ## Testing
 
@@ -118,6 +122,7 @@ Three layers, all in CI ([`../CLAUDE.md`](../CLAUDE.md) §5):
 1. **Unit** — `npm test`. vitest, `*.test.ts` next to the module. Pure modules only: no
    database, no network, no Next runtime. Every bug fix starts with a failing test.
 2. **Integration** — `npm run cms:selftest`. Migrations, schema, passwords, sessions,
+   admin two-step verification (sign-in, replay, rate limits, recovery, break-glass),
    permissions, block registry, publish, the booking schema, the provider role,
    `computeSlots()`, e-mail/ICS/token encryption, the full booking flow and the offer rollout
    with service preselection, on a throwaway PGlite. Section list in the header of `scripts/cms-selftest.mts`.

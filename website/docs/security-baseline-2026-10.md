@@ -34,3 +34,19 @@ only. `npm audit fix --force` would "fix" them by breaking downgrades
 Shipped in the same branch: temporary-password sessions are now rejected at the
 auth-guard layer (`requireCmsUser` / `requirePermission`), not only by the admin
 layout redirect. Details in `docs/cms-architecture.md` (auth section).
+
+## Admin two-step verification (TOTP) and its one new dependency
+
+Shipped in the same branch: mandatory TOTP two-step verification for CMS admins (design in
+`docs/cms-architecture.md` §4, rollout in `docs/staging-runbook.md` §11). It adds exactly one
+runtime package:
+
+| Package | Version | Why | Supply-chain notes |
+| --- | --- | --- | --- |
+| `uqr` | 0.1.3 (pinned exactly) | Draws the enrolment QR code on our own server, so the TOTP secret never reaches an image service or any third party. | MIT, unjs; **zero dependencies**, no install scripts, ~740 lines of plain JS. Its matrix was checked once against an independent decoder (jsQR, outside the repository): the decoded text equals the `otpauth://` URI. |
+
+TOTP, base32, recovery codes and encryption use only `node:crypto` (no OTP library). After
+the change `npm audit` is unchanged: **15 findings (0 critical / 9 high / 6 moderate)** in
+development tooling, the same three accepted root causes as above, and
+`npm audit --omit=dev` reports **0 findings**.
+

@@ -326,7 +326,7 @@ The callback returns to `/admin/agenda` (or `/admin/providers/<id>`) with
 | `access_denied` | The provider pressed *Cancel* on Google's screen. | Start again and allow access. |
 | `missing_scope` | Consent was given without one of the calendar checkboxes. | Start again and tick both boxes. |
 | `state` | The 10-minute window passed, the flow was finished in another browser, or it started on a different host than `NEXT_PUBLIC_SITE_URL`. | Start again from the admin on the `NEXT_PUBLIC_SITE_URL` host. |
-| `session` | Not signed in to the admin, or signed in as someone else than who started. | Sign in and start again. |
+| `session` | Not signed in to the admin, signed in as someone else than who started, or an admin session without two-step verification. | Sign in (with the code from your authenticator) and start again. |
 | `forbidden` | The signed-in user may not manage this provider. | Use the provider's own login or an admin. |
 | `exchange` | Google refused the authorisation code (often a redirect URI or client secret mismatch). | Check §4 and the Vercel values; start again. |
 | `no_refresh_token` | Google returned no refresh token. | Remove the app at <https://myaccount.google.com/permissions>, then connect again. |
@@ -477,6 +477,7 @@ them:
 | Bookings (`cms_bookings`: contact details, bike, complaints, address) | 3 years after the customer's **last** appointment | `scripts/cms-retention.mts`, monthly (below) |
 | Booking rate-limit rows (`cms_booking_rate_limit`: IP + e-mail) | 24 hours | pruned on every booking; the script is the backstop |
 | Admin login attempts (`cms_login_attempts`) | pruned on every login | automatic (`src/lib/cms/auth.ts`); the script does not touch it |
+| Admin two-step attempts (`cms_mfa_attempts`: user + IP) and sign-in challenges (`cms_mfa_challenges`) | 1 day / 10 minutes | pruned on every attempt and sign-in (`src/lib/cms/mfa/`); the script does not touch them |
 | Server logs (Vercel) | ≤ 30 days | Vercel's log retention for the plan |
 | GA4 | ≤ 14 months | GA4 Admin → Data retention: keep 2 or 14 months, never more |
 | Admin audit log, sessions, content | not personal customer data | never purged by the script |

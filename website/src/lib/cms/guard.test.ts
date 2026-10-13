@@ -7,14 +7,80 @@ import {
   cmsAccessDenial,
   type CmsAuthErrorCode,
   type CmsGuardSubject,
+  roleRequiresMfa,
 } from './guard';
 import { CMS_PERMISSIONS, can, roleAtLeast } from './permissions';
 
 const ROLES: CmsRole[] = ['provider', 'editor', 'admin'];
 
-function user(role: CmsRole, mustChangePassword: boolean): CmsGuardSubject {
-  return { role, mustChangePassword };
+/** A session that passed MFA unless said otherwise, so the older blocks test what they did. */
+function user(role: CmsRole, mustChangePassword: boolean, mfaVerified = true): CmsGuardSubject {
+  return { role, mustChangePassword, mfaVerified };
 }
+
+describe('cmsAccessDenial: the MFA gate for admins', () => {
+  const REQUIREMENTS = [
+    {},
+    { allowMustChangePassword: true },
+    ...ROLES.map((role) => ({ role, allowMustChangePassword: true })),
+    ...CMS_PERMISSIONS.map((permission) => ({ permission })),
+  ];
+
+  it('refuses an admin session without MFA for every requirement, opt-in included', () => {
+    for (const requirement of REQUIREMENTS) {
+      for (const mustChangePassword of [false, true]) {
+        expect(
+          cmsAccessDenial(user('admin', mustChangePassword, false), requirement),
+          JSON.stringify(requirement),
+        ).toBe('mfa_required');
+      }
+    }
+  });
+
+  it('reports missing MFA before a temporary password or a missing permission', () => {
+    expect(cmsAccessDenial(user('admin', true, false))).toBe('mfa_required');
+    expect(cmsAccessDenial(user('admin', false, false), { permission: 'user.manage' })).toBe(
+      'mfa_required',
+    );
+  });
+
+  it('fails closed on anything but mfaVerified === true', () => {
+    for (const value of [undefined, null, 'true', 1, {}]) {
+      const odd = {
+        role: 'admin',
+        mustChangePassword: false,
+        mfaVerified: value,
+      } as unknown as CmsGuardSubject;
+      expect(cmsAccessDenial(odd), String(value)).toBe('mfa_required');
+    }
+    const missing = { role: 'admin', mustChangePassword: false } as CmsGuardSubject;
+    expect(cmsAccessDenial(missing)).toBe('mfa_required');
+  });
+
+  it('treats an unknown role like an admin (MFA required)', () => {
+    const unknown = { role: 'owner', mustChangePassword: false } as unknown as CmsGuardSubject;
+    expect(cmsAccessDenial(unknown)).toBe('mfa_required');
+    expect(roleRequiresMfa('owner')).toBe(true);
+  });
+
+  it('lets an admin session that passed MFA through', () => {
+    expect(cmsAccessDenial(user('admin', false, true), { permission: 'user.manage' })).toBeNull();
+  });
+
+  it('leaves editors and providers unchanged: no MFA needed', () => {
+    expect(roleRequiresMfa('admin')).toBe(true);
+    for (const role of ['editor', 'provider'] as const) {
+      expect(roleRequiresMfa(role)).toBe(false);
+      expect(cmsAccessDenial(user(role, false, false)), role).toBeNull();
+      expect(cmsAccessDenial(user(role, true, false)), role).toBe('password_change_required');
+      for (const permission of CMS_PERMISSIONS) {
+        expect(cmsAccessDenial(user(role, false, false), { permission }), permission).toBe(
+          can(role, permission) ? null : 'forbidden',
+        );
+      }
+    }
+  });
+});
 
 describe('cmsAccessDenial: the temporary-password gate', () => {
   it('refuses a temporary password for every role, role requirement and permission', () => {
@@ -57,7 +123,11 @@ describe('cmsAccessDenial: the temporary-password gate', () => {
 
   it('fails closed when the flag is missing or not a boolean', () => {
     for (const value of [undefined, null, 'false', 0]) {
-      const odd = { role: 'admin', mustChangePassword: value } as unknown as CmsGuardSubject;
+      const odd = {
+        role: 'admin',
+        mustChangePassword: value,
+        mfaVerified: true,
+      } as unknown as CmsGuardSubject;
       expect(cmsAccessDenial(odd), String(value)).toBe('password_change_required');
     }
   });
@@ -141,6 +211,7 @@ describe('assertCmsAccess', () => {
       email: 'a@example.com',
       role: 'admin' as const,
       mustChangePassword: false,
+      mfaVerified: true,
     };
     expect(assertCmsAccess(admin, { permission: 'user.manage' })).toBe(admin);
     const temporary = { ...admin, mustChangePassword: true };
@@ -150,6 +221,7 @@ describe('assertCmsAccess', () => {
   it('throws a CmsAuthError carrying the code and its Dutch message', () => {
     const cases: Array<[CmsGuardSubject | null, CmsAuthErrorCode]> = [
       [null, 'unauthenticated'],
+      [user('admin', false, false), 'mfa_required'],
       [user('admin', true), 'password_change_required'],
       [user('editor', false), 'forbidden'],
     ];

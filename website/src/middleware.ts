@@ -43,10 +43,15 @@ const hasClerk = Boolean(
 /** Must match `SESSION_COOKIE_NAME` in `src/lib/cms/session.ts`. */
 const CMS_SESSION_COOKIE = 'cms_session';
 
-/** `/admin/login` is the only admin route an anonymous visitor may reach. */
+/**
+ * `/admin/login` is the only admin route an anonymous visitor may reach, plus
+ * `/admin/mfa`, the second sign-in step, which runs before any session exists
+ * (it checks its own `cms_mfa` challenge cookie against the database).
+ */
 function isGuardedAdminRoute(pathname: string): boolean {
   if (!pathname.startsWith('/admin')) return false;
-  return !(pathname === '/admin/login' || pathname.startsWith('/admin/login/'));
+  const open = ['/admin/login', '/admin/mfa'];
+  return !open.some((path) => pathname === path || pathname.startsWith(`${path}/`));
 }
 
 /**

@@ -1,6 +1,6 @@
 import 'server-only';
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { env, features, isProduction } from '@/lib/env';
+import { seal, unseal } from '@/lib/sealed-box';
 import { derivedSecret } from '@/lib/secrets';
 
 /**
@@ -74,8 +74,6 @@ function clientCredentials(): { clientId: string; clientSecret: string } {
 // Token encryption
 // ---------------------------------------------------------------------------
 
-const ENCRYPTION_VERSION = 'v1';
-
 function encryptionKey(): Buffer {
   const explicit = env.GOOGLE_TOKEN_ENCRYPTION_KEY;
   if (explicit) {
@@ -92,32 +90,15 @@ function encryptionKey(): Buffer {
   return derivedSecret('google-token');
 }
 
-/** AES-256-GCM → `v1.<iv>.<tag>.<ciphertext>` (base64url parts). */
+/** AES-256-GCM → `v1.<iv>.<tag>.<ciphertext>` (base64url parts), via `src/lib/sealed-box.ts`. */
 export function encryptSecret(plain: string): string {
-  const iv = randomBytes(12);
-  const cipher = createCipheriv('aes-256-gcm', encryptionKey(), iv);
-  const ciphertext = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return [ENCRYPTION_VERSION, iv, tag, ciphertext]
-    .map((part) => (typeof part === 'string' ? part : part.toString('base64url')))
-    .join('.');
+  return seal(plain, encryptionKey());
 }
 
 /** Inverse of {@link encryptSecret}; `null` when the value is malformed or the key changed. */
 export function decryptSecret(encrypted: string | null | undefined): string | null {
   if (!encrypted) return null;
-  const [version, iv, tag, ciphertext] = encrypted.split('.');
-  if (version !== ENCRYPTION_VERSION || !iv || !tag || ciphertext === undefined) return null;
-  try {
-    const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(iv, 'base64url'));
-    decipher.setAuthTag(Buffer.from(tag, 'base64url'));
-    return Buffer.concat([
-      decipher.update(Buffer.from(ciphertext, 'base64url')),
-      decipher.final(),
-    ]).toString('utf8');
-  } catch {
-    return null;
-  }
+  return unseal(encrypted, encryptionKey());
 }
 
 // ---------------------------------------------------------------------------

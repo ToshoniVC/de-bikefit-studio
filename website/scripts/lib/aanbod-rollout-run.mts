@@ -165,7 +165,8 @@ export async function withAdminSession<T>(
   work: () => Promise<T>,
 ): Promise<T> {
   const { createSession, revokeSession } = await import('@/lib/cms/session');
-  const session = await createSession(context.db, actorId, { userAgent });
+  // The operator's database access is the authentication (scripts/lib/cms-actor.mts).
+  const session = await createSession(context.db, actorId, { userAgent }, { mfaVerified: true });
   const previousCookie = context.cookieJar.get('cms_session');
   context.cookieJar.set('cms_session', session.token);
   try {

@@ -2,19 +2,30 @@ import Link from 'next/link';
 
 import { Badge } from '@/components/ui/badge';
 import { SectionCard } from '@/components/admin/form';
+import { MfaAccountPanel } from '@/components/admin/mfa/account-panel';
 import { PasswordForm } from '@/components/admin/password-form';
 import { PageHeading } from '@/components/admin/shell';
 import { requireCmsUser } from '@/lib/cms/auth';
+import { getOwnMfaStatus } from '@/lib/cms/mfa/manage';
 import { ROLE_LABELS } from '@/lib/cms/permissions';
 
 export const metadata = { title: 'Mijn account' };
 
-export default async function AdminAccountPage() {
+export default async function AdminAccountPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ herstelcode?: string }>;
+}) {
   const user = await requireCmsUser();
+  const mfa = await getOwnMfaStatus();
+  const { herstelcode } = await searchParams;
 
   return (
     <>
-      <PageHeading title="Mijn account" description="Je gegevens en je wachtwoord." />
+      <PageHeading
+        title="Mijn account"
+        description="Je gegevens, je wachtwoord en tweestapsverificatie."
+      />
 
       <div className="flex flex-col gap-4">
         <SectionCard title="Gegevens">
@@ -47,6 +58,21 @@ export default async function AdminAccountPage() {
           description="Na het wijzigen worden alle andere sessies afgemeld."
         >
           <PasswordForm />
+        </SectionCard>
+
+        <SectionCard
+          title="Tweestapsverificatie"
+          description="Een code uit je authenticator-app bij elke aanmelding, naast je wachtwoord."
+        >
+          <MfaAccountPanel
+            status={{
+              enrolled: mfa.enrolled,
+              required: mfa.required,
+              confirmedAt: mfa.confirmedAt ? mfa.confirmedAt.toISOString() : null,
+              recoveryCodesLeft: mfa.recoveryCodesLeft,
+            }}
+            recoveryCodeUsed={herstelcode === 'gebruikt'}
+          />
         </SectionCard>
 
         <p className="text-sm">

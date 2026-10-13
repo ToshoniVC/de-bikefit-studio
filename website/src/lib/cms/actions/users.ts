@@ -2,13 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import type { CmsRole } from '@/db/cms-schema';
-import {
-  createUser,
-  requireCmsUser,
-  resetUserPassword,
-  setUserActive,
-  setUserRole,
-} from '@/lib/cms/auth';
+import { requireCmsUser } from '@/lib/cms/auth';
+import { createUser, resetUserPassword, setUserActive, setUserRole } from '@/lib/cms/users';
 import { runAction } from './run';
 import { actionError, actionOk, field, type ActionState } from './state';
 

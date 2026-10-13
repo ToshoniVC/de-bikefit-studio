@@ -53,7 +53,12 @@ export async function aanbodSection(ctx: {
   const { resolveBookingSelection } = await import('@/lib/offers/catalogue');
   const { DEFAULT_OFFERS } = await import('@/lib/offers/defaults');
 
-  const session = await createSession(db, admin.id, { userAgent: 'selftest-aanbod' });
+  const session = await createSession(
+    db,
+    admin.id,
+    { userAgent: 'selftest-aanbod' },
+    { mfaVerified: true },
+  );
   cookieJar.set('cms_session', session.token);
   const locale = schema.DEFAULT_LOCALE;
   const logged: string[] = [];

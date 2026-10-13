@@ -3,16 +3,24 @@
 import { useActionState } from 'react';
 
 import { Input } from '@/components/ui/input';
-import { Field, StatusMessage, SubmitButton } from '@/components/admin/form';
+import { Field, StatusMessage, SubmitButton, type AdminAction } from '@/components/admin/form';
 import { changePasswordAction } from '@/lib/cms/actions/auth';
 import { IDLE_STATE } from '@/lib/cms/actions/state';
 
 /**
- * Used twice: on `/admin/account` (voluntary, stays on the page) and on
- * `/admin/password` (forced, `next` sends the user on once it succeeds).
+ * Used on `/admin/account` (voluntary, stays on the page), on
+ * `/admin/password` (forced, `next` sends the user on once it succeeds) and,
+ * with `action={mfaChangePasswordAction}`, as the first step of an admin's
+ * sign-in on `/admin/mfa`, before any session exists.
  */
-export function PasswordForm({ next }: { next?: string }) {
-  const [state, formAction] = useActionState(changePasswordAction, IDLE_STATE);
+export function PasswordForm({
+  next,
+  action = changePasswordAction,
+}: {
+  next?: string;
+  action?: AdminAction;
+}) {
+  const [state, formAction] = useActionState(action, IDLE_STATE);
 
   return (
     <form action={formAction} className="flex max-w-md flex-col gap-3">

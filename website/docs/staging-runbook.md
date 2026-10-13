@@ -10,7 +10,8 @@ Previews and staging go automatically once the release gate is green; production
 production database and DNS only after an explicit go from Toshoni (`../DEPLOYMENT.md` §2).
 Arend records every deployment in its infrastructure log, outside this repository. A person
 with Vercel and Neon access can follow the same steps. The offer redesign of 13 Oct 2026 has its
-own rollout procedure in §9.
+own rollout procedure in §9; admin two-step verification (migration 0004 and a new secret) in
+§11.
 
 Environments, the Hobby-plan staging setup and the full env var contract:
 [`../DEPLOYMENT.md`](../DEPLOYMENT.md). Google, GA4 and Resend setup, GDPR and retention:
@@ -58,6 +59,7 @@ come from 1Password.
 | --- | --- | --- |
 | `DATABASE_URL` | pooled URL of Neon `Staging` (§1) | Without it the app tries PGlite, which `src/db/cms.ts` refuses on any deployment (`NODE_ENV=production`). |
 | `CMS_SESSION_SECRET` | `openssl rand -base64 48`, staging's own | Rotating it signs every CMS user out and, without a token key, disconnects Google. Never reuse production's. |
+| `CMS_MFA_ENCRYPTION_KEY` | `openssl rand -base64 32`, staging's own | **Required** for admin sign-in (two-step verification, §11). Treat as permanent: rotating it forces every admin to re-enrol with a recovery code. Never reuse production's. |
 | `NEXT_PUBLIC_SITE_URL` | `https://de-bikefit-studio-git-staging-toshoni.vercel.app` | Canonicals, sitemap, OG, e-mail links, OAuth redirect URI. |
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | the shared web client | Staging redirect URI must be registered on the client (`booking-runbook.md` §4). |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32`, staging's own | Optional (falls back to a key derived from `CMS_SESSION_SECRET`); treat as permanent. |
@@ -96,6 +98,7 @@ DATABASE_URL='<staging pooled url>' npm run db:migrate
 | `0001_cms_foundation.sql` | Two enums and eleven `cms_*` tables. |
 | `0002_role_provider.sql` | Adds `provider` to `cms_role`. |
 | `0003_booking.sql` | The eight booking tables. |
+| `0004_cms_admin_mfa.sql` | Four `cms_mfa_*` tables and `cms_sessions.mfa_verified_at` (§11). |
 
 All additive and guarded (no `DROP`, `TRUNCATE` or webshop `ALTER`); already-applied files
 are skipped. Expect `→ driver: neon-http (<host>)` and `✓ migrations applied to Neon`.
@@ -194,9 +197,11 @@ Production (`main`) deploys the same way, only after an explicit go.
 
 1. Open `<staging alias>/admin/login` and sign in as `contact@toshoni.be` with the
    bootstrap password.
-2. You are sent to `/admin/password` and cannot reach anything else until you set a new
-   password (≥ 12 characters, lower case, upper case and a digit). Changing it revokes every
-   other session.
+2. You are sent to `/admin/mfa` and cannot reach anything else until you set a new
+   password (≥ 12 characters, lower case, upper case and a digit) and then link an
+   authenticator (1Password or a free app): scan the QR code, type the six-digit code, and
+   store the ten recovery codes shown once (in 1Password, with the account). Only then is
+   there a session. Every later sign-in asks for the password and a code.
 3. On the dashboard, check:
    - **Pagina's** — eight pages, all "Gepubliceerd".
    - **Diensten**, **Locaties**, **Aanbieders** — five services, two locations, one provider.
@@ -266,7 +271,8 @@ production step (database, env vars, DNS, deploy) needs an explicit go; Arend ex
 **Environment variables (Vercel → Production)**
 
 - [ ] `DATABASE_URL` (Neon `production`, pooled), a fresh `CMS_SESSION_SECRET` (never
-      staging's), `NEXT_PUBLIC_SITE_URL` = the production origin.
+      staging's), a fresh `CMS_MFA_ENCRYPTION_KEY` (never staging's), `NEXT_PUBLIC_SITE_URL` =
+      the production origin.
 - [ ] `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, a production-only
       `GOOGLE_TOKEN_ENCRYPTION_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO`,
       `NEXT_PUBLIC_GA4_MEASUREMENT_ID`, `GA4_SERVICE_ACCOUNT_JSON`, optionally
@@ -274,8 +280,8 @@ production step (database, env vars, DNS, deploy) needs an explicit go; Arend ex
 
 **Database (Neon `production`)**
 
-- [ ] `db:migrate` (0000–0003), then `cms:bootstrap` (change the admin password
-      immediately), `cms:seed`, `cms:seed-booking` — or, if production already has content,
+- [ ] `db:migrate` (0000–0004), then `cms:bootstrap` (change the admin password and set up
+      two-step verification immediately), `cms:seed`, `cms:seed-booking` — or, if production already has content,
       `cms:seed -- --refresh-slug` for **`afspraak`**, **`privacy`** and
       **`algemene-voorwaarden`**.
 - [ ] **Retention** scheduled: `npm run cms:retention` monthly against production, dry run
@@ -427,4 +433,82 @@ are never written (booking counts verified before and after). **No migrations. N
 
 **Rollback:** `npm run cms:patch-booking-cta -- --restore <backup.json> --expect-host '<host>'`
 puts the page rows and draft blocks back exactly (the backup uses the §9 format and restore).
+
+---
+
+## 11. Admin two-step verification (TOTP), 13 Oct 2026
+
+Admins now sign in with a password **and** a code from an authenticator app (1Password or a
+free app such as Aegis, Ente Auth or Google Authenticator); recovery codes cover a lost
+phone. Editors and providers are unchanged. Design: `cms-architecture.md` §4, "Two-step
+verification". It needs one migration and one new secret, in this order. Arend executes;
+staging is autonomous after the release gate, production needs Toshoni's go.
+
+1. **Secret first.** Generate a staging-only key (`openssl rand -base64 32`), store it in
+   1Password, then set `CMS_MFA_ENCRYPTION_KEY` in Vercel → Preview (branch `staging`) as
+   *Sensitive*. Preview deployments of other branches that use the staging database need it
+   too, or admins cannot sign in there. Never print, paste or log the value.
+2. **Snapshot**, then migrate (additive, guarded; the running build keeps working on the
+   extended schema):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run db:migrate
+   ```
+
+   Expect `0004_cms_admin_mfa` to be applied and `✓ migrations applied to Neon`. Check:
+   `cms_mfa_factors`, `cms_mfa_recovery_codes`, `cms_mfa_challenges`, `cms_mfa_attempts`
+   exist and `cms_sessions.mfa_verified_at` is a nullable column. Nothing else changes.
+3. **Deploy** the code (release gate, READY). From that moment every existing **admin**
+   session is refused: admins are sent to sign in again.
+4. **First admin sign-in** (Toshoni, `contact@toshoni.be`): password → *Tweestapsverificatie
+   instellen* → scan the QR code → six-digit code → store the ten recovery codes in 1Password
+   with the account → dashboard. No lockout: an admin without an authenticator always gets the
+   enrolment step after the password. *Gebruikers* shows "Tweestapsverificatie aan".
+5. **CLI scripts** (`cms:seed`, `cms:rollout-aanbod`, `cms:patch-booking-cta`) act only as an
+   admin who has enrolled; until step 4 is done they stop with "no active admin has two-step
+   verification yet".
+6. **Checks:** `/admin/login` does **not** show "Tweestapsverificatie is op deze server niet
+   geconfigureerd" (if it does, the key is missing or malformed: fix it in Vercel, redeploy); a
+   wrong code is refused; `/admin` without a session goes to the login page; an editor still
+   signs in with a password only; the audit log shows `auth.mfa_enrol` and `auth.mfa_verify`.
+
+   **Order matters:** the new build reads the 0004 tables at sign-in, so deploying it before
+   step 2 breaks `/admin/login` until the migration runs. Migrate first.
+
+**Lost authenticator.** Sign in with a recovery code, then *Mijn account →
+Tweestapsverificatie → Authenticator vervangen*. Authenticator **and** recovery codes lost:
+another admin uses *Gebruikers → Tweestapsverificatie resetten* (the user gets a temporary
+password). No other admin: break-glass with database access, dry run first:
+
+```bash
+DATABASE_URL='<staging pooled url>' npm run cms:mfa-reset -- --email <address>
+DATABASE_URL='<staging pooled url>' CMS_BREAK_GLASS_PASSWORD='<new temporary password>' \
+  npm run cms:mfa-reset -- --email <address> --apply \
+  --expect-host '<host part of the staging DATABASE_URL>'
+```
+
+It replaces the password by the temporary one (≥ 12 characters, lower, upper, digit; hand it
+over out of band, it must be changed at sign-in), revokes every session, removes that user's
+authenticators, recovery codes and challenges, clears their failed-attempt log and writes
+`auth.mfa_break_glass` to the audit log. It prints no secret. Without
+`CMS_BREAK_GLASS_PASSWORD` the password stays as it was and whoever knows it can enrol first:
+only do that when the user is ready to sign in right away.
+
+**Locked out by someone guessing codes** (they know the password; the audit log shows
+`auth.mfa_failed` after `auth.login`): a new password stops it and clears the counter. Another
+admin resets the password (or MFA) under *Gebruikers*; with no other admin, use the break-glass
+command above with a temporary password.
+
+**Key rotation or loss.** Stored authenticators become unreadable ("gebruik een
+herstelcode"); recovery codes still work, after which each admin replaces the authenticator.
+
+**Rollback.** Code first: redeploy the previous build; it ignores the new tables and column,
+so admins sign in with a password only again (MFA is then simply off). The migration does not
+need to be undone; leave the tables in place for a later re-deploy. A refresh of staging from
+production empties the `cms_mfa_*` tables (`scripts/anonymize-staging.sql`), after which
+staging admins enrol anew.
+
+**Production** (after Toshoni's go): the same steps with a production-only key in Vercel →
+Production, `db:migrate` against Neon `production` after a snapshot, deploy, then the first
+admin enrols immediately.
 

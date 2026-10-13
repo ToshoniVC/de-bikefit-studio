@@ -629,19 +629,25 @@ async function main() {
   const locale = DEFAULT_LOCALE;
 
   // --- 1. An actor, and a real session for it ------------------------------
-  // The oldest active admin who has chosen their own password; a session with
-  // a temporary password could not write (`scripts/lib/cms-actor.mts`).
+  // The oldest active admin who has chosen their own password and enrolled
+  // two-step verification; nobody else could write (`scripts/lib/cms-actor.mts`).
   const { createSession, revokeSession } = await import('@/lib/cms/session');
   const actor = await findActingAdmin({ db, orm, schema });
   if (!actor) {
     throw new Error(
       'no active admin in this database; run cms:bootstrap first, then sign in once at ' +
-        '/admin and choose a new password',
+        '/admin, choose a new password and set up two-step verification',
     );
   }
   log('=', `publishing as ${actor.email}`);
 
-  const session = await createSession(db, actor.id, { userAgent: 'cms-seed' });
+  // The operator's database access is the authentication (scripts/lib/cms-actor.mts).
+  const session = await createSession(
+    db,
+    actor.id,
+    { userAgent: 'cms-seed' },
+    { mfaVerified: true },
+  );
   cookieJar.set('cms_session', session.token);
 
   try {

@@ -16,6 +16,11 @@ import { sessionSecret } from '@/lib/secrets';
  *   invalidates every live session at once.
  * - 14-day lifetime with sliding renewal: once a session is past its halfway
  *   point, using it pushes the expiry back out to a full 14 days.
+ * - `mfa_verified_at` records that the session passed the second step. A
+ *   session is only ever created after it (`createSession(…, { mfaVerified })`),
+ *   never upgraded in place, so a password-only token can never become an
+ *   MFA token. Password sign-in of an admin creates no session at all: it
+ *   issues a challenge (`src/lib/cms/mfa/challenge.ts`).
  *
  * The DB-level helpers below take an explicit `db`, so migration/bootstrap/
  * self-test scripts can use them outside a request. The cookie helpers at the
@@ -55,13 +60,26 @@ export type SessionContext = {
   ipAddress?: string | null;
 };
 
+export type CreateSessionOptions = {
+  /**
+   * The second step (TOTP or recovery code) was completed for this session.
+   * Admin sessions are refused without it (`src/lib/cms/guard.ts`). Set only by
+   * the MFA flow (`src/lib/cms/mfa/flow.ts`), by `changePassword()` when the
+   * session it replaces had it, and by the CMS CLIs, whose operator holds the
+   * database credentials (`scripts/lib/cms-actor.mts`).
+   */
+  mfaVerified?: boolean;
+};
+
 export async function createSession(
   db: CmsDatabase,
   userId: string,
   context: SessionContext = {},
+  options: CreateSessionOptions = {},
 ): Promise<CreatedSession> {
   const token = generateSessionToken();
-  const expiresAt = new Date(Date.now() + SESSION_TTL_MS);
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
 
   const [row] = await db
     .insert(cmsSessions)
@@ -71,6 +89,7 @@ export async function createSession(
       expiresAt,
       userAgent: context.userAgent?.slice(0, 500) ?? null,
       ipAddress: context.ipAddress ?? null,
+      mfaVerifiedAt: options.mfaVerified === true ? now : null,
     })
     .returning({ id: cmsSessions.id });
 
@@ -80,6 +99,8 @@ export async function createSession(
 export type ResolvedSession = {
   user: CmsUserPublic;
   sessionId: string;
+  /** The session completed the second step (`mfa_verified_at` is set). */
+  mfaVerified: boolean;
   expiresAt: Date;
   /** True when the expiry was just slid forward — refresh the cookie. */
   renewed: boolean;
@@ -125,7 +146,13 @@ export async function resolveSession(
       .where(eq(cmsSessions.id, row.session.id));
   }
 
-  return { user: toPublicUser(row.user), sessionId: row.session.id, expiresAt, renewed };
+  return {
+    user: toPublicUser(row.user),
+    sessionId: row.session.id,
+    mfaVerified: row.session.mfaVerifiedAt !== null,
+    expiresAt,
+    renewed,
+  };
 }
 
 export async function revokeSession(db: CmsDatabase, token: string): Promise<void> {
@@ -136,7 +163,7 @@ export async function revokeSessionById(db: CmsDatabase, sessionId: string): Pro
   await db.delete(cmsSessions).where(eq(cmsSessions.id, sessionId));
 }
 
-/** Used after a password change and when an admin deactivates an account. */
+/** Used after a password change, a second-factor change and when an admin deactivates an account. */
 export async function revokeAllUserSessions(db: CmsDatabase, userId: string): Promise<void> {
   await db.delete(cmsSessions).where(eq(cmsSessions.userId, userId));
 }

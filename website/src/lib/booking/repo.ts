@@ -24,13 +24,8 @@ import {
   type CmsService,
   type CmsUserPublic,
 } from '@/db/cms-schema';
-import {
-  CmsAuthError,
-  createUser,
-  recordAudit,
-  requireCmsUser,
-  requirePermission,
-} from '@/lib/cms/auth';
+import { CmsAuthError, recordAudit, requireCmsUser, requirePermission } from '@/lib/cms/auth';
+import { createUser } from '@/lib/cms/users';
 import { can, type CmsPermission } from '@/lib/cms/permissions';
 import { revalidateContent, type RepoResult } from '@/lib/cms/repo';
 import { BOOKING_TAG } from './content';

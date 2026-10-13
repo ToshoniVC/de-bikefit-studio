@@ -25,6 +25,7 @@ describe('runAction', () => {
   it('maps every guard failure to its own short Dutch message', async () => {
     const expected: Record<CmsAuthErrorCode, string> = {
       unauthenticated: 'Je sessie is verlopen. Meld je opnieuw aan.',
+      mfa_required: 'Bevestig je aanmelding met tweestapsverificatie. Meld je opnieuw aan.',
       password_change_required:
         'Je gebruikt nog een tijdelijk wachtwoord. Kies eerst een nieuw wachtwoord.',
       forbidden: 'Je hebt geen toestemming voor deze actie.',

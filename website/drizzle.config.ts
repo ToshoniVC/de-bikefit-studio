@@ -13,9 +13,9 @@ config({ path: '.env.local' });
 const url = process.env.DATABASE_URL ?? 'postgres://drizzle-kit:generate-only@127.0.0.1:5432/unset';
 
 export default defineConfig({
-  // Webshop schema (unchanged) + CMS schema. Both must be listed so the
-  // snapshot stays complete and generated migrations stay additive.
-  schema: ['./src/db/schema.ts', './src/db/cms-schema.ts'],
+  // Webshop schema (unchanged) + CMS schema (+ its MFA tables). All must be
+  // listed so the snapshot stays complete and generated migrations stay additive.
+  schema: ['./src/db/schema.ts', './src/db/cms-schema.ts', './src/db/cms-mfa-schema.ts'],
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: { url },

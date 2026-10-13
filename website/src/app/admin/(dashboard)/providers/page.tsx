@@ -7,7 +7,8 @@ import {
 } from '@/components/admin/providers-manager';
 import { PageHeading } from '@/components/admin/shell';
 import { listLocations, listProviders } from '@/lib/booking/repo';
-import { listCmsUsers, requireCmsUser } from '@/lib/cms/auth';
+import { requireCmsUser } from '@/lib/cms/auth';
+import { listCmsUsers } from '@/lib/cms/users';
 import { can, ROLE_LABELS } from '@/lib/cms/permissions';
 
 export const metadata = { title: 'Aanbieders' };

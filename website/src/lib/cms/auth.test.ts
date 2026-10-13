@@ -3,23 +3,22 @@ import type { CmsRole, CmsUserPublic } from '@/db/cms-schema';
 import {
   CmsAuthError,
   changePassword,
-  createUser,
-  listCmsUsers,
+  login,
   logout,
   requireCmsUser,
   requirePermission,
-  resetUserPassword,
-  setUserActive,
-  setUserRole,
 } from './auth';
+import { createUser, listCmsUsers, resetUserPassword, setUserActive, setUserRole } from './users';
 import { hashPassword } from './password';
 
 /**
  * The guards as server actions call them, with the session lookup mocked: no
  * database, no cookies, no Next runtime. `./session` and `@/db/cms` are
  * replaced, so `getCurrentCmsUser()` resolves whatever `resolveSession` returns
- * here; the decision is the real one from `./guard`. The flow on a real
- * database is covered by `npm run cms:selftest` (section 5b).
+ * here; the decision is the real one from `./guard`. `./mfa/challenge` and
+ * `./mfa/repo` are replaced too, so `login()` can be observed choosing between
+ * a challenge and a session. The flow on a real database is covered by
+ * `npm run cms:selftest` (sections 5b and 5c).
  */
 
 const session = vi.hoisted(() => ({
@@ -76,7 +75,27 @@ const fake = vi.hoisted(() => {
   return { state, db };
 });
 
+const mfa = vi.hoisted(() => ({
+  createMfaChallenge: vi.fn(async () => ({
+    id: 'challenge-1',
+    token: 'challenge-token',
+    expiresAt: new Date(),
+  })),
+  setChallengeCookie: vi.fn(async () => {}),
+  readChallengeCookie: vi.fn(async (): Promise<string | undefined> => undefined),
+  resolveMfaChallenge: vi.fn(async (): Promise<unknown> => null),
+  deleteMfaChallenge: vi.fn(async () => {}),
+  clearChallengeCookie: vi.fn(async () => {}),
+  hasConfirmedFactor: vi.fn(async () => false),
+  clearMfaAttempts: vi.fn(async () => {}),
+}));
+
 vi.mock('./session', () => session);
+vi.mock('./mfa/challenge', () => mfa);
+vi.mock('./mfa/repo', () => ({
+  hasConfirmedFactor: mfa.hasConfirmedFactor,
+  clearMfaAttempts: mfa.clearMfaAttempts,
+}));
 vi.mock('@/db/cms', () => ({ getCmsDb: async () => fake.db }));
 
 const SLOW = 30_000;
@@ -98,13 +117,20 @@ function cmsUser(role: CmsRole, mustChangePassword: boolean): CmsUserPublic {
   };
 }
 
-/** The request carries a valid session for `user` (or no cookie at all). */
-function signIn(user: CmsUserPublic | null) {
+/**
+ * The request carries a valid session for `user` (or no cookie at all). By
+ * default the session passed MFA, so the older blocks test what they did.
+ */
+function signIn(user: CmsUserPublic | null, mfaVerified = true) {
   session.readSessionCookie.mockResolvedValue(user ? 'cookie-token' : undefined);
   session.resolveSession.mockResolvedValue(
-    user ? { user, sessionId: 'session-1', expiresAt: new Date(), renewed: false } : null,
+    user
+      ? { user, sessionId: 'session-1', mfaVerified, expiresAt: new Date(), renewed: false }
+      : null,
   );
 }
+
+const signedIn = (user: CmsUserPublic, mfaVerified = true) => ({ ...user, mfaVerified });
 
 const refusedFor = (code: string) => ({ name: 'CmsAuthError', code });
 
@@ -144,8 +170,8 @@ describe('requireCmsUser / requirePermission with a temporary password', () => {
   it('lets the session through on the explicit allow-path only', async () => {
     const temporary = cmsUser('editor', true);
     signIn(temporary);
-    await expect(requireCmsUser(undefined, { allowMustChangePassword: true })).resolves.toBe(
-      temporary,
+    await expect(requireCmsUser(undefined, { allowMustChangePassword: true })).resolves.toEqual(
+      signedIn(temporary),
     );
     await expect(requireCmsUser(undefined, {})).rejects.toMatchObject(
       refusedFor('password_change_required'),
@@ -188,8 +214,8 @@ describe('requireCmsUser / requirePermission with a permanent password', () => {
   it('behaves as before: role rank, permissions, unauthenticated', async () => {
     const admin = cmsUser('admin', false);
     signIn(admin);
-    await expect(requireCmsUser('admin')).resolves.toBe(admin);
-    await expect(requirePermission('user.manage')).resolves.toBe(admin);
+    await expect(requireCmsUser('admin')).resolves.toEqual(signedIn(admin));
+    await expect(requirePermission('user.manage')).resolves.toEqual(signedIn(admin));
 
     signIn(cmsUser('editor', false));
     await expect(requireCmsUser('editor')).resolves.toMatchObject({ role: 'editor' });
@@ -204,6 +230,120 @@ describe('requireCmsUser / requirePermission with a permanent password', () => {
   });
 });
 
+describe('an admin session that did not pass MFA (e.g. from before MFA existed)', () => {
+  it('is refused everywhere, the temporary-password opt-in included', async () => {
+    for (const mustChangePassword of [false, true]) {
+      signIn(cmsUser('admin', mustChangePassword), false);
+      await expect(requireCmsUser()).rejects.toMatchObject(refusedFor('mfa_required'));
+      await expect(requireCmsUser('admin')).rejects.toMatchObject(refusedFor('mfa_required'));
+      await expect(
+        requireCmsUser(undefined, { allowMustChangePassword: true }),
+      ).rejects.toMatchObject(refusedFor('mfa_required'));
+      await expect(requirePermission('page.read')).rejects.toMatchObject(
+        refusedFor('mfa_required'),
+      );
+    }
+  });
+
+  it('cannot reach user management, and nothing is written', async () => {
+    signIn(cmsUser('admin', false), false);
+    const calls: Array<[string, () => Promise<unknown>]> = [
+      ['listCmsUsers', () => listCmsUsers()],
+      ['createUser', () => createUser({ email: 'x@example.com', name: 'X', role: 'admin' })],
+      ['resetUserPassword', () => resetUserPassword('user-editor')],
+      ['setUserRole', () => setUserRole('user-editor', 'admin')],
+      ['setUserActive', () => setUserActive('user-editor', false)],
+    ];
+    for (const [name, call] of calls) {
+      await expect(call(), name).rejects.toMatchObject(refusedFor('mfa_required'));
+    }
+    expect(fake.state.updates).toEqual([]);
+    expect(fake.state.inserts).toEqual([]);
+  });
+
+  it('cannot change the password either (sign in again instead)', async () => {
+    signIn(cmsUser('admin', true), false);
+    await expect(
+      changePassword({ currentPassword: TEMPORARY, newPassword: CHOSEN }),
+    ).rejects.toMatchObject(refusedFor('mfa_required'));
+    expect(fake.state.updates).toEqual([]);
+  });
+
+  it('leaves editors and providers unchanged', async () => {
+    for (const role of ['editor', 'provider'] as const) {
+      signIn(cmsUser(role, false), false);
+      await expect(requireCmsUser(), role).resolves.toMatchObject({ role, mfaVerified: false });
+    }
+    signIn(cmsUser('editor', false), false);
+    await expect(requirePermission('page.update')).resolves.toMatchObject({ role: 'editor' });
+  });
+});
+
+describe('login(): a password alone never creates an admin session', () => {
+  let hash = '';
+  beforeAll(async () => {
+    hash = await hashPassword(CHOSEN);
+  }, SLOW);
+
+  const asStored = (user: CmsUserPublic) => [{ ...user, passwordHash: hash }];
+
+  it(
+    'admin: only a challenge (cms_mfa cookie), no session, any old session revoked',
+    async () => {
+      fake.state.rows = asStored(cmsUser('admin', false));
+      session.readSessionCookie.mockResolvedValue('legacy-token');
+
+      const result = await login({ email: 'admin@example.com', password: CHOSEN });
+
+      expect(result).toMatchObject({ ok: true, data: { secondStep: true } });
+      expect(mfa.createMfaChallenge).toHaveBeenCalledWith(fake.db, 'user-admin', undefined);
+      expect(mfa.setChallengeCookie).toHaveBeenCalledWith('challenge-token', expect.any(Date));
+      expect(session.createSession).not.toHaveBeenCalled();
+      expect(session.setSessionCookie).not.toHaveBeenCalled();
+      expect(session.revokeSession).toHaveBeenCalledWith(fake.db, 'legacy-token');
+      expect(session.clearSessionCookie).toHaveBeenCalled();
+    },
+    SLOW,
+  );
+
+  it(
+    'editor: a session as before, no challenge',
+    async () => {
+      fake.state.rows = asStored(cmsUser('editor', false));
+      const result = await login({ email: 'editor@example.com', password: CHOSEN });
+      expect(result).toMatchObject({ ok: true, data: { secondStep: false } });
+      expect(session.createSession).toHaveBeenCalledWith(fake.db, 'user-editor', undefined);
+      expect(session.setSessionCookie).toHaveBeenCalledWith('fresh-token', expect.any(Date));
+      expect(mfa.createMfaChallenge).not.toHaveBeenCalled();
+    },
+    SLOW,
+  );
+
+  it(
+    'editor who kept an authenticator: asked for it too',
+    async () => {
+      fake.state.rows = asStored(cmsUser('editor', false));
+      mfa.hasConfirmedFactor.mockResolvedValueOnce(true);
+      const result = await login({ email: 'editor@example.com', password: CHOSEN });
+      expect(result).toMatchObject({ ok: true, data: { secondStep: true } });
+      expect(session.createSession).not.toHaveBeenCalled();
+    },
+    SLOW,
+  );
+
+  it(
+    'wrong password: neither a challenge nor a session',
+    async () => {
+      fake.state.rows = asStored(cmsUser('admin', false));
+      const result = await login({ email: 'admin@example.com', password: 'Verkeerd-Wachtwoord-9' });
+      expect(result).toMatchObject({ ok: false, error: 'invalid_credentials' });
+      expect(mfa.createMfaChallenge).not.toHaveBeenCalled();
+      expect(session.createSession).not.toHaveBeenCalled();
+    },
+    SLOW,
+  );
+});
+
 describe('changePassword: the one write a temporary-password session may make', () => {
   let temporaryHash = '';
   beforeAll(async () => {
@@ -214,7 +354,7 @@ describe('changePassword: the one write a temporary-password session may make', 
     'clears the flag, revokes every session and issues a fresh cookie',
     async () => {
       const temporary = cmsUser('editor', true);
-      signIn(temporary);
+      signIn(temporary, false);
       fake.state.rows = [{ ...temporary, passwordHash: temporaryHash }];
 
       const result = await changePassword({ currentPassword: TEMPORARY, newPassword: CHOSEN });
@@ -224,6 +364,16 @@ describe('changePassword: the one write a temporary-password session may make', 
       expect(fake.state.updates[0]).toMatchObject({ mustChangePassword: false });
       expect(String(fake.state.updates[0].passwordHash)).toMatch(/^scrypt\$/);
       expect(session.revokeAllUserSessions).toHaveBeenCalledWith(fake.db, temporary.id);
+      expect(mfa.clearMfaAttempts).toHaveBeenCalledWith(fake.db, temporary.id);
+      // An editor session without MFA is replaced by one without MFA.
+      expect(session.createSession).toHaveBeenCalledWith(
+        fake.db,
+        temporary.id,
+        {},
+        {
+          mfaVerified: false,
+        },
+      );
       expect(session.setSessionCookie).toHaveBeenCalledWith('fresh-token', expect.any(Date));
       expect(fake.state.inserts).toContainEqual(
         expect.objectContaining({ action: 'auth.password_change', userId: temporary.id }),
@@ -251,6 +401,26 @@ describe('changePassword: the one write a temporary-password session may make', 
     SLOW,
   );
 
+  it(
+    'an admin session that passed MFA gets a fresh session that keeps it',
+    async () => {
+      const admin = cmsUser('admin', true);
+      signIn(admin, true);
+      fake.state.rows = [{ ...admin, passwordHash: temporaryHash }];
+      const result = await changePassword({ currentPassword: TEMPORARY, newPassword: CHOSEN });
+      expect(result).toEqual({ ok: true, data: true });
+      expect(session.createSession).toHaveBeenCalledWith(
+        fake.db,
+        admin.id,
+        {},
+        {
+          mfaVerified: true,
+        },
+      );
+    },
+    SLOW,
+  );
+
   it('still needs a session', async () => {
     signIn(null);
     await expect(
@@ -265,5 +435,14 @@ describe('logout', () => {
     await expect(logout()).resolves.toBeUndefined();
     expect(session.revokeSession).toHaveBeenCalledWith(fake.db, 'cookie-token');
     expect(session.clearSessionCookie).toHaveBeenCalledTimes(1);
+  });
+
+  it('also forgets a half-finished MFA challenge of this browser', async () => {
+    signIn(null);
+    mfa.readChallengeCookie.mockResolvedValueOnce('challenge-token');
+    mfa.resolveMfaChallenge.mockResolvedValueOnce({ id: 'challenge-1' });
+    await logout();
+    expect(mfa.deleteMfaChallenge).toHaveBeenCalledWith(fake.db, 'challenge-1');
+    expect(mfa.clearChallengeCookie).toHaveBeenCalledTimes(1);
   });
 });

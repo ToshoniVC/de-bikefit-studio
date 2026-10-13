@@ -4,6 +4,7 @@ import type { CmsUserPublic } from '@/db/cms-schema';
 import { buildAuthUrl } from '@/lib/booking/google';
 import { getOwnProvider, getProvider } from '@/lib/booking/repo';
 import { getCurrentCmsUser } from '@/lib/cms/auth';
+import { cmsAccessDenial } from '@/lib/cms/guard';
 import { can } from '@/lib/cms/permissions';
 import { features } from '@/lib/env';
 
@@ -85,8 +86,12 @@ export async function GET(request: NextRequest) {
     login.searchParams.set('next', '/admin/agenda');
     return NextResponse.redirect(login, 302);
   }
-  if (user.mustChangePassword) {
+  const denial = cmsAccessDenial(user);
+  if (denial === 'password_change_required') {
     return NextResponse.redirect(new URL('/admin/password', url.origin), 302);
+  }
+  if (denial !== null) {
+    return NextResponse.redirect(new URL('/admin/login?mfa=1', url.origin), 302);
   }
 
   const access = await resolveAccess(user, providerId);

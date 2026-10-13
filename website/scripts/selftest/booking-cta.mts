@@ -57,7 +57,12 @@ export async function bookingCtaSection(ctx: {
   };
 
   // --- 1. fixture (through the repo, with the selftest's own session) -------------
-  const fixtureSession = await createSession(db, admin.id, { userAgent: 'selftest-booking-cta' });
+  const fixtureSession = await createSession(
+    db,
+    admin.id,
+    { userAgent: 'selftest-booking-cta' },
+    { mfaVerified: true },
+  );
   cookieJar.set('cms_session', fixtureSession.token);
   async function page(slug: string, publish: boolean) {
     const created = await repo.createPage({ locale, slug, title: slug, translationGroup: slug });
@@ -148,7 +153,12 @@ export async function bookingCtaSection(ctx: {
   );
 
   // --- 3. the editor publishes; apply retargets only the booking hrefs ------------
-  const editorSession = await createSession(db, admin.id, { userAgent: 'selftest-booking-cta' });
+  const editorSession = await createSession(
+    db,
+    admin.id,
+    { userAgent: 'selftest-booking-cta' },
+    { mfaVerified: true },
+  );
   cookieJar.set('cms_session', editorSession.token);
   await repo.publishPage(edited.pageId);
   cookieJar.delete('cms_session');

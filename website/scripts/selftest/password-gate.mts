@@ -14,7 +14,12 @@
  * 4. `changePassword()` refuses a wrong current password (flag stays set),
  *    then succeeds: flag cleared, old session revoked, fresh cookie issued,
  *    and the same calls pass. Sections 14–16 therefore act as an admin who
- *    chose their own password, the only kind that can act.
+ *    chose their own password (and, after section 5c, enrolled MFA).
+ *
+ * The sessions here are created with `mfaVerified` on purpose: this section
+ * isolates the password rule. The MFA rule, and the real sign-in flow in which
+ * an admin never gets a session before the second step, are section 5c
+ * (`./mfa.mts`).
  *
  * `changeTemporaryPassword()` repeats refuse → change → pass for section 14's
  * new provider. Imported lazily by `cms-selftest.mts` after its
@@ -27,7 +32,7 @@ import { findActingAdmin } from '../lib/cms-actor.mjs';
 type Check = (label: string, condition: boolean, detail?: string) => void;
 type Call = [label: string, call: () => Promise<unknown>];
 
-const ADMIN_NEW_PASSWORD = 'Kettingblad-2026-Eigen';
+export const ADMIN_NEW_PASSWORD = 'Kettingblad-2026-Eigen';
 const GATE_NAME = 'selftest-tijdelijk-wachtwoord';
 const GATE_EMAIL = 'tijdelijk@selftest.local';
 
@@ -56,6 +61,7 @@ export async function passwordGateSection(ctx: {
   section('5b. forced password change (server-side gate)');
 
   const auth = await import('@/lib/cms/auth');
+  const users = await import('@/lib/cms/users');
   const cmsRepo = await import('@/lib/cms/repo');
   const bookingRepo = await import('@/lib/booking/repo');
   const { createSession, resolveSession, revokeSession } = await import('@/lib/cms/session');
@@ -77,7 +83,12 @@ export async function passwordGateSection(ctx: {
   );
 
   // --- 1. A valid session that may do nothing --------------------------------
-  const first = await createSession(db, admin.id, { userAgent: 'selftest-password-gate' });
+  const first = await createSession(
+    db,
+    admin.id,
+    { userAgent: 'selftest-password-gate' },
+    { mfaVerified: true },
+  );
   cookieJar.set('cms_session', first.token);
   const who = await auth.getCurrentCmsUser();
   check(
@@ -91,10 +102,10 @@ export async function passwordGateSection(ctx: {
     ["requirePermission('page.read')", () => auth.requirePermission('page.read')],
     ['content repo listPages()', () => cmsRepo.listPages()],
     ['content repo createPage()', () => cmsRepo.createPage({ slug: GATE_NAME, title: 'Test' })],
-    ['users listCmsUsers()', () => auth.listCmsUsers()],
+    ['users listCmsUsers()', () => users.listCmsUsers()],
     [
       'users createUser()',
-      () => auth.createUser({ email: GATE_EMAIL, name: 'Tijdelijk', role: 'admin' }),
+      () => users.createUser({ email: GATE_EMAIL, name: 'Tijdelijk', role: 'admin' }),
     ],
     ['booking repo listBookings()', () => bookingRepo.listBookings()],
     [
@@ -145,7 +156,12 @@ export async function passwordGateSection(ctx: {
   );
 
   // --- 4. The forced change itself ---------------------------------------------
-  const second = await createSession(db, admin.id, { userAgent: 'selftest-password-gate' });
+  const second = await createSession(
+    db,
+    admin.id,
+    { userAgent: 'selftest-password-gate' },
+    { mfaVerified: true },
+  );
   cookieJar.set('cms_session', second.token);
   const wrong = await auth.changePassword({
     currentPassword: 'Verkeerd-Wachtwoord-2026',
@@ -184,8 +200,21 @@ export async function passwordGateSection(ctx: {
     const result = await outcome(call);
     check(`after the change: ${label} passes`, result === 'ok', result);
   }
-  const acting = await findActingAdmin({ db, orm, schema });
-  check('CLI actor lookup now picks this admin', acting?.id === admin.id, acting?.email ?? '');
+  let mfaError = '';
+  try {
+    await findActingAdmin({ db, orm, schema });
+  } catch (error) {
+    mfaError = error instanceof Error ? error.message : String(error);
+  }
+  check(
+    'CLI actor lookup still refuses this admin until two-step verification is set up (5c)',
+    mfaError.includes('two-step verification') && mfaError.includes(admin.email),
+    mfaError,
+  );
+  check(
+    'changePassword() kept the MFA state of the session it replaced',
+    freshSession?.mfaVerified === true,
+  );
 
   if (fresh) await revokeSession(db, fresh);
   cookieJar.clear();

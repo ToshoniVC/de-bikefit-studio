@@ -118,6 +118,12 @@ export const cmsSessions = pgTable(
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }).defaultNow().notNull(),
     userAgent: text('user_agent'),
     ipAddress: text('ip_address'),
+    /**
+     * When this session's second step (TOTP or recovery code) succeeded; null
+     * for a password-only session. The auth guard refuses an admin session
+     * without it (`src/lib/cms/guard.ts`). Added by 0004_cms_admin_mfa.sql.
+     */
+    mfaVerifiedAt: timestamp('mfa_verified_at', { withTimezone: true }),
   },
   (t) => [
     index('cms_sessions_user_id_idx').on(t.userId),

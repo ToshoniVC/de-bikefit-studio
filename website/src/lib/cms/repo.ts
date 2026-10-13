@@ -902,7 +902,7 @@ export async function getAdminStats(): Promise<{
   };
 }
 
-// Users CRUD lives in `./auth.ts` (createUser, listCmsUsers, setUserRole,
+// Users CRUD lives in `./users.ts` (createUser, listCmsUsers, setUserRole,
 // setUserActive, resetUserPassword) because it needs the password primitives.
-export { createUser, listCmsUsers, resetUserPassword, setUserActive, setUserRole } from './auth';
+export { createUser, listCmsUsers, resetUserPassword, setUserActive, setUserRole } from './users';
 export type { CmsUserPublic };

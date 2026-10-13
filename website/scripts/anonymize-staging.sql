@@ -64,6 +64,19 @@ SET
 -- here), login attempts and booking rate-limit rows (IP addresses, e-mails).
 TRUNCATE TABLE cms_sessions, cms_login_attempts, cms_booking_rate_limit;
 
+-- Two-step verification (0004_cms_admin_mfa.sql): production authenticators
+-- are sealed with production's CMS_MFA_ENCRYPTION_KEY and production recovery
+-- codes must not open staging. Admins enrol anew on staging at their next
+-- sign-in (password first, then a new authenticator).
+-- Guarded: production may not have 0004 yet, and an error here would roll back
+-- the whole anonymisation.
+DO $$
+BEGIN
+  IF to_regclass('public.cms_mfa_factors') IS NOT NULL THEN
+    EXECUTE 'TRUNCATE TABLE cms_mfa_challenges, cms_mfa_attempts, cms_mfa_recovery_codes, cms_mfa_factors';
+  END IF;
+END $$;
+
 -- Providers: forget every Google connection, exactly like "Google loskoppelen"
 -- in the admin (repo.disconnectGoogle). Staging uses its own OAuth client;
 -- providers reconnect there if they need to.

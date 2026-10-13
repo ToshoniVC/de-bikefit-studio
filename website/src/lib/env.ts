@@ -57,6 +57,15 @@ const envSchema = z.object({
   CMS_SESSION_SECRET: z.string().min(16).optional(),
 
   /**
+   * base64 of 32 random bytes (`openssl rand -base64 32`). Encrypts the CMS
+   * admins' TOTP secrets (AES-256-GCM, `src/lib/cms/mfa/crypto.ts`). Required
+   * on every deployment: without it admins cannot complete two-step sign-in.
+   * Only local development falls back to a derived key. Rotating it makes
+   * stored factors unreadable (admins use a recovery code and re-enrol).
+   */
+  CMS_MFA_ENCRYPTION_KEY: z.string().optional(),
+
+  /**
    * One-shot password for the first admin created by `npm run cms:bootstrap`.
    * Set it in the shell for that command only; never commit it and never add
    * it to a Vercel environment.

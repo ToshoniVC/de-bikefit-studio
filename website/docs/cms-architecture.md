@@ -130,8 +130,10 @@ URL prefix (`publicPathFor()` in `repo.ts` encodes that rule).
 | `drizzle/0001_cms_foundation.sql` | Two enum types + eleven `cms_*` tables + their indexes and foreign keys. **Additive only** — no `DROP`, no `TRUNCATE`, no `ALTER` of any webshop table. Also idempotent. |
 | `drizzle/0002_role_provider.sql` | `ALTER TYPE cms_role ADD VALUE IF NOT EXISTS 'provider'`, nothing else. |
 | `drizzle/0003_booking.sql` | The eight booking tables, FKs and indexes, all guarded. |
+| `drizzle/0004_cms_admin_mfa.sql` | Two-step verification (§4, MFA): four `cms_mfa_*` tables and one nullable column `cms_sessions.mfa_verified_at`. Additive and guarded; existing sessions get `NULL`, which is what makes existing **admin** sessions sign in again. |
 
-`drizzle.config.ts` lists both schema files and falls back to a placeholder URL
+`drizzle.config.ts` lists the schema files (`schema.ts`, `cms-schema.ts`,
+`cms-mfa-schema.ts`) and falls back to a placeholder URL
 so `npm run db:generate` works without `DATABASE_URL`.
 
 Every schema change ships as a named migration, guarded so it can run twice:
@@ -171,9 +173,11 @@ cms_blocks  (draft)  --- publishPage() --->  cms_pages.published_snapshot (froze
 
 ## 4. Auth
 
-`src/lib/cms/{password,session,auth,permissions}.ts`. Entirely separate from
-Clerk: Clerk guards the webshop's `/account` and `/checkout`; this guards
-`/admin`.
+`src/lib/cms/{password,session,auth,users,guard,permissions}.ts` and
+`src/lib/cms/mfa/*`. Entirely separate from Clerk: Clerk guards the webshop's
+`/account` and `/checkout`; this guards `/admin`. Admins sign in with a
+password **and** a TOTP code (see "Two-step verification" below); editors and
+providers with a password only, for now.
 
 ### Passwords
 
@@ -199,7 +203,12 @@ Minimum 12 chars, needs lower + upper + digit (`validatePasswordStrength`).
 - Cookie: `httpOnly`, `sameSite=lax`, `path=/`, `secure` in production.
 - 14-day expiry with **sliding renewal**: once past the halfway point, using
   the session pushes expiry back to a full 14 days.
-- Password change and deactivation revoke every session for that user.
+- `mfa_verified_at` is set when the session was created after a successful
+  second step. A session is never upgraded in place: the MFA flow creates a new
+  one. The guard refuses an admin session without it.
+- Password change, deactivation and every second-factor change revoke every
+  session for that user (`changePassword()` re-issues this browser's session
+  with the same MFA state it had).
 
 ### Cookies
 
@@ -208,45 +217,63 @@ own `_ga*` cookies appear only after consent (§12.7).
 
 | Cookie | Set by | Contents | Flags / lifetime |
 | --- | --- | --- | --- |
-| `cms_session` | login (`session.ts`) | random session token; the DB stores only its HMAC | `httpOnly`, `sameSite=lax`, `path=/`, `secure` in production; 14 days, sliding |
+| `cms_session` | login (`session.ts`); for admins only after the second step | random session token; the DB stores only its HMAC | `httpOnly`, `sameSite=lax`, `path=/`, `secure` in production; 14 days, sliding |
+| `cms_mfa` | admin password sign-in (`src/lib/cms/mfa/challenge.ts`) | random challenge token for the second step; the DB stores only its HMAC. Not a session: no guard reads it | `httpOnly`, `sameSite=lax`, `path=/admin`, `secure` in production; 10 minutes, never extended, deleted on success, cancel, logout or 5 wrong codes |
 | `cms_google_oauth` | `GET /api/google/oauth/start` (`src/app/api/google/oauth/state.ts`) | provider id, CMS user id, nonce, return target, expiry; HMAC-SHA256 signed with `CMS_SESSION_SECRET` (domain-separated). The callback accepts only a valid signature, an unexpired state, a nonce equal to Google's `state` (constant-time) and the same signed-in user | `httpOnly`, `sameSite=lax`, `path=/api/google/oauth`, `secure` in production; 10 minutes |
 | `cms_consent` | the consent banner, client-side (`src/lib/analytics/consent.ts`) | `granted` or `denied` | `SameSite=Lax`, `path=/`, `Secure` on https; 365 days. Not `httpOnly`: the banner and the GA4 loader read it in the browser |
 
 ### Rate limiting
 
-10 failed attempts per 15 minutes, counted per **email OR IP**
+Password: 10 failed attempts per 15 minutes, counted per **email OR IP**
 (`LOGIN_MAX_ATTEMPTS` / `LOGIN_WINDOW_MS` in `auth.ts`). Exceeding it returns
 `error: 'rate_limited'`.
+
+Second step (sign-in codes, recovery codes and re-authentication alike,
+`cms_mfa_attempts`, `src/lib/cms/mfa/repo.ts`): blocked at 5 failures for a
+user **from one IP** or 10 from one IP for anyone in 15 minutes, or 50 for a
+user from anywhere in 24 hours (backstop against guessing from many
+addresses); while blocked even a correct code is refused. Each challenge also
+dies after 5 wrong codes, so the password must be entered again. Keying the
+short window on user + IP means someone who has the password cannot lock the
+owner out from elsewhere for long; a new password (`changePassword`, the
+challenge step, an admin's password or MFA reset, the break-glass CLI) clears
+the user's counter. An unknown client IP is not one shared bucket: only the
+user rule applies. An unreadable factor (key rotated) is not counted, so the
+recovery codes stay usable.
 
 ### API
 
 ```ts
 import {
-  login, logout, changePassword, createUser,
-  getCurrentCmsUser, requireCmsUser, requirePermission,
-  CmsAuthError, verifyCredentials,
-  listCmsUsers, setUserRole, setUserActive, resetUserPassword,
+  login, logout, changePassword,
+  getCurrentCmsUser, getCurrentCmsSession, requireCmsUser, requirePermission,
+  CmsAuthError, verifyCredentials, requiresSecondStep,
 } from '@/lib/cms/auth';
+import { createUser, listCmsUsers, setUserRole, setUserActive, resetUserPassword } from '@/lib/cms/users';
 
 type AuthResult<T> = { ok: true; data: T } | { ok: false; error: AuthError; message: string };
 
 login(input: { email: string; password: string; context?: { userAgent?, ipAddress? } })
-  : Promise<AuthResult<CmsUserPublic>>            // verifies + sets the cookie
-logout(): Promise<void>                           // always succeeds
-getCurrentCmsUser(): Promise<CmsUserPublic | null> // React.cache'd, one lookup per request
+  : Promise<AuthResult<{ user: CmsUserPublic; secondStep: boolean }>>
+  // secondStep true (admins): only the cms_mfa challenge cookie, NO session
+  // secondStep false (editors, providers): the cms_session cookie, as before
+logout(): Promise<void>                           // session + challenge; always succeeds
+getCurrentCmsUser(): Promise<CmsSessionUser | null> // CmsUserPublic & { mfaVerified }; React.cache'd
 requireCmsUser(role?: CmsRole, options?: { allowMustChangePassword?: boolean })
-  : Promise<CmsUserPublic>                        // throws CmsAuthError
-requirePermission(permission: CmsPermission): Promise<CmsUserPublic>
+  : Promise<CmsSessionUser>                       // throws CmsAuthError
+requirePermission(permission: CmsPermission): Promise<CmsSessionUser>
 changePassword(input: { currentPassword: string; newPassword: string }): Promise<AuthResult<true>>
 createUser(input: { email; name; role; password? }): Promise<AuthResult<{ user; temporaryPassword: string | null }>>
 ```
 
-`CmsAuthError.code` is `'unauthenticated' | 'password_change_required' |
-'forbidden'`. The dashboard layout `src/app/admin/(dashboard)/layout.tsx` calls
-`requireCmsUser()` and redirects `password_change_required` to
-`/admin/password` and every other `CmsAuthError` to `/admin/login`; each page
-then checks its own permission. `runAction()` turns each code into a short
-Dutch form message.
+`CmsAuthError.code` is `'unauthenticated' | 'mfa_required' |
+'password_change_required' | 'forbidden'`. The dashboard layout
+`src/app/admin/(dashboard)/layout.tsx` calls `requireCmsUser()` and redirects
+`password_change_required` to `/admin/password`, `mfa_required` to
+`/admin/login?mfa=1` and every other `CmsAuthError` to `/admin/login`; each
+page then checks its own permission. `runAction()` turns each code into a
+short Dutch form message. User management moved from `auth.ts` to `users.ts`
+(file-size rule); `repo.ts` still re-exports it.
 
 `getCurrentCmsUser()` never returns `passwordHash` (the type is
 `CmsUserPublic`). It only says who is signed in; anything that returns CMS
@@ -266,11 +293,128 @@ role/permission. The only ways through are
 permission), and `login()` / `logout()`, which use no guard. The GA4 panel and
 `canPreview()` apply
 `cmsAccessDenial()` without throwing; both Google OAuth routes refuse such a
-session. The CMS CLIs write through a session, so they act as the oldest active
-admin who has chosen their own password (`scripts/lib/cms-actor.mts`) and stop
-with an explanation when there is none: after `cms:bootstrap`, sign in once and
-replace the password before `cms:seed`. Self-test section 5b runs the flow on
-PGlite.
+session (and a pre-MFA admin session). The CMS CLIs write through a session, so
+they act as the oldest active admin who has chosen their own password **and
+enrolled two-step verification** (`scripts/lib/cms-actor.mts`) and stop with an
+explanation when there is none: after `cms:bootstrap`, sign in once, replace
+the password and set up the authenticator before `cms:seed`. Their session is
+created with `mfaVerified`: the operator's database credentials are the
+authentication. Self-test sections 5b and 5c run the flows on PGlite.
+
+### Two-step verification (MFA) for admins
+
+Mandatory for the `admin` role (`roleRequiresMfa()` in `guard.ts`; any role
+that is not explicitly `editor` or `provider` counts as requiring it). Editors
+and providers are unchanged; one who still has an authenticator (e.g. a
+former admin) is asked for it at sign-in too. TOTP only: no SMS, no e-mail
+codes, no Google or Microsoft dependency.
+
+**The rule, server-side.** The guard order is unauthenticated →
+`mfa_required` (an admin session without `mfa_verified_at`; there is no
+opt-out) → temporary password → role/permission. A password sign-in of an
+admin creates **no session**, only a challenge, so every page, server action
+and repo call refuses that state as `unauthenticated`; an old admin session
+from before 0004 is refused as `mfa_required`. Self-test 5c calls the repos
+directly with both and checks nothing is written.
+
+**Sign-in** (`/admin/login` → `/admin/mfa`, `src/lib/cms/mfa/flow.ts`):
+
+1. Password correct → `cms_mfa_challenges` row + `cms_mfa` cookie (10 min).
+   Any session cookie this browser still had is revoked.
+2. `/admin/mfa` (outside the dashboard group, exempt from the middleware's
+   cookie check) shows the next step for that challenge's user only:
+   - **no authenticator, temporary password** → choose a password first
+     (inside the challenge; still no session);
+   - **no authenticator** → enrol: a fresh 160-bit secret, shown once as a QR
+     code drawn locally (`uqr` → one SVG path, `qr.ts`) plus the base32 key
+     and the `otpauth://` text for 1Password; the first code confirms it,
+     creates the session and shows **ten recovery codes once**;
+   - **authenticator** → a six-digit code or a recovery code. A challenge
+     can never enrol a second authenticator: someone with only the password
+     cannot replace the factor.
+   Success consumes the challenge (single `DELETE … RETURNING`, so two
+   parallel completions cannot both get a session) and creates the session
+   with `mfa_verified_at`.
+3. A temporary password on an admin who already has an authenticator is
+   changed after the code, on `/admin/password`, inside the full session.
+
+**TOTP** (`totp.ts`, RFC 6238 test vectors in `totp.test.ts`): HMAC-SHA1, 6
+digits, 30 s, ±1 step (a code lives at most 90 s). `cms_mfa_factors.
+last_used_step` only moves forward through a conditional `UPDATE … WHERE
+last_used_step < $step RETURNING`: a replayed code, a code for an earlier step
+and the loser of two concurrent uses are all refused (`replayed`).
+
+**Secret at rest** (`crypto.ts`): AES-256-GCM (`src/lib/sealed-box.ts`, shared
+with the Google tokens) under the dedicated `CMS_MFA_ENCRYPTION_KEY`, with the
+user id as additional authenticated data. Required on every deployment; when
+it is missing or malformed there, enrolment and verification fail closed
+("niet geconfigureerd") and nothing else is affected. Only local development
+and the self-test derive a key from the dev pepper. The secret leaves the
+server once, in the enrolment action's response; it is never logged, never in
+a URL, never in the database in plain text.
+
+**Recovery codes** (`recovery-codes.ts`): 10 × 16 Crockford-base32 symbols
+(80 bits), shown once, stored as `SHA-256("cms-mfa-recovery:v1:<userId>:<code>")`
+— sound for random 80-bit inputs, and deliberately independent of every key,
+so they still work after `CMS_MFA_ENCRYPTION_KEY` is rotated or lost. One use
+each (atomic `UPDATE … WHERE used_at IS NULL`); case, dashes and O/I/L
+look-alikes are forgiven. Signing in with one leads to *Mijn account*, which
+shows how many are left.
+
+**Signed-in management** (`manage.ts`, *Mijn account → Tweestapsverificatie*):
+replacing the authenticator and making new recovery codes both need the
+current password **and** a current code or recovery code in the same request
+(password checked first, so a typo never burns a recovery code). A
+replacement is bound to the session that started it and confirmed by the new
+app's first code; it then deletes the old factor and codes, revokes **every**
+session and re-issues this browser's. New recovery codes revoke every other
+session. Admins cannot switch MFA off; an editor or provider who kept an
+authenticator can, with the same re-authentication.
+
+**Break-glass.** Another admin, re-authenticated with their own password and
+code, resets a colleague under *Gebruikers → Tweestapsverificatie resetten*:
+factors, recovery codes, challenges and sessions are deleted and the password
+becomes a temporary one shown once, so whoever enrols next must hold that
+password (`user.mfa_reset`). Password and sessions are replaced first, the
+factors removed last, so a crash in between never leaves the old password
+without a second factor. Not for yourself. With no admin left, an operator
+with database access runs `npm run cms:mfa-reset -- --email <address>` (dry
+run; `--apply --expect-host <host>` to write; `staging-runbook.md` §11): same
+deletion and revocation, nothing secret printed, audited as
+`auth.mfa_break_glass` without an actor. Pass a new temporary password inline
+as `CMS_BREAK_GLASS_PASSWORD` (recommended); without it the password is left
+alone and whoever knows it can enrol first.
+
+**Audit events:** `auth.login` (password step), `auth.mfa_failed` (with
+stage and reason), `auth.mfa_enrol`, `auth.mfa_verify` (method `totp` or
+`recovery`, codes left), `auth.mfa_reauth_failed`, `auth.mfa_replace`,
+`auth.mfa_recovery_regenerate`, `auth.mfa_remove`, `user.mfa_reset`,
+`auth.mfa_break_glass`, `auth.password_change` (also during the challenge).
+
+**Existing admins (upgrade).** After 0004 and the deploy, an admin's old
+session is refused; the dashboard sends them to sign in again, which leads to
+the enrolment step with only their password: no lockout, nothing to prepare.
+Staging/production need `CMS_MFA_ENCRYPTION_KEY` set *before* that first
+sign-in (`staging-runbook.md` §11); while it is missing or malformed the login
+page itself says so ("niet geconfigureerd"), before anyone types a password.
+
+**Known residual risks** (independent review, 13 Oct 2026):
+- *First come, first enrolled.* An admin without an authenticator enrols with
+  the password alone. Between the deploy and the admin's first sign-in, and
+  after a break-glass reset without a new temporary password, whoever holds
+  the password can enrol first. Mitigation: the first sign-in right after the
+  deploy, temporary passwords on every reset, and `auth.mfa_enrol` in the
+  audit log as the line to watch.
+- `auth.login` and *Laatst aangemeld* record the **password** step, so a
+  password-only attempt by someone else is visible there; a burst of
+  `auth.mfa_failed` after `auth.login` means the password is known to someone
+  else: change it.
+- A challenge that expires between the code check and its consumption costs
+  that code (a TOTP step or one recovery code) or, during enrolment, the
+  display of the recovery codes; sign in again (and make new codes).
+- Re-authentication checks the password before the code, so its timing tells
+  a holder of a stolen session cookie which one was wrong; every attempt counts
+  against the limits above.
 
 ### Permission matrix
 
@@ -348,8 +492,9 @@ page stays an ordinary `page.update`. Enforced in `updatePageMeta()`
 `src/middleware.ts` does two independent things and **no database work**:
 
 1. Clerk pass-through for the webshop, unchanged (`/account`, `/checkout`).
-2. If the path is under `/admin` and is not `/admin/login`, and the
-   `cms_session` cookie is absent → redirect to
+2. If the path is under `/admin` and is not `/admin/login` or `/admin/mfa`
+   (the second sign-in step, which has no session yet and checks its own
+   challenge), and the `cms_session` cookie is absent → redirect to
    `/admin/login?next=<original path>`.
 
 That cookie check is a convenience redirect, **not** the security boundary.
@@ -679,6 +824,7 @@ The full contract (every variable, per environment, secret or not) is in
 | --- | --- | --- |
 | `DATABASE_URL` | deployed envs | Neon pooled URL. Unset locally → PGlite. |
 | `CMS_SESSION_SECRET` | deployed envs | Pepper for session-token hashing; also signs the `cms_google_oauth` cookie and the booking confirmation link. `openssl rand -base64 48`. Rotating it signs everyone out. |
+| `CMS_MFA_ENCRYPTION_KEY` | deployed envs | base64 of 32 bytes (`openssl rand -base64 32`), own value per environment. Encrypts admins' TOTP secrets. Missing on a deployment → admins cannot finish signing in (fail closed). Rotating it makes stored authenticators unreadable: admins sign in with a recovery code and replace the authenticator. Local development falls back to a derived key. |
 | `CMS_BOOTSTRAP_PASSWORD` | bootstrap only | Pass inline to `npm run cms:bootstrap`. Never store it in `.env.local` or in Vercel. |
 | `NEXT_PUBLIC_SITE_URL` | deployed envs | Canonical origin for canonicals, sitemap, OG, e-mail links and the Google OAuth redirect URI. `siteUrl()` in `src/lib/env.ts` falls back to `NEXT_PUBLIC_APP_URL`, then `VERCEL_URL`, then localhost. |
 | `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | no | GA4 tag id. Loaded only when valid, `analytics.enabled` is true and the visitor consented (§12.7). Build-time. |

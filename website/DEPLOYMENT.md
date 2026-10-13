@@ -69,9 +69,10 @@ code needs them; the previous build keeps working against the extended schema.
 changes. It is for a throwaway local database only.
 
 After migrating a fresh branch, run the idempotent scripts in this order: `cms:bootstrap` →
-sign in as the bootstrap admin and set a permanent password → `cms:seed` → `cms:seed-booking`
-(details in the staging runbook §3). The write scripts act as the oldest active admin with a
-permanent password and refuse to run while every admin still has a temporary one.
+sign in as the bootstrap admin, set a permanent password and set up two-step verification →
+`cms:seed` → `cms:seed-booking` (details in the staging runbook §3). The write scripts act as
+the oldest active admin with a permanent password and an authenticator, and refuse to run
+while no admin qualifies. Rolling admin MFA out on an existing database: staging runbook §11.
 
 ## 4. Vercel (one project)
 
@@ -94,6 +95,7 @@ its variables are missing. Names and purpose only; values never appear here.
 | --- | --- | :-: | --- |
 | `DATABASE_URL` | Neon pooled URL for this environment's branch. Unset → PGlite, which is refused in production. | yes | every deployed env |
 | `CMS_SESSION_SECRET` | Pepper for CMS session-token hashes; also signs the Google OAuth state cookie and the booking confirmation link, and is the fallback source for the token key below. Rotating it signs every CMS user out. Different per environment. | yes | every deployed env |
+| `CMS_MFA_ENCRYPTION_KEY` | base64 of 32 bytes; AES-256-GCM key for admins' TOTP secrets (two-step verification). **Required:** without it admins cannot finish signing in (fail closed; the rest of the site is unaffected). Different per environment, never derived from another secret. Rotating it makes stored authenticators unreadable: admins sign in with a recovery code and replace the authenticator. | yes | every deployed env (Production and Preview) |
 | `CMS_BOOTSTRAP_PASSWORD` | One-shot password for the first admin, passed inline to `cms:bootstrap`. | yes | **never** in Vercel or `.env.local` |
 | `NEXT_PUBLIC_SITE_URL` | Canonical origin: canonicals, sitemap, OG images, e-mail cancel links, Google OAuth redirect URI (`<origin>/api/google/oauth/callback`). | no | every deployed env |
 | `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | GA4 measurement id (`G-…`). The tag loads only when this is valid, *Analytics ingeschakeld* is on in the admin, and the visitor accepts cookies. Build-time. | no | production (staging only to test the banner) |
@@ -112,7 +114,8 @@ its variables are missing. Names and purpose only; values never appear here.
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe checkout and order webhook. | secret key + webhook: yes | legacy webshop |
 
 Set by Vercel, not by us: `VERCEL_URL` (last fallback for the canonical origin), `VERCEL_ENV`.
-Script-only, never in Vercel: `PROVIDER_EMAIL` / `PROVIDER_NAME` (`cms:seed-booking`),
+Script-only, never in Vercel: `CMS_BREAK_GLASS_PASSWORD` (optional, inline for `cms:mfa-reset`),
+`PROVIDER_EMAIL` / `PROVIDER_NAME` (`cms:seed-booking`),
 `NEON_PROJECT_ID`, `STAGING_DATABASE_URL`, `PARENT_BRANCH`, `STAGING_BRANCH`
 (`scripts/reset-staging.sh`).
 
