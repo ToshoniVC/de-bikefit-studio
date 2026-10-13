@@ -26,6 +26,7 @@ import {
   type PlanDeps,
   type RolloutDeps,
 } from './aanbod-rollout.mjs';
+import { findActingAdmin } from './cms-actor.mjs';
 
 export type RolloutRunOptions = {
   apply: boolean;
@@ -71,15 +72,12 @@ export function readOnlyDb(db: CmsDatabase): CmsDatabase {
   });
 }
 
-/** The oldest active admin; the CLIs act as this user (never create one). */
+/**
+ * The oldest active admin who has chosen their own password (`./cms-actor.mts`
+ * explains why); the CLIs act as this user (never create one).
+ */
 export async function findActor(deps: Pick<PlanDeps, 'db' | 'orm' | 'schema'>) {
-  const { db, orm, schema } = deps;
-  const [actor] = await db
-    .select({ id: schema.cmsUsers.id, email: schema.cmsUsers.email })
-    .from(schema.cmsUsers)
-    .where(orm.and(orm.eq(schema.cmsUsers.role, 'admin'), orm.eq(schema.cmsUsers.isActive, true)))
-    .orderBy(orm.asc(schema.cmsUsers.createdAt))
-    .limit(1);
+  const actor = await findActingAdmin(deps);
   if (!actor) throw new Error('no active admin in this database; run cms:bootstrap first');
   return actor;
 }

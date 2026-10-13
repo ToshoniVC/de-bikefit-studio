@@ -67,7 +67,6 @@
  * does in the browser. The session is revoked again before the script exits.
  */
 import { config } from 'dotenv';
-import { randomBytes } from 'node:crypto';
 // Pure modules (no `server-only`, no Next imports): safe to load before the stubs.
 import { escapeHtml } from '@/lib/html';
 import {
@@ -83,6 +82,7 @@ import {
   PHONE_LABEL,
   type SeedPage,
 } from '@/lib/studio/seed-content/shared';
+import { findActingAdmin } from './lib/cms-actor.mjs';
 import { cookieJar, installRequestContextStubs } from './lib/request-context.mjs';
 
 config({ path: '.env.local' });
@@ -559,7 +559,6 @@ const REDIRECTS = [
 // ---------------------------------------------------------------------------
 
 const onlyMissing = process.argv.includes('--only-missing');
-const SEED_USER_EMAIL = 'seed@debikefitstudio.local';
 
 /**
  * `--refresh-slug afspraak` / `--refresh-slug=afspraak` → `'afspraak'`;
@@ -588,11 +587,6 @@ function parseRefreshSlug(args: string[]): string | null {
 
 function log(symbol: string, message: string) {
   console.log(`${symbol} ${message}`);
-}
-
-/** A password nobody will ever use: the seed account signs in via a session. */
-function throwawayPassword(): string {
-  return `Seed${randomBytes(18).toString('base64url')}9`;
 }
 
 function usesLegalEmail(page: SeedPage): boolean {
@@ -625,42 +619,27 @@ async function main() {
   }
 
   const { getCmsDb, cmsDriver } = await import('@/db/cms');
-  const { and, asc, eq } = await import('drizzle-orm');
+  const orm = await import('drizzle-orm');
+  const { and, eq } = orm;
   const schema = await import('@/db/cms-schema');
-  const { cmsNavigation, cmsPages, cmsRedirects, cmsSiteSettings, cmsUsers, DEFAULT_LOCALE } =
-    schema;
+  const { cmsNavigation, cmsPages, cmsRedirects, cmsSiteSettings, DEFAULT_LOCALE } = schema;
 
   log('→', `driver: ${cmsDriver()}`);
   const db = await getCmsDb();
   const locale = DEFAULT_LOCALE;
 
   // --- 1. An actor, and a real session for it ------------------------------
-  const { hashPassword } = await import('@/lib/cms/password');
+  // The oldest active admin who has chosen their own password; a session with
+  // a temporary password could not write (`scripts/lib/cms-actor.mts`).
   const { createSession, revokeSession } = await import('@/lib/cms/session');
-
-  let [actor] = await db
-    .select({ id: cmsUsers.id, email: cmsUsers.email })
-    .from(cmsUsers)
-    .where(and(eq(cmsUsers.role, 'admin'), eq(cmsUsers.isActive, true)))
-    .orderBy(asc(cmsUsers.createdAt))
-    .limit(1);
-
+  const actor = await findActingAdmin({ db, orm, schema });
   if (!actor) {
-    [actor] = await db
-      .insert(cmsUsers)
-      .values({
-        email: SEED_USER_EMAIL,
-        name: 'Seed',
-        role: 'admin',
-        passwordHash: await hashPassword(throwawayPassword()),
-        mustChangePassword: true,
-        isActive: true,
-      })
-      .returning({ id: cmsUsers.id, email: cmsUsers.email });
-    log('+', `no admin found — created the seed account ${actor.email}`);
-  } else {
-    log('=', `publishing as ${actor.email}`);
+    throw new Error(
+      'no active admin in this database; run cms:bootstrap first, then sign in once at ' +
+        '/admin and choose a new password',
+    );
   }
+  log('=', `publishing as ${actor.email}`);
 
   const session = await createSession(db, actor.id, { userAgent: 'cms-seed' });
   cookieJar.set('cms_session', session.token);

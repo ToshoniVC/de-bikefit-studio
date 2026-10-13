@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 
 import { PasswordForm } from '@/components/admin/password-form';
 import { AdminAuthFrame } from '@/components/admin/shell';
-import { getCurrentCmsUser } from '@/lib/cms/auth';
+import { CmsAuthError, requireCmsUser } from '@/lib/cms/auth';
 
 export const metadata: Metadata = {
   title: 'Wachtwoord wijzigen · Beheer',
@@ -14,11 +14,17 @@ export const metadata: Metadata = {
 /**
  * Blocking gate for `must_change_password`. It lives outside the `(dashboard)`
  * group on purpose: the dashboard layout redirects here, so putting it inside
- * would loop.
+ * would loop. It is the one admin screen a temporary-password session may
+ * render, hence the explicit `allowMustChangePassword`.
  */
 export default async function ForcedPasswordChangePage() {
-  const user = await getCurrentCmsUser();
-  if (!user) redirect('/admin/login?next=/admin/password');
+  let user;
+  try {
+    user = await requireCmsUser(undefined, { allowMustChangePassword: true });
+  } catch (error) {
+    if (error instanceof CmsAuthError) redirect('/admin/login?next=/admin/password');
+    throw error;
+  }
 
   return (
     <AdminAuthFrame

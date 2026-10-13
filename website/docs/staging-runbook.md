@@ -120,6 +120,12 @@ DATABASE_URL='<staging pooled url>' npm run cms:seed
 DATABASE_URL='<staging pooled url>' npm run cms:seed-booking
 ```
 
+`cms:seed` writes as the oldest active admin who has chosen their own password: a session
+with a temporary password may do nothing but change it (`cms-architecture.md` §4). On a fresh
+database, first sign in as `contact@toshoni.be` and replace the bootstrap password (§6, steps
+1–2, on a deployment that uses this database); until then `cms:seed` stops with that
+explanation and writes nothing. `cms:seed-booking` writes directly and does not need it.
+
 `cms:seed` creates, fills and **publishes** eight pages (`/`, `/bikefit`, `/over-ons`,
 `/veelgestelde-vragen`, `/contact`, `/afspraak`, `/privacy`, `/algemene-voorwaarden`), both
 menus and the `/bikefit.html → /bikefit` redirect, through the real write API. Once real

@@ -8,7 +8,8 @@ import {
   type CmsRole,
   type CmsUserPublic,
 } from '@/db/cms-schema';
-import { can, roleAtLeast, type CmsPermission } from './permissions';
+import { assertCmsAccess, CMS_AUTH_MESSAGES } from './guard';
+import type { CmsPermission } from './permissions';
 import {
   hashPassword,
   validatePasswordStrength,
@@ -62,7 +63,7 @@ const MESSAGES: Record<AuthError, string> = {
   weak_password: 'Dit wachtwoord voldoet niet aan de eisen.',
   email_taken: 'Er bestaat al een gebruiker met dit e-mailadres.',
   not_found: 'Gebruiker niet gevonden.',
-  forbidden: 'Je hebt geen toestemming voor deze actie.',
+  forbidden: CMS_AUTH_MESSAGES.forbidden,
 };
 
 function fail(error: AuthError, message = MESSAGES[error]) {
@@ -226,6 +227,10 @@ export async function logout(): Promise<void> {
  * Resolves the signed-in CMS user for the current request, or null.
  * Memoised per request via `React.cache`.
  *
+ * Identity only: it does NOT apply the temporary-password rule. Anything that
+ * returns CMS data or changes something goes through `requireCmsUser()` /
+ * `requirePermission()` (or `cmsAccessDenial()` from `./guard`).
+ *
  * Sliding renewal writes a refreshed cookie when the session passes its
  * halfway point. Cookie writes are only legal in a server action or route
  * handler, so the attempt is wrapped in try/catch: in a plain server component
@@ -250,43 +255,49 @@ export const getCurrentCmsUser = cache(async (): Promise<CmsUserPublic | null> =
   return resolved.user;
 });
 
-export class CmsAuthError extends Error {
-  constructor(
-    readonly code: 'unauthenticated' | 'forbidden',
-    message: string,
-  ) {
-    super(message);
-    this.name = 'CmsAuthError';
-  }
-}
+export { CmsAuthError, type CmsAuthErrorCode } from './guard';
+
+export type RequireCmsUserOptions = {
+  /**
+   * Accept a user whose password is still temporary (`mustChangePassword`).
+   * Only the forced password change uses this: `changePassword()` below and
+   * the `/admin/password` page. Everything else leaves it off.
+   */
+  allowMustChangePassword?: boolean;
+};
 
 /**
- * Returns the signed-in user, throwing when absent or under-privileged.
+ * Returns the signed-in user, or throws `CmsAuthError`: `unauthenticated`
+ * without a session, `password_change_required` while the password is still
+ * temporary, `forbidden` when the role ranks too low. The decision is
+ * `assertCmsAccess()` in `./guard`.
  *
  * ```ts
  * const user = await requireCmsUser();          // any signed-in CMS user
  * const admin = await requireCmsUser('admin');  // admins only
  * ```
  *
- * Worker B: catch `CmsAuthError` in the `/admin` layout and `redirect()` to
- * `/admin/login` for `unauthenticated`, or render a 403 for `forbidden`.
+ * The `/admin` layout redirects `password_change_required` to
+ * `/admin/password` and the other codes to `/admin/login`; `runAction()`
+ * turns every code into a short Dutch form message.
  */
-export async function requireCmsUser(role?: CmsRole): Promise<CmsUserPublic> {
-  const user = await getCurrentCmsUser();
-  if (!user) throw new CmsAuthError('unauthenticated', 'Niet aangemeld.');
-  if (role && !roleAtLeast(user.role, role)) {
-    throw new CmsAuthError('forbidden', MESSAGES.forbidden);
-  }
-  return user;
+export async function requireCmsUser(
+  role?: CmsRole,
+  options: RequireCmsUserOptions = {},
+): Promise<CmsUserPublic> {
+  return assertCmsAccess(await getCurrentCmsUser(), {
+    role,
+    allowMustChangePassword: options.allowMustChangePassword,
+  });
 }
 
-/** Same as `requireCmsUser` but checks a fine-grained permission. */
+/**
+ * Same as `requireCmsUser()` but checks a fine-grained permission. There is no
+ * temporary-password opt-in here: no permission-gated path is part of the
+ * forced password change.
+ */
 export async function requirePermission(permission: CmsPermission): Promise<CmsUserPublic> {
-  const user = await requireCmsUser();
-  if (!can(user.role, permission)) {
-    throw new CmsAuthError('forbidden', MESSAGES.forbidden);
-  }
-  return user;
+  return assertCmsAccess(await getCurrentCmsUser(), { permission });
 }
 
 // --- Password + user management ----------------------------------------------
@@ -299,9 +310,12 @@ export type ChangePasswordInput = {
 /**
  * Changes the signed-in user's password. Revokes every other session, then
  * issues a fresh one so the current browser stays signed in.
+ *
+ * The one write a temporary-password session may make: it is how such a user
+ * gets out of that state, hence `allowMustChangePassword`.
  */
 export async function changePassword(input: ChangePasswordInput): Promise<AuthResult<true>> {
-  const current = await requireCmsUser();
+  const current = await requireCmsUser(undefined, { allowMustChangePassword: true });
   const db = await getCmsDb();
 
   const [row] = await db.select().from(cmsUsers).where(eq(cmsUsers.id, current.id)).limit(1);

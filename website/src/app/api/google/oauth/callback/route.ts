@@ -21,7 +21,8 @@ import {
  * Order of checks (each failure → `?google=error&reason=<code>`):
  *  1. `state` cookie valid (HMAC, not expired) and its nonce equals the
  *     `state` query → else `state`;
- *  2. the signed-in CMS user is the one who started → else `session`;
+ *  2. the signed-in CMS user is the one who started and no longer has a
+ *     temporary password → else `session`;
  *  3. Google's own `error` query → `access_denied` (Cancel) or `google`;
  *  4. code exchange (`exchangeCode`) → else `exchange`;
  *  5. both calendar scopes actually granted (granular consent) → else
@@ -65,7 +66,9 @@ export async function GET(request: NextRequest) {
   if (!state || !nonceMatches(state, url.searchParams.get('state'))) return fail('state');
 
   const user = await getCurrentCmsUser();
-  if (!user || user.id !== state.userId) return fail('session');
+  // A temporary-password session could not store the tokens (the repo below
+  // refuses it); stop before exchanging the code, like the start route does.
+  if (!user || user.id !== state.userId || user.mustChangePassword) return fail('session');
 
   // 3: the provider declined, or Google reported a problem.
   const googleError = url.searchParams.get('error');

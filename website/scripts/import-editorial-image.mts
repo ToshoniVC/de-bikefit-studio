@@ -71,9 +71,9 @@ async function main() {
   const source = await readFile(resolve(src));
   const sha256 = createHash('sha256').update(source).digest('hex');
 
-  let sharp: typeof import('sharp');
+  let sharp: (typeof import('sharp'))['default'];
   try {
-    sharp = (await import('sharp')).default as unknown as typeof import('sharp');
+    sharp = (await import('sharp')).default;
   } catch {
     throw new Error('sharp is not available (it ships with next); run npm ci first');
   }

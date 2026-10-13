@@ -22,10 +22,11 @@
  * reachable (`scripts/lib/aanbod-rollout-run.mts`). `--apply`/`--restore`
  * write through `src/lib/cms/repo.ts` with a real, short-lived admin session
  * (same mechanism as `cms:seed`, see `scripts/lib/request-context.mts`).
- * It needs an existing active admin and never creates one. Booking data,
- * settings, users and every other page are left alone; the logic and its
- * guarantees are in `scripts/lib/aanbod-rollout.mts`. Runbook:
- * `docs/staging-runbook.md` §9.
+ * It needs an existing active admin who has chosen their own password (a
+ * temporary-password session may do nothing else; `scripts/lib/cms-actor.mts`)
+ * and never creates one. Booking data, settings, users and every other page
+ * are left alone; the logic and its guarantees are in
+ * `scripts/lib/aanbod-rollout.mts`. Runbook: `docs/staging-runbook.md` §9.
  */
 import { config } from 'dotenv';
 import { cookieJar, installRequestContextStubs } from './lib/request-context.mjs';

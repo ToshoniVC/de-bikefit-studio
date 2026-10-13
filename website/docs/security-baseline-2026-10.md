@@ -1,0 +1,36 @@
+# Dependency security baseline — October 2026
+
+Status of `npm audit` on `feat/security-baseline-20261013` (2026-10-13), what was
+patched, and the disposition of everything that remains. Re-check with
+`npm audit` inside `website/`; update this file whenever the picture changes.
+
+## What was patched
+
+| Package | From | To | Why |
+| --- | --- | --- | --- |
+| `next` | 16.2.7 | 16.4.0 | Critical advisory batch against ≤ 16.3.7: unauthenticated RCE in the Image Optimization API (AVIF) and `next/og` (GHSA-2xp9-vwfh-vxw4, GHSA-vcvr-r3jv-pc5j), SSRF in server actions/rewrites/image optimizer, SSG/ISR cache poisoning, middleware bypass, server-action DoS. |
+| `eslint-config-next` | 16.2.7 | 16.4.0 | Kept in lockstep with `next`, as required. |
+| `sharp`, `postcss` (under `next`) | vulnerable | 0.35.5 / 8.5.28 | Pulled in by the `next` upgrade; clears the libvips/libheif CVEs and the PostCSS sourceMappingURL file-read advisories. |
+| `shadcn` | runtime dependency | development dependency | Its Tailwind stylesheet is consumed at build time; the CLI and vulnerable transitive glob tooling are not needed in the production install. |
+| ~20 transitive packages | various | via `npm audit fix` | Semver-compatible fixes, notably **critical** `proxy-addr` IP spoofing (GHSA-jqcg-44mw-7w3h — relevant because login/booking rate limiting keys on client IP), `qs`, `body-parser`, `brace-expansion`, `source-map-js`, `@hono/node-server`, `@modelcontextprotocol/sdk`, `baseline-browser-mapping`. |
+
+Result: **30 vulnerabilities (2 critical / 18 high) → 15 (0 critical / 9 high / 6 moderate)** across development and production dependencies. `npm audit --omit=dev` reports **0 findings** after moving the build-only `shadcn` package to development dependencies. This is package classification, not a fix for its open advisories; CI and build hosts still install the full dependency set.
+
+## Accepted (open) advisories
+
+All 15 remaining findings are transitive and reduce to three root causes. None is
+reachable from production traffic: they live in lint-, build- or dev-time tooling
+only. `npm audit fix --force` would "fix" them by breaking downgrades
+(`shadcn@1.0.0`, `@tailwindcss/typography@0.5.4`) and is not acceptable.
+
+| Root cause | Advisory | Affected chains | Disposition |
+| --- | --- | --- | --- |
+| `braces` (all versions) stack-exhaustion DoS | GHSA-vfj7-8cjw-p6xm | `micromatch` → `fast-glob` → `@next/eslint-plugin-next` (via `eslint-config-next`), `shadcn`/`@shadcn/registry`, `ts-morph` | **Accepted.** No fixed `braces` release exists (range is `*`). Only exploitable by feeding adversarial glob patterns to our own dev tools; never runs in the deployed app. Revisit when upstream ships a fix. |
+| `esbuild` dev-server request forwarding | GHSA-67mh-4wv8-2f99 | `@esbuild-kit/*` → `drizzle-kit` | **Accepted.** Dev-time only (`drizzle-kit` migration generation); the esbuild dev server is never exposed. Fix arrives when drizzle-kit drops the deprecated `@esbuild-kit` loader. |
+| `postcss-selector-parser` < 7.1.6 quadratic parsing | GHSA-rj75-hqrm-r3gf | `@tailwindcss/typography` | **Accepted.** Build-time only, parses our own stylesheets, no untrusted input. Suggested "fix" is a breaking downgrade of `@tailwindcss/typography`. Candidate for an `overrides` pin once `@tailwindcss/typography` accepts ≥ 7.1.6. |
+
+## Server-side `mustChangePassword` enforcement
+
+Shipped in the same branch: temporary-password sessions are now rejected at the
+auth-guard layer (`requireCmsUser` / `requirePermission`), not only by the admin
+layout redirect. Details in `docs/cms-architecture.md` (auth section).

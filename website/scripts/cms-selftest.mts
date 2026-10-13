@@ -12,6 +12,9 @@
  *   3. password hashing: scrypt envelope, verify / reject, random salt
  *   4. credentials + rate limiting: verifyCredentials() accepts / rejects, limits
  *   5. sessions: create, resolve (only the hash is stored), revoke
+ *  5b. forced password change: a temporary-password session is refused by the
+ *      guards, both repos and the CLI actor lookup; the allow-path, logout()
+ *      and changePassword() still work (`scripts/selftest/password-gate.mts`)
  *   6. block registry: every block's defaultData validates, unknown type fails
  *   7. permissions: admin / editor content matrix
  *   8. draft → publish snapshot: draft blocks freeze into a published snapshot
@@ -22,8 +25,9 @@
  *      exceptions, step grid, DST days; time-zone helpers
  *  13. e-mail + ICS + token encryption: no RESEND_API_KEY → { sent: false };
  *      ICS in UTC with UID; templates; AES-GCM round trip / tamper / wrong key
- *  14. booking flow on PGlite (provider without Google): repo scopes, public
- *      create / re-check / rate limit / cancel by token
+ *  14. booking flow on PGlite (provider without Google): the new provider's
+ *      forced password change, repo scopes, public create / re-check / rate
+ *      limit / cancel by token
  *  15. aanbod rollout + service preselection: the CLI dry run and the plan
  *      write nothing (no session, no audit, read-only db), draft guard,
  *      apply/backup, booking tables untouched, catalogue, menus, /over-ons
@@ -306,6 +310,17 @@ async function main() {
   check('garbage token does not resolve', (await resolveSession(db, 'garbage')) === null);
   await revokeSession(db, created.token);
   check('revoked session no longer resolves', (await resolveSession(db, created.token)) === null);
+
+  // 5b: clears the admin's temporary password through the real flow.
+  const { passwordGateSection } = await import('./selftest/password-gate.mjs');
+  await passwordGateSection({
+    db,
+    admin: user,
+    currentPassword: GOOD_PASSWORD,
+    check,
+    section,
+    cookieJar,
+  });
 
   section('6. block registry');
   check(
@@ -966,6 +981,7 @@ async function bookingSections(
   const content = await import('@/lib/booking/content');
   const publicBooking = await import('@/lib/booking/public-booking');
   const schema = await import('@/db/cms-schema');
+  const { changeTemporaryPassword } = await import('./selftest/password-gate.mjs');
 
   const signInAs = async (userId: string) => {
     const session = await createSession(db, userId, { userAgent: 'selftest' });
@@ -1058,8 +1074,15 @@ async function bookingSections(
         'studio',
   );
 
-  // Provider scope
+  // Provider scope, after the forced change of the temporary password
   await signInAs(providerUserId);
+  await changeTemporaryPassword({
+    label: 'provider',
+    currentPassword: created.data.temporaryPassword ?? '',
+    newPassword: 'Aanbieder-Eigen-2026',
+    probe: () => repo.getOwnProvider(),
+    check,
+  });
   const own = await repo.getOwnProvider();
   check(
     'provider: getOwnProvider()',

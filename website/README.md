@@ -63,15 +63,19 @@ npm ci
 cp .env.example .env.local        # optional: local dev needs no variables at all
 npm run db:migrate                # creates website/.pglite/ (PGlite)
 CMS_BOOTSTRAP_PASSWORD='<strong password>' npm run cms:bootstrap
+npm run dev                       # http://localhost:3000, admin at /admin/login
+# …sign in at /admin/login and set a permanent password, stop the dev server, then:
 npm run cms:seed                  # Dutch pages, menus, redirect; published
 npm run cms:seed-booking          # first provider; prints its temporary password once
-npm run dev                       # http://localhost:3000, admin at /admin/login
 ```
 
 PowerShell has no inline env prefix: `$env:CMS_BOOTSTRAP_PASSWORD='…'; npm run cms:bootstrap;
 Remove-Item Env:CMS_BOOTSTRAP_PASSWORD`. Never store that password in `.env.local` or Vercel.
 
 Sign in as `contact@toshoni.be` with the bootstrap password; the first login forces a new one.
+The write scripts (`cms:seed`, rollouts) act as the oldest active admin with a permanent
+password and stop with a message while every admin still has a temporary one — so change the
+bootstrap password before seeding. Stop the dev server first: both open the same `.pglite/`.
 Reset the local database by deleting `website/.pglite/` and repeating the commands.
 
 With no variables set: the CMS and booking run on PGlite, availability uses business hours

@@ -28,13 +28,13 @@ File ownership during parallel work comes from the work-block file (see
 | Area | Paths |
 | --- | --- |
 | Data | `src/db/cms-schema.ts` (all `cms_*` tables, CMS + booking), `src/db/cms.ts` (driver), `drizzle/**`, `drizzle.config.ts` |
-| CMS core | `src/lib/cms/{auth,session,password,permissions,blocks,block-primitives,blocks-aanbod,content,offers-content,repo,repo-admin}.ts` |
+| CMS core | `src/lib/cms/{auth,guard,session,password,permissions,blocks,block-primitives,blocks-aanbod,content,offers-content,repo,repo-admin}.ts` |
 | Offer ("Aanbod") | `src/lib/offers/{catalogue,defaults}.ts` (plain), `src/lib/studio/seed-content/**` (seed + rollout content), `src/lib/studio/editorial-images.{ts,json}`, `scripts/cms-rollout-aanbod.mts`, `scripts/lib/aanbod-rollout{,-plan,-run}.mts` — see §14 |
 | Admin | `src/app/admin/**`, `src/components/admin/**`, `src/lib/cms/actions/**` (server actions + `sanitize.ts`), `src/app/api/cms/media/**` |
 | Public site | `src/app/(studio)/**`, `src/components/studio/**`, `src/lib/studio/**`, `src/app/sitemap.ts`, `src/app/robots.ts` |
 | Booking | `src/lib/booking/**`, `src/lib/email/**`, `src/app/api/google/oauth/**` — see `booking-architecture.md` |
 | Analytics | `src/lib/analytics/{consent,ga4-tag,ga4}.ts(x)`, `src/components/studio/{analytics,consent-banner}.tsx`, `src/components/admin/analytics-panel.tsx` |
-| Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-rollout-aanbod,cms-patch-booking-cta,cms-selftest,cms-retention,import-editorial-image}.mts`, shared helpers in `scripts/lib/`, self-test sections 15–16 in `scripts/selftest/` |
+| Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-rollout-aanbod,cms-patch-booking-cta,cms-selftest,cms-retention,import-editorial-image}.mts`, shared helpers in `scripts/lib/`, self-test sections 5b and 15–16 in `scripts/selftest/` |
 | Shared | `src/middleware.ts`, `src/lib/env.ts`, `.env.example`, `next.config.ts`, `package.json`, `src/app/layout.tsx` |
 
 ---
@@ -234,22 +234,43 @@ login(input: { email: string; password: string; context?: { userAgent?, ipAddres
   : Promise<AuthResult<CmsUserPublic>>            // verifies + sets the cookie
 logout(): Promise<void>                           // always succeeds
 getCurrentCmsUser(): Promise<CmsUserPublic | null> // React.cache'd, one lookup per request
-requireCmsUser(role?: CmsRole): Promise<CmsUserPublic>  // rank check, throws CmsAuthError
+requireCmsUser(role?: CmsRole, options?: { allowMustChangePassword?: boolean })
+  : Promise<CmsUserPublic>                        // throws CmsAuthError
 requirePermission(permission: CmsPermission): Promise<CmsUserPublic>
 changePassword(input: { currentPassword: string; newPassword: string }): Promise<AuthResult<true>>
 createUser(input: { email; name; role; password? }): Promise<AuthResult<{ user; temporaryPassword: string | null }>>
 ```
 
-`CmsAuthError.code` is `'unauthenticated' | 'forbidden'`. The dashboard layout
-`src/app/admin/(dashboard)/layout.tsx` calls `requireCmsUser()` and redirects
-to `/admin/login` on a `CmsAuthError`; each page then checks its own
-permission.
+`CmsAuthError.code` is `'unauthenticated' | 'password_change_required' |
+'forbidden'`. The dashboard layout `src/app/admin/(dashboard)/layout.tsx` calls
+`requireCmsUser()` and redirects `password_change_required` to
+`/admin/password` and every other `CmsAuthError` to `/admin/login`; each page
+then checks its own permission. `runAction()` turns each code into a short
+Dutch form message.
 
 `getCurrentCmsUser()` never returns `passwordHash` (the type is
-`CmsUserPublic`). All messages are Dutch and safe to show to the user.
+`CmsUserPublic`). It only says who is signed in; anything that returns CMS
+data or writes goes through `requireCmsUser()` / `requirePermission()`. All
+messages are Dutch and safe to show to the user.
 
-Users with `mustChangePassword === true` must be forced onto a change-password
-screen before anything else — the bootstrap admin is created that way.
+**Temporary passwords are enforced server-side.** New users, reset passwords,
+new providers and the bootstrap admin start with `mustChangePassword = true`.
+The guard decision (`cmsAccessDenial()` / `assertCmsAccess()` in
+`src/lib/cms/guard.ts`, pure and unit-tested) makes `requireCmsUser()` and
+`requirePermission()` throw `password_change_required` for such a session, so
+every page, server action and repo call refuses it, including a POST that
+never renders the layout. Order: unauthenticated → temporary password →
+role/permission. The only ways through are
+`requireCmsUser(role, { allowMustChangePassword: true })`, used solely by
+`changePassword()` and the `/admin/password` page (it grants no role or
+permission), and `login()` / `logout()`, which use no guard. The GA4 panel and
+`canPreview()` apply
+`cmsAccessDenial()` without throwing; both Google OAuth routes refuse such a
+session. The CMS CLIs write through a session, so they act as the oldest active
+admin who has chosen their own password (`scripts/lib/cms-actor.mts`) and stop
+with an explanation when there is none: after `cms:bootstrap`, sign in once and
+replace the password before `cms:seed`. Self-test section 5b runs the flow on
+PGlite.
 
 ### Permission matrix
 
@@ -332,8 +353,9 @@ page stays an ordinary `page.update`. Enforced in `updatePageMeta()`
    `/admin/login?next=<original path>`.
 
 That cookie check is a convenience redirect, **not** the security boundary.
-The real check is `requireCmsUser()` in the `/admin` layout, which hits the
-database. A forged cookie gets past middleware and is rejected by the layout.
+The real check is `requireCmsUser()` / `requirePermission()`, which hit the
+database: in the `/admin` layout and again in every page, server action and
+repo call. A forged cookie gets past middleware and is rejected there.
 
 ---
 
@@ -681,6 +703,7 @@ cd website
 npm ci
 npm run db:migrate                                      # creates website/.pglite/
 CMS_BOOTSTRAP_PASSWORD='<strong password>' npm run cms:bootstrap
+npm run dev            # sign in at /admin/login, choose a new password, stop the server
 npm run cms:seed                                        # Dutch pages, menus, redirect
 npm run cms:seed-booking                                # first provider (temp password printed once)
 npm run dev
@@ -692,6 +715,11 @@ settings (`site`, `contact`, `seo`, `organization`, `analytics`, `booking`),
 empty `main` + `footer` menus, the two locations and the five services.
 Running it twice changes nothing.
 
+`cms:seed` writes as an admin who has chosen their own password (§4), so the
+bootstrap password is replaced first; until then it stops with an explanation.
+Stop the dev server before running a script: both would open the same
+`.pglite/` directory. `cms:seed-booking` writes directly and needs no sign-in.
+
 Reset the local database by deleting `website/.pglite/` and re-running the
 commands.
 
@@ -700,7 +728,7 @@ Checks (all six are the Definition of Done in `CLAUDE.md` §2):
 ```bash
 npm run typecheck && npm run lint && npm run format:check
 npm test               # vitest unit tests
-npm run cms:selftest   # 15 sections: migrations … full booking flow, aanbod rollout, on a throwaway PGlite
+npm run cms:selftest   # sections 1–16 + 5b: migrations … forced password change … full booking flow, aanbod rollout, on a throwaway PGlite
 npm run build
 ```
 
@@ -843,8 +871,9 @@ appear in no structured data.
 audit entries and permission checks are the real ones. It does that by giving
 the write API the request context it expects (`scripts/lib/request-context.mts`):
 `module.registerHooks()` stubs for `server-only`, `next/headers` and
-`next/cache`, plus a genuine `cms_sessions` row for an existing admin (revoked
-again on exit). The redesign's pages and menus are defined once in
+`next/cache`, plus a genuine `cms_sessions` row (revoked again on exit) for the
+oldest active admin who has chosen their own password
+(`scripts/lib/cms-actor.mts`; it never creates one). The redesign's pages and menus are defined once in
 `src/lib/studio/seed-content/aanbod.ts`; **existing databases get them through
 `npm run cms:rollout-aanbod`, never a full `cms:seed`** (§14).
 

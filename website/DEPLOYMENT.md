@@ -69,7 +69,9 @@ code needs them; the previous build keeps working against the extended schema.
 changes. It is for a throwaway local database only.
 
 After migrating a fresh branch, run the idempotent scripts in this order: `cms:bootstrap` →
-`cms:seed` → `cms:seed-booking` (details in the staging runbook §3).
+sign in as the bootstrap admin and set a permanent password → `cms:seed` → `cms:seed-booking`
+(details in the staging runbook §3). The write scripts act as the oldest active admin with a
+permanent password and refuse to run while every admin still has a temporary one.
 
 ## 4. Vercel (one project)
 

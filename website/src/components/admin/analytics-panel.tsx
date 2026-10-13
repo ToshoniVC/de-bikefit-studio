@@ -12,6 +12,7 @@ import {
 } from '@/lib/analytics/ga4';
 import { getCurrentCmsUser } from '@/lib/cms/auth';
 import { getSiteSettings } from '@/lib/cms/content';
+import { cmsAccessDenial } from '@/lib/cms/guard';
 import { can } from '@/lib/cms/permissions';
 import { env } from '@/lib/env';
 
@@ -61,7 +62,9 @@ function sourceLabel(source: string): string {
 
 export async function AnalyticsPanel() {
   const user = await getCurrentCmsUser();
-  if (!user || !can(user.role, 'analytics.read')) return null;
+  // `requirePermission('analytics.read')` without the throw: nothing for a
+  // missing permission or a session whose password is still temporary.
+  if (!user || cmsAccessDenial(user, { permission: 'analytics.read' })) return null;
 
   const overview = await getAnalyticsOverview();
   if (overview.connected) return <ConnectedPanel overview={overview} />;
