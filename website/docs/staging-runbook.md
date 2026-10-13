@@ -120,9 +120,10 @@ DATABASE_URL='<staging pooled url>' npm run cms:seed
 DATABASE_URL='<staging pooled url>' npm run cms:seed-booking
 ```
 
-`cms:seed` creates, fills and **publishes** eight pages (`/`, `/bikefit`, `/over-ons`,
-`/veelgestelde-vragen`, `/contact`, `/afspraak`, `/privacy`, `/algemene-voorwaarden`), both
-menus and the `/bikefit.html → /bikefit` redirect, through the real write API. Once real
+`cms:seed` creates, fills and **publishes** the Dutch pages (home, `/aanbod` and its seven
+offer pages, `/voor-wie`, `/bikefit`, `/ons-team`, `/veelgestelde-vragen`, `/afspraak`,
+`/privacy`, `/algemene-voorwaarden`), both menus and the redirects (`/bikefit.html`,
+`/over-ons`, `/contact`), through the real write API. Once real
 editing has started use `-- --only-missing` or `-- --refresh-slug <slug>` instead of a full
 run: a full run overwrites the draft blocks of every seeded page.
 
@@ -421,4 +422,57 @@ are never written (booking counts verified before and after). **No migrations. N
 
 **Rollback:** `npm run cms:patch-booking-cta -- --restore <backup.json> --expect-host '<host>'`
 puts the page rows and draft blocks back exactly (the backup uses the §9 format and restore).
+
+## 11. Page cleanup patch (Toshoni's site review, 13 Oct 2026)
+
+What the review changes, and where:
+
+| Where | Code (deploy) | Content (`cms:patch-page-cleanup`) |
+| --- | --- | --- |
+| Top-level pages | no visible "Home / …" breadcrumb (JSON-LD stays; nested pages keep theirs), compact top spacing | — |
+| `/aanbod`, `/voor-wie`, `/ons-team` | card/name headings become `<h2>` when the section has no title | kicker without "· Ninove"; no "Waar je ook staat" / "Wie je ontmoet" heading; "Junioren" → "Jeugd" and the new junior text; meta description of `/voor-wie` |
+| `/afspraak` | widget headings follow the section level | page head, "Vier manieren om te boeken", the "Boek je bikefit" contact section and closing band removed; kicker "Online boeken" emptied; "Andere vraag?" (mail + phone) appended to "Voor je komt" |
+| `/contact` | redirects keep the query string (`/contact?dienst=x` → `/afspraak?dienst=x`) | 301 → `/afspraak`, then the page unpublished (row, draft, snapshot kept) |
+| Menus | — | "Contact" links → `/afspraak` (labels kept) |
+| Footer | identity line and "Ninove · Op afspraak" note removed | settings `contact.email` `""` → `info@debikefitstudio.be` |
+
+Every field edit names the value it expects (the seed at `staging@9c655fe`); a field an editor
+changed since, a page with unpublished draft edits, an existing `/contact` redirect to another
+target or a different e-mail address makes the patch refuse — no override. **No migrations.
+Never a full `cms:seed`, `--refresh-slug` or a rerun of `cms:rollout-aanbod` for this.**
+
+1. Deploy the code first (release gate, staging READY). Old content renders fine on the new
+   code; the footer shows the e-mail only once step 3 has run.
+2. **Dry run** (read-only like §9; self-test section 17):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:patch-page-cleanup
+   ```
+
+   Expected, in this order: `~ page /aanbod — 1 change(s)`, `~ page /voor-wie — 7 change(s)`,
+   `~ page /ons-team — 3 change(s)`, `~ page /afspraak — 6 change(s)` (each change listed),
+   `~ page /contact — unpublish`, `+ redirect /contact → /afspraak (301) — create`,
+   `~ menu main` and `~ menu footer — "Contact" /contact → /afspraak`,
+   `~ settings contact.email — "" → info@debikefitstudio.be`, the guard counts, then
+   `dry run: run again with --apply to write`. **Stop and report on any `!` line.**
+3. **Apply** (optional Neon snapshot first; the tool writes its own backup before the first
+   write):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:patch-page-cleanup -- --apply \
+     --expect-host '<host part of the staging DATABASE_URL>' --backup-dir <dir>
+   ```
+
+   Backup `page-cleanup-patch-<timestamp>.json`: rows and blocks of the five pages, both menus,
+   and the contact settings value. Order: e-mail, pages (publish last per page), redirect, then
+   unpublish `/contact`, menus. It verifies the published snapshots, the redirect, the menus
+   and the e-mail, checks the booking tables are unchanged, audits `patch.page-cleanup.apply`
+   and always revokes its session. A second dry run prints `dry run: nothing to do`.
+4. **Verify** after the 5-minute cache window (load each page twice): see the smoke list in the
+   work-block report; no bookings, no mail.
+
+**Rollback:** `npm run cms:patch-page-cleanup -- --restore <backup.json> --expect-host '<host>'`
+restores the five pages (re-publishing `/contact`) and both menus, disables the `/contact`
+redirect and sets `contact.email` back (other contact fields untouched). Then, if needed, the
+code: redeploy `staging@9c655fe`.
 

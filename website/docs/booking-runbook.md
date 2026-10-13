@@ -420,11 +420,12 @@ hero + one text block each):
 | Privacyverklaring | `/privacy` | footer (every page), consent banner, booking form, customer e-mails |
 | Algemene voorwaarden | `/algemene-voorwaarden` | footer (every page), booking form, customer e-mails |
 
-- The footer's bottom row always links both pages, plus the legal identity
-  (Qarakter BV · De Bikefit Studio · Weversstraat 7, 1730 Asse · BTW BE
-  1036.912.281 · RPR Brussel, Nederlandstalige afdeling, from
-  `src/lib/studio/legal.ts`) and the public e-mail address
-  once *Instellingen → Contact → e-mail* is filled in. A fresh `cms:seed` also
+- The footer's bottom row always links both pages. The public e-mail address
+  (*Instellingen → Contact → e-mail*, `info@debikefitstudio.be`) is in the
+  footer's contact column. The legal identity line (Qarakter BV, Weversstraat 7,
+  1730 Asse, BTW, RPR; `src/lib/studio/legal.ts`) was removed from the footer at
+  Toshoni's request on 13 Oct 2026; it stays in both legal texts and in the
+  customer e-mails — recheck art. III.74 WER with the lawyer before production. A fresh `cms:seed` also
   adds a footer menu column **Juridisch** with the same two links; the bottom
   row then skips them so nothing shows twice. Existing databases do not get
   that menu column (menus are not re-seeded); the bottom-row links cover it.

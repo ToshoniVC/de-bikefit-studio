@@ -1,3 +1,5 @@
+import { BookingHeading } from './heading-level';
+
 /**
  * One step of the booking flow: number, heading (focus target when the step
  * opens), a summary and "Wijzigen" once done, the body while active.
@@ -31,10 +33,14 @@ export function StepItem({
           {String(number).padStart(2, '0')}
         </span>
         <div className="studio-booking__step-heading">
-          <h3 className="studio-booking__step-title" tabIndex={-1} data-step-heading={id}>
+          <BookingHeading
+            className="studio-booking__step-title"
+            tabIndex={-1}
+            data-step-heading={id}
+          >
             <span className="sr-only">Stap {number}: </span>
             {title}
-          </h3>
+          </BookingHeading>
           {state === 'done' && summary ? (
             <p className="studio-booking__step-summary">{summary}</p>
           ) : null}

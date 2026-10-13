@@ -17,10 +17,11 @@ import { JsonLd } from './json-ld';
  * Renders one published page: its structured data, its breadcrumb and its
  * blocks.
  *
- * The breadcrumb is rendered as visible markup *and* as `BreadcrumbList`
- * JSON-LD from the same array, so the two can never disagree — which is the
- * whole point of structured data. Nested pages (`/aanbod/voetanalyse`) get
- * their published ancestors in between.
+ * The breadcrumb always goes out as `BreadcrumbList` JSON-LD. It is shown as
+ * visible markup only on nested pages (`/aanbod/voetanalyse`), built from the
+ * same array with the published ancestors in between, so the two can never
+ * disagree. On a top-level page "Home / Aanbod" only repeats the header
+ * navigation, so it is left out there (Toshoni's review, 13 Oct 2026).
  *
  * `requestedService` is the validated `?dienst=` value; only the booking
  * block reads it.
@@ -72,7 +73,7 @@ export function StudioPageView({
     <>
       <JsonLd data={graph} />
 
-      {trail.length > 0 ? (
+      {parents.length > 0 ? (
         <nav className="studio-breadcrumb-bar" aria-label="Kruimelpad">
           <ol className="studio-breadcrumb">
             <li>

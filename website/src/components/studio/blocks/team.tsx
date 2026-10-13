@@ -10,9 +10,13 @@ import type { BlockProps } from './types';
  * palette; a generated image is never used as somebody's portrait. The
  * initials are decorative (the name is right below), so they are hidden from
  * assistive technology. `internalNote` is for editors and is never rendered.
+ *
+ * Names are `<h3>` under the section title, and `<h2>` when the section has
+ * no title of its own (the profiles follow "Ons team" directly) or owns the
+ * page's `<h1>`.
  */
 export function TeamBlock({ data, anchor, headingLevel, locale }: BlockProps<'team'>) {
-  const NameHeading = headingLevel === 1 ? 'h2' : 'h3';
+  const NameHeading = headingLevel === 1 || !data.title ? 'h2' : 'h3';
 
   return (
     <StudioSection

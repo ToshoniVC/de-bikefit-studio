@@ -8,8 +8,14 @@ import type { BlockProps } from './types';
  * part of the visible heading there, so it stays inside the `<h3>` here too
  * rather than becoming a separate element that a screen reader would announce
  * on its own.
+ *
+ * Without a section title (the cards follow the page head directly, as on
+ * `/voor-wie`) the card headings move up to `<h2>`, so the outline never
+ * skips a level.
  */
 export function AudienceBlock({ data, anchor, headingLevel }: BlockProps<'audience'>) {
+  const CardHeading = data.title ? 'h3' : 'h2';
+
   return (
     <StudioSection
       variant={data.variant}
@@ -26,10 +32,10 @@ export function AudienceBlock({ data, anchor, headingLevel }: BlockProps<'audien
               key={`${item.title}-${index}`}
               className={`studio-card${item.featured ? ' studio-card--featured' : ''}`}
             >
-              <h3 className="studio-card__title">
+              <CardHeading className="studio-card__title">
                 {item.number ? `${item.number} · ` : ''}
                 {item.title}
-              </h3>
+              </CardHeading>
               {item.body ? <p className="studio-card__body">{item.body}</p> : null}
             </article>
           ))}

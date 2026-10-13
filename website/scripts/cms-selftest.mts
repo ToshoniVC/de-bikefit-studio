@@ -33,6 +33,11 @@
  *      retargets only "Boek je bikefit" hrefs to /afspraak (phone links keep
  *      dialling), session cleanup, idempotent, restore
  *      (`scripts/selftest/booking-cta.mts`)
+ *  17. page cleanup patch (review 13 Oct 2026): from the staging content
+ *      before the review (fixture), dry run writes nothing, refuses drafts and
+ *      editor-changed fields, applies exactly the review (pages, /contact
+ *      301 + unpublish, menus, e-mail), verified, idempotent, restore
+ *      (`scripts/selftest/page-cleanup.mts`)
  *
  * Counts failures and exits non-zero at the end when any check failed.
  *
@@ -430,6 +435,16 @@ async function main() {
 
   const { bookingCtaSection } = await import('./selftest/booking-cta.mjs');
   await bookingCtaSection({
+    db,
+    admin: user,
+    check,
+    section,
+    cookieJar,
+    backupDir: resolve(process.cwd(), DATA_DIR, 'rollout-backups'),
+  });
+
+  const { pageCleanupSection } = await import('./selftest/page-cleanup.mjs');
+  await pageCleanupSection({
     db,
     admin: user,
     check,

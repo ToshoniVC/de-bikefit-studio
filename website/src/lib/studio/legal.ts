@@ -1,7 +1,8 @@
 /**
  * The legal identity of the business behind the site, in one place, so the
- * public footer (`src/components/studio/site-footer.tsx`) and the transactional
- * e-mails (`src/lib/email/templates.ts`) always show the same facts.
+ * transactional e-mails (`src/lib/email/templates.ts`) and the error pages
+ * always show the same facts. The public footer no longer shows it (Toshoni's
+ * review, 13 Oct 2026); the legal pages carry it in their text.
  *
  * Source: KBO public search (kbopub.economie.fgov.be), enterprise number
  * 1036.912.281, consulted 24 Sep 2026. The RPR division follows from the
@@ -9,9 +10,10 @@
  * checked against the Belgisch Staatsblad publication.
  *
  * Belgian law (art. III.74 WER, art. 2:20 WVV) requires the name, legal form,
- * registered office, enterprise number and an e-mail address on the website.
- * No public e-mail address is on record yet: the footer shows
- * `cms_site_settings.contact.email` when it is filled in.
+ * registered office, enterprise number and an e-mail address on the website:
+ * `/privacy` and `/algemene-voorwaarden` state them, and the footer shows the
+ * public address from `cms_site_settings.contact.email`
+ * (info@debikefitstudio.be, confirmed by Toshoni on 13 Oct 2026).
  *
  * Plain module (no `server-only`, no I/O): safe in server components, e-mail
  * templates and scripts alike.

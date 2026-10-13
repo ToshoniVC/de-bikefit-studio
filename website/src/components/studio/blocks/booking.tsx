@@ -6,6 +6,7 @@ import {
   type CatalogueOffer,
 } from '@/lib/offers/catalogue';
 import { BookingWidget } from '../booking/booking-widget';
+import { BookingHeadingLevel } from '../booking/heading-level';
 import { loadBookingOptions, type BookingOptions } from '../booking/load';
 import { OfferEnquiry } from '../booking/offer-enquiry';
 import type { BookingWidgetProps } from '../booking/types';
@@ -67,6 +68,8 @@ export async function BookingBlock({
   });
 
   const rules = options?.rules ?? settings.booking;
+  // Headings inside the section sit one level below its title.
+  const innerHeading = headingLevel === 1 ? 'h2' : 'h3';
   const section = {
     variant: data.variant,
     anchor: anchor ?? 'boeken',
@@ -82,6 +85,7 @@ export async function BookingBlock({
           phoneLabel={phoneLabel}
           phoneHref={phoneHref}
           email={email}
+          titleTag={innerHeading}
         />
       </StudioSection>
     );
@@ -137,7 +141,9 @@ export async function BookingBlock({
   return (
     <StudioSection {...section} title={title} lede={lede}>
       {props ? (
-        <BookingWidget {...props} />
+        <BookingHeadingLevel tag={innerHeading}>
+          <BookingWidget {...props} />
+        </BookingHeadingLevel>
       ) : (
         <div className="studio-booking__fallback">
           <p>

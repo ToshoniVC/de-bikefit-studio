@@ -634,6 +634,13 @@
     color: var(--ds-color-fg-muted);
     max-width: 60ch;
   }
+  /* A top-level page opens straight on its page head (or, like /afspraak, on
+     its first section): no breadcrumb above it since the 13 Oct 2026 review,
+     so the full gap under the header is replaced by a compact one. Nested
+     pages keep their breadcrumb and the normal spacing. */
+  #inhoud > :is(.studio-pagehead, .studio-section):first-of-type:not(.studio-breadcrumb-bar ~ *) {
+    padding-top: var(--ds-space-2xl);
+  }
 
   /* ---- sections -------------------------------------------------------- */
   .studio-section {
@@ -1273,6 +1280,9 @@
     }
     .studio-pagehead {
       padding: var(--ds-space-3xl) var(--ds-gutter) var(--ds-space-2xl);
+    }
+    #inhoud > :is(.studio-pagehead, .studio-section):first-of-type:not(.studio-breadcrumb-bar ~ *) {
+      padding-top: var(--ds-space-xl);
     }
     .studio-split {
       grid-template-columns: 1fr;
@@ -1928,13 +1938,10 @@
 
 /* Worker E: footer legal */
 @layer components {
-  /* Second row of the bottom bar: legal identity, legal links, "Cookies". */
+  /* Second row of the bottom bar: legal links and "Cookies" (when not in the menu). */
   .studio-footer__legal {
     margin-top: var(--ds-space-xs);
     align-items: baseline;
-  }
-  .studio-footer__identity a {
-    text-transform: none;
   }
   .studio-footer__legal-links {
     display: flex;

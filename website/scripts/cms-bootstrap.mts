@@ -53,7 +53,8 @@ const DEFAULT_SETTINGS = {
   contact: {
     phoneLabel: '0473 95 26 33',
     phoneHref: 'tel:+32473952633',
-    email: '',
+    // Confirmed by Toshoni on 13 Oct 2026 (register G-01).
+    email: 'info@debikefitstudio.be',
     addressLines: [],
     postalCode: '',
     city: 'Ninove',

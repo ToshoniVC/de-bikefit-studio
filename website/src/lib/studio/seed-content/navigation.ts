@@ -10,13 +10,17 @@ function navItem(label: string, href: string, group = ''): SeedNavigationItem {
   return { label, href, external: false, group, children: [] };
 }
 
-/** Logo links home; there is no "Home" item. The header CTA is `PRIMARY_CTA`. */
+/**
+ * Logo links home; there is no "Home" item. The header CTA is `PRIMARY_CTA`.
+ * "Contact" leads to the booking page, the single place to book or ask
+ * (Toshoni's review, 13 Oct 2026); `/contact` itself redirects there.
+ */
 export const MAIN_MENU: SeedNavigationItem[] = [
   navItem('Aanbod', OFFER_INDEX_PATH),
   navItem('Voor wie', '/voor-wie'),
   navItem('Bikefit', '/bikefit'),
   navItem('Ons team', '/ons-team'),
-  navItem('Contact', '/contact'),
+  navItem('Contact', BOOKING_PATH),
 ];
 
 export const FOOTER_MENU: SeedNavigationItem[] = [
@@ -24,7 +28,7 @@ export const FOOTER_MENU: SeedNavigationItem[] = [
   navItem('Voor wie', '/voor-wie', 'Studio'),
   navItem('Bikefit', '/bikefit', 'Studio'),
   navItem('Ons team', '/ons-team', 'Studio'),
-  navItem('Contact', '/contact', 'Studio'),
+  navItem('Contact', BOOKING_PATH, 'Studio'),
   navItem('Afspraak maken', BOOKING_PATH, 'Praktisch'),
   navItem('Werkwijze', '/bikefit#werkwijze', 'Praktisch'),
   navItem('Veelgestelde vragen', '/veelgestelde-vragen', 'Praktisch'),

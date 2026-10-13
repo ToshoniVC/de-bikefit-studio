@@ -1,0 +1,466 @@
+{
+  "source": "seed definition at staging@9c655feeb936010c16e9c134ecb54581f5b1be5d (what cms:rollout-aanbod and cms:patch-booking-cta published on staging)",
+  "pages": [
+    {
+      "slug": "aanbod",
+      "metaDescription": "Bikefit bij aankoop of op je huidige fiets, voetanalyse, zadelanalyse, schoenplaatjes afstellen, lactaattest en coaching in Ninove.",
+      "blocks": [
+        {
+          "type": "hero",
+          "data": {
+            "variant": "pageHead",
+            "eyebrow": "Aanbod · Ninove",
+            "title": "Ons aanbod",
+            "titleEmphasis": "",
+            "subtitle": "Elke fietser is anders. Daarom werkt De Bikefit Studio uitsluitend met ervaren, gediplomeerde professionals. Samen zoeken we wat bij jou past: van je eerste kilometers tot een nieuw sportief doel. Persoonlijke fietsbegeleiding, dichtbij — in de studio, op locatie of, waar mogelijk, bij jou thuis.",
+            "primaryCta": null,
+            "secondaryCta": null
+          }
+        },
+        {
+          "type": "offerCatalogue",
+          "data": {
+            "variant": "default",
+            "eyebrow": "",
+            "title": "",
+            "lede": "",
+            "groups": [
+              {
+                "category": "bikefit",
+                "title": "Bikefit",
+                "lede": "Je fiets, je zadel, je voeten en je schoenplaatjes, afgestemd op jou."
+              },
+              {
+                "category": "begeleiding",
+                "title": "Begeleiding",
+                "lede": "Inzicht en opvolging die met je meegroeit."
+              }
+            ],
+            "showPrices": true,
+            "cta": null
+          }
+        },
+        {
+          "type": "cta",
+          "data": {
+            "variant": "accent",
+            "title": "Comfort is een keuze. Maak ze.",
+            "body": "",
+            "primaryCta": {
+              "label": "Afspraak maken →",
+              "href": "/afspraak",
+              "external": false
+            },
+            "secondaryCta": {
+              "label": "0473 95 26 33",
+              "href": "tel:+32473952633",
+              "external": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "slug": "voor-wie",
+      "metaDescription": "Voor jong en minder jong, beginners en ervaren fietsers, recreatief en competitief, koers, gravel en mountainbike, woon-werk en e-bike. Extra aandacht voor junioren.",
+      "blocks": [
+        {
+          "type": "hero",
+          "data": {
+            "variant": "pageHead",
+            "eyebrow": "Voor wie · Ninove",
+            "title": "Voor elke fietser",
+            "titleEmphasis": "",
+            "subtitle": "Of je nu zeven of zeventig bent, koerst of pendelt, een weekendrijder of een doordeweekse toerist — iedereen verdient het om te genieten van alles wat een fiets te bieden heeft.",
+            "primaryCta": null,
+            "secondaryCta": null
+          }
+        },
+        {
+          "type": "audience",
+          "data": {
+            "variant": "gray",
+            "eyebrow": "Voor wie",
+            "title": "Waar je ook staat",
+            "lede": "Van je eerste kilometers tot een nieuw sportief doel: we vertrekken van jouw verhaal.",
+            "items": [
+              {
+                "number": "01",
+                "title": "Jonge fietsers",
+                "body": "Kinderen groeien snel — een fiets die vandaag past, klopt volgend seizoen al niet meer. We volgen de pasvorm op terwijl ze groeien.",
+                "featured": true
+              },
+              {
+                "number": "02",
+                "title": "Beginners en ervaren fietsers",
+                "body": "Je eerste kilometers of al jaren onderweg: we bekijken wat jij nodig hebt.",
+                "featured": false
+              },
+              {
+                "number": "03",
+                "title": "Recreatief en competitief",
+                "body": "Voor de weekendrit die fris moet eindigen, niet stijf en pijnlijk de ochtend erna, en voor wie een sportief doel voor ogen heeft.",
+                "featured": false
+              },
+              {
+                "number": "04",
+                "title": "Koers, gravel en mountainbike",
+                "body": "De principes blijven dezelfde: het lichaam van de fietser moet bij de fiets passen. We fitten koers-, gravel-, mountain-, stads-, toer- en e-bikes.",
+                "featured": false
+              },
+              {
+                "number": "05",
+                "title": "Woon-werk en e-bike",
+                "body": "Vijf dagen per week, weer of geen weer. Een pasvorm die het volhoudt naast de koude handen en de natte broek, ook op een e-bike.",
+                "featured": false
+              },
+              {
+                "number": "06",
+                "title": "Wielertoeristen",
+                "body": "Lange dagen, zware tassen, verre horizonten — een pasvorm waar je op kilometer 200 nog op kan rekenen, maakt van de tocht wat ze hoort te zijn.",
+                "featured": false
+              }
+            ]
+          }
+        },
+        {
+          "type": "imageText",
+          "data": {
+            "variant": "default",
+            "eyebrow": "Junioren",
+            "title": "Jonge fietsers groeien",
+            "paragraphs": [
+              "Jonge fietsers groeien. Hun fiets groeit niet vanzelf mee. Daarom besteden we extra aandacht aan junioren, met betaalbare begeleiding en opvolging op maat. Zo blijft er ruimte om te groeien, bij te leren en vooral graag te fietsen."
+            ],
+            "cta": {
+              "label": "Bekijk het aanbod",
+              "href": "/aanbod",
+              "external": false
+            },
+            "image": {
+              "mediaId": null,
+              "url": "/images/editorial/junior-coaching-v1.webp",
+              "alt": "Een jonge fietser met helm luistert naar een coach langs een landweg, met een ouder en fiets op de achtergrond",
+              "decorative": false
+            },
+            "imagePosition": "right"
+          }
+        },
+        {
+          "type": "cta",
+          "data": {
+            "variant": "accent",
+            "title": "Benieuwd wat bij jou past?",
+            "body": "",
+            "primaryCta": {
+              "label": "Bekijk het aanbod →",
+              "href": "/aanbod",
+              "external": false
+            },
+            "secondaryCta": {
+              "label": "Afspraak maken",
+              "href": "/afspraak",
+              "external": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "slug": "ons-team",
+      "metaDescription": "Goede begeleiding begint bij de juiste mensen. Maak kennis met het team van De Bikefit Studio in Ninove.",
+      "blocks": [
+        {
+          "type": "hero",
+          "data": {
+            "variant": "pageHead",
+            "eyebrow": "Ons team · Ninove",
+            "title": "Ons team",
+            "titleEmphasis": "",
+            "subtitle": "Goede begeleiding begint bij de juiste mensen. We kiezen ons team op ervaring, vakkennis en de nodige diploma’s, maar ook op de manier waarop iemand luistert. Je krijgt een aanpak die bij jou past, met heldere uitleg en aandacht voor jouw doelen.",
+            "primaryCta": null,
+            "secondaryCta": null
+          }
+        },
+        {
+          "type": "team",
+          "data": {
+            "variant": "default",
+            "eyebrow": "Het team",
+            "title": "Wie je ontmoet",
+            "lede": "",
+            "members": [
+              {
+                "name": "Rutger Roelandts",
+                "role": "Oprichter",
+                "bio": [
+                  "Ik zit op een fiets zolang ik me kan herinneren. Negentien jaar competitie, en een heel leven daarbuiten gewoon fietsen — naar school, naar het werk, het heuvelland in op zondag.",
+                  "Daarom heb ik De Bikefit Studio opgericht. Iedereen verdient het om te genieten van alles wat een fiets te bieden heeft. Mijn werk is ervoor te zorgen dat jouw fiets je dat ook toelaat."
+                ],
+                "internalNote": "Register T-01–T-04. Bio: Rutgers eigen tekst uit content/about.html §1 (eerder gepubliceerd op /over-ons), ingekort; akkoord van Rutger nodig. Rol “Oprichter” volgt uit die tekst. Kwalificaties: niets vermeld. Foto: nog geen echte portretfoto (nu initialen)."
+              },
+              {
+                "name": "Robin Van Lierde",
+                "role": "",
+                "bio": [
+                  "Robin maakt deel uit van het team van De Bikefit Studio.",
+                  "Een uitgebreid profiel volgt binnenkort."
+                ],
+                "internalNote": "OPEN (register T-05–T-08): bio, rol, kwalificaties/specialisaties en portretfoto nog op te vragen bij Robin. Niets invullen zonder bron; geen gegenereerd portret gebruiken. Verwijder de regel “profiel volgt” zodra de echte bio er staat."
+              },
+              {
+                "name": "Goran Van de Walle",
+                "role": "",
+                "bio": [
+                  "Goran maakt deel uit van het team van De Bikefit Studio.",
+                  "Een uitgebreid profiel volgt binnenkort."
+                ],
+                "internalNote": "OPEN (register T-09–T-12): bio, rol, kwalificaties/specialisaties en portretfoto nog op te vragen bij Goran. Niets invullen zonder bron; geen gegenereerd portret gebruiken. Verwijder de regel “profiel volgt” zodra de echte bio er staat."
+              }
+            ]
+          }
+        },
+        {
+          "type": "cta",
+          "data": {
+            "variant": "accent",
+            "title": "Comfort is een keuze. Maak ze.",
+            "body": "",
+            "primaryCta": {
+              "label": "Afspraak maken →",
+              "href": "/afspraak",
+              "external": false
+            },
+            "secondaryCta": {
+              "label": "0473 95 26 33",
+              "href": "tel:+32473952633",
+              "external": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "slug": "afspraak",
+      "metaDescription": "Boek je bikefit in Ninove online: kies je fit, een dag en een uur. Liever bellen? 0473 95 26 33. Breng je fiets, schoenen en fietskleding mee.",
+      "blocks": [
+        {
+          "type": "hero",
+          "data": {
+            "variant": "pageHead",
+            "eyebrow": "Afspraak · Ninove",
+            "title": "Een afspraak maken",
+            "titleEmphasis": "",
+            "subtitle": "Kies je fit, een dag en een uur — online, in een paar rustige stappen. Liever even bellen? Dat kan altijd.",
+            "primaryCta": {
+              "label": "Online boeken",
+              "href": "#boeken",
+              "external": false
+            },
+            "secondaryCta": {
+              "label": "0473 95 26 33",
+              "href": "tel:+32473952633",
+              "external": false
+            }
+          }
+        },
+        {
+          "type": "booking",
+          "data": {
+            "variant": "default",
+            "eyebrow": "Online boeken",
+            "title": "Kies je moment",
+            "lede": "Kies je fit, bij wie en wanneer. Je krijgt meteen een bevestiging per e-mail.",
+            "serviceIds": [],
+            "showProviderChoice": true,
+            "successTitle": "Je afspraak staat vast",
+            "successText": ""
+          }
+        },
+        {
+          "type": "richText",
+          "data": {
+            "variant": "default",
+            "eyebrow": "Goed om te weten",
+            "title": "Voor je komt",
+            "html": "<h3>Breng het juiste mee</h3><p>Je fiets (proper en in werkende staat), de schoenen en fietskleding waarin je écht rijdt, en eventuele notities over wat je dwars zit. Meer hebben we niet nodig. De rest doen wij.</p><h3>Reken op de tijd</h3><p>Reken op 90 minuten voor een standaard bikefit voor volwassenen. Een jeugdfit is korter — ongeveer 60 minuten. We haasten ons niet — als het klaar is, is het klaar.</p><p>Liever bellen, of vind je geen moment dat past? Bel <a href=\"tel:+32473952633\">0473 95 26 33</a> en we zoeken samen een moment.</p>"
+          }
+        },
+        {
+          "type": "services",
+          "data": {
+            "variant": "gray",
+            "eyebrow": "Onze fits",
+            "title": "Vier manieren om te boeken",
+            "lede": "We fitten koers-, gravel-, mountain-, stads-, toer- en e-bikes. De principes blijven dezelfde: het lichaam van de fietser moet bij de fiets passen.",
+            "columns": 4,
+            "cards": [
+              {
+                "title": "Volwassenenfit",
+                "duration": "90 minuten",
+                "body": "De standaard bikefit. Reken op 90 minuten; complexe gevallen, eerste keren of fits na een blessure kunnen tot twee uur duren."
+              },
+              {
+                "title": "Jeugdfit",
+                "duration": "60 minuten",
+                "body": "Korter, ongeveer 60 minuten, en afgestemd op een lichaam in groei. Betaalbaar, duidelijk, op hun tempo."
+              },
+              {
+                "title": "Gezinspakket",
+                "duration": "",
+                "body": "Mama, papa, kinderen — één sessie in de studio, alle fietsen gepast. Iedereen rijdt beter naar huis."
+              },
+              {
+                "title": "Fit aan huis",
+                "duration": "",
+                "body": "Voor groepen, clubs en gezinnen komen we op locatie. Neem contact op en we bekijken het samen."
+              }
+            ]
+          }
+        },
+        {
+          "type": "contact",
+          "data": {
+            "variant": "default",
+            "eyebrow": "Contact",
+            "title": "Boek je bikefit",
+            "lede": "",
+            "phoneLabel": "0473 95 26 33",
+            "phoneHref": "tel:+32473952633",
+            "email": "",
+            "addressLines": [],
+            "city": "Ninove",
+            "hours": "Op afspraak",
+            "mapEmbedUrl": "",
+            "cta": null
+          }
+        },
+        {
+          "type": "cta",
+          "data": {
+            "variant": "accent",
+            "title": "Comfort is een keuze. Maak ze.",
+            "body": "",
+            "primaryCta": {
+              "label": "Boek je bikefit →",
+              "href": "/afspraak",
+              "external": false
+            },
+            "secondaryCta": null
+          }
+        }
+      ]
+    }
+  ],
+  "menus": {
+    "main": [
+      {
+        "label": "Aanbod",
+        "href": "/aanbod",
+        "external": false,
+        "group": "",
+        "children": []
+      },
+      {
+        "label": "Voor wie",
+        "href": "/voor-wie",
+        "external": false,
+        "group": "",
+        "children": []
+      },
+      {
+        "label": "Bikefit",
+        "href": "/bikefit",
+        "external": false,
+        "group": "",
+        "children": []
+      },
+      {
+        "label": "Ons team",
+        "href": "/ons-team",
+        "external": false,
+        "group": "",
+        "children": []
+      },
+      {
+        "label": "Contact",
+        "href": "/contact",
+        "external": false,
+        "group": "",
+        "children": []
+      }
+    ],
+    "footer": [
+      {
+        "label": "Aanbod",
+        "href": "/aanbod",
+        "external": false,
+        "group": "Studio",
+        "children": []
+      },
+      {
+        "label": "Voor wie",
+        "href": "/voor-wie",
+        "external": false,
+        "group": "Studio",
+        "children": []
+      },
+      {
+        "label": "Bikefit",
+        "href": "/bikefit",
+        "external": false,
+        "group": "Studio",
+        "children": []
+      },
+      {
+        "label": "Ons team",
+        "href": "/ons-team",
+        "external": false,
+        "group": "Studio",
+        "children": []
+      },
+      {
+        "label": "Contact",
+        "href": "/contact",
+        "external": false,
+        "group": "Studio",
+        "children": []
+      },
+      {
+        "label": "Afspraak maken",
+        "href": "/afspraak",
+        "external": false,
+        "group": "Praktisch",
+        "children": []
+      },
+      {
+        "label": "Werkwijze",
+        "href": "/bikefit#werkwijze",
+        "external": false,
+        "group": "Praktisch",
+        "children": []
+      },
+      {
+        "label": "Veelgestelde vragen",
+        "href": "/veelgestelde-vragen",
+        "external": false,
+        "group": "Praktisch",
+        "children": []
+      },
+      {
+        "label": "Privacyverklaring",
+        "href": "/privacy",
+        "external": false,
+        "group": "Juridisch",
+        "children": []
+      },
+      {
+        "label": "Algemene voorwaarden",
+        "href": "/algemene-voorwaarden",
+        "external": false,
+        "group": "Juridisch",
+        "children": []
+      }
+    ]
+  }
+}

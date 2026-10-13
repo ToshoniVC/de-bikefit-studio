@@ -23,7 +23,7 @@ export default function StudioNotFound() {
             <Link href="/bikefit">Wat is een bikefit?</Link>
           </li>
           <li>
-            <Link href="/contact">Contact opnemen</Link>
+            <Link href="/afspraak">Contact opnemen</Link>
           </li>
         </ul>
       </div>

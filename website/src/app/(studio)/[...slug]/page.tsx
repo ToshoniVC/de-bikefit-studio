@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import { StudioPageView } from '@/components/studio/page-view';
 import { findRedirect, getSiteSettings } from '@/lib/cms/content';
+import { redirectTarget } from '@/lib/cms/redirect-target';
 import { parseServiceParam, SERVICE_PARAM } from '@/lib/offers/catalogue';
 import { defaultLocale, slugFromSegments } from '@/lib/studio/locale';
 import { buildPageMetadata, notFoundMetadata } from '@/lib/studio/seo';
@@ -13,7 +14,9 @@ import { getStudioPage } from '@/lib/studio/site';
  * Resolution order for `/<something>`:
  *
  *   1. a published page with that slug  → render it
- *   2. an enabled `cms_redirects` row   → 308 (301 rows) or 307 (302 rows)
+ *   2. an enabled `cms_redirects` row   → 308 (301 rows) or 307 (302 rows),
+ *                                          keeping the request's query string
+ *                                          (`/contact?dienst=x` → `/afspraak?dienst=x`)
  *   3. otherwise                        → 404
  *
  * A catch-all is the *lowest*-priority match in Next's routing table, so every
@@ -53,11 +56,13 @@ export default async function StudioCatchAllPage({
   const { slug } = await params;
   const path = slugFromSegments(slug);
 
+  const query = await searchParams;
+
   const studio = await getStudioPage(defaultLocale, path);
   if (studio) {
     // `?dienst=<slug>` preselects a service in the booking block (/afspraak);
     // anything that is not a well-formed slug is dropped here, at the boundary.
-    const requestedService = parseServiceParam((await searchParams)[SERVICE_PARAM]);
+    const requestedService = parseServiceParam(query[SERVICE_PARAM]);
     return <StudioPageView studio={studio} requestedService={requestedService} />;
   }
 
@@ -65,9 +70,11 @@ export default async function StudioCatchAllPage({
   if (match) {
     // `permanentRedirect` answers 308 and `redirect` 307 — the method-preserving
     // equivalents of the stored 301/302. Both are permanent/temporary in the
-    // same way for a crawler.
-    if (match.statusCode === 301) permanentRedirect(match.toPath);
-    redirect(match.toPath);
+    // same way for a crawler. The query string travels along, so a retired
+    // page's `?dienst=` links keep their service context.
+    const target = redirectTarget(match.toPath, query);
+    if (match.statusCode === 301) permanentRedirect(target);
+    redirect(target);
   }
 
   notFound();

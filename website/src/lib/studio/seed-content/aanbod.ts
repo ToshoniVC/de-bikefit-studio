@@ -41,6 +41,11 @@ import {
  *   nothing beyond those sources. No prices, durations, credentials, titles,
  *   years or achievements are added; Robin's and Goran's profiles carry only
  *   their name and the fact that they are part of the team.
+ *   Toshoni's site review of the same day (work block
+ *     2026-10-13-page-cleanup): no "Ninove" kicker on /aanbod, /voor-wie and
+ *     /ons-team, no second heading above the audiences or the profiles, and
+ *     "jeugd" for the young riders. `cms:patch-page-cleanup` applies exactly
+ *     that to an existing database (see `page-cleanup.ts`).
  */
 
 const CALLOUT: SeedBlock = {
@@ -166,7 +171,7 @@ const AANBOD: SeedPage = {
       type: 'hero',
       data: {
         variant: 'pageHead',
-        eyebrow: 'Aanbod · Ninove',
+        eyebrow: 'Aanbod',
         title: 'Ons aanbod',
         titleEmphasis: '',
         subtitle: AANBOD_INTRO,
@@ -224,14 +229,14 @@ const VOOR_WIE: SeedPage = {
   source: 'work block 2026-10-13 (audiences, junior text) + content/index.html persona copy',
   metaTitle: 'Voor wie — elke fietser, op elke leeftijd',
   metaDescription:
-    'Voor jong en minder jong, beginners en ervaren fietsers, recreatief en competitief, koers, gravel en mountainbike, woon-werk en e-bike. Extra aandacht voor junioren.',
+    'Voor jong en minder jong, beginners en ervaren fietsers, recreatief en competitief, koers, gravel en mountainbike, woon-werk en e-bike. Extra aandacht voor de jeugd.',
   structuredDataType: 'WebPage',
   blocks: [
     {
       type: 'hero',
       data: {
         variant: 'pageHead',
-        eyebrow: 'Voor wie · Ninove',
+        eyebrow: 'Voor wie',
         title: 'Voor elke fietser',
         titleEmphasis: '',
         subtitle:
@@ -244,9 +249,10 @@ const VOOR_WIE: SeedPage = {
       type: 'audience',
       data: {
         variant: 'gray',
-        eyebrow: 'Voor wie',
-        title: 'Waar je ook staat',
-        lede: 'Van je eerste kilometers tot een nieuw sportief doel: we vertrekken van jouw verhaal.',
+        // No section heading: the audiences follow the page head directly.
+        eyebrow: '',
+        title: '',
+        lede: '',
         items: [
           {
             number: '01',
@@ -291,7 +297,7 @@ const VOOR_WIE: SeedPage = {
       type: 'imageText',
       data: {
         variant: 'default',
-        eyebrow: 'Junioren',
+        eyebrow: 'Jeugd',
         title: 'Jonge fietsers groeien',
         paragraphs: [JUNIOR_TEXT],
         cta: { label: 'Bekijk het aanbod', href: OFFER_INDEX_PATH, external: false },
@@ -444,7 +450,7 @@ const ONS_TEAM: SeedPage = {
       type: 'hero',
       data: {
         variant: 'pageHead',
-        eyebrow: 'Ons team · Ninove',
+        eyebrow: 'Ons team',
         title: 'Ons team',
         titleEmphasis: '',
         subtitle: TEAM_INTRO,
@@ -456,8 +462,9 @@ const ONS_TEAM: SeedPage = {
       type: 'team',
       data: {
         variant: 'default',
-        eyebrow: 'Het team',
-        title: 'Wie je ontmoet',
+        // No section heading: the three profiles follow "Ons team" directly.
+        eyebrow: '',
+        title: '',
         lede: '',
         members: TEAM_MEMBERS,
       },

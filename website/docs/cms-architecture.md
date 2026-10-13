@@ -34,7 +34,7 @@ File ownership during parallel work comes from the work-block file (see
 | Public site | `src/app/(studio)/**`, `src/components/studio/**`, `src/lib/studio/**`, `src/app/sitemap.ts`, `src/app/robots.ts` |
 | Booking | `src/lib/booking/**`, `src/lib/email/**`, `src/app/api/google/oauth/**` — see `booking-architecture.md` |
 | Analytics | `src/lib/analytics/{consent,ga4-tag,ga4}.ts(x)`, `src/components/studio/{analytics,consent-banner}.tsx`, `src/components/admin/analytics-panel.tsx` |
-| Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-rollout-aanbod,cms-patch-booking-cta,cms-selftest,cms-retention,import-editorial-image}.mts`, shared helpers in `scripts/lib/`, self-test sections 15–16 in `scripts/selftest/` |
+| Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-rollout-aanbod,cms-patch-booking-cta,cms-patch-page-cleanup,cms-selftest,cms-retention,import-editorial-image}.mts`, shared helpers in `scripts/lib/`, self-test sections 15–17 in `scripts/selftest/` |
 | Shared | `src/middleware.ts`, `src/lib/env.ts`, `.env.example`, `next.config.ts`, `package.json`, `src/app/layout.tsx` |
 
 ---
@@ -766,7 +766,7 @@ Added with the Dutch public site. Nothing in `src/lib/cms/*` changed.
 | URL | File | Notes |
 | --- | --- | --- |
 | `/` | `src/app/(studio)/page.tsx` | Dutch home page, slug `''` |
-| `/<anything>` | `src/app/(studio)/[...slug]/page.tsx` | published page → redirect → 404, in that order. Includes the seeded `/afspraak` (booking block), `/privacy` and `/algemene-voorwaarden`, and nested slugs such as `/aanbod/voetanalyse` (`cms_pages.slug = 'aanbod/voetanalyse'`; the breadcrumb shows published ancestors). Reads `?dienst=` (validated by `parseServiceParam`) for the booking block only |
+| `/<anything>` | `src/app/(studio)/[...slug]/page.tsx` | published page → redirect → 404, in that order. Includes the seeded `/afspraak` (booking block), `/privacy` and `/algemene-voorwaarden`, and nested slugs such as `/aanbod/voetanalyse` (`cms_pages.slug = 'aanbod/voetanalyse'`; the breadcrumb shows published ancestors and is visible only on such nested pages — top-level pages keep just the `BreadcrumbList` JSON-LD). Reads `?dienst=` (validated by `parseServiceParam`) for the booking block only |
 | `/afspraak/bevestigd` | `src/app/(studio)/afspraak/bevestigd/page.tsx` | booking confirmation; `?ref=` is an HMAC-signed summary without personal data; `noindex` |
 | `/afspraak/annuleren/[token]` | `src/app/(studio)/afspraak/annuleren/[token]/page.tsx` | customer cancellation by e-mailed token; `noindex` |
 | `/og` | `src/app/(studio)/og/route.tsx` | generated 1200×630 share card |
@@ -787,7 +787,9 @@ webshop and admin route still wins: `/shop`, `/checkout`, `/account`, `/blog`,
 
 Redirects are resolved in the catch-all (301 → `permanentRedirect` → HTTP 308,
 302 → `redirect` → HTTP 307), **not** in middleware, which must stay
-database-free.
+database-free. The request's query string is carried over
+(`src/lib/cms/redirect-target.ts`; parameters in the stored target win), so
+`/contact?dienst=coaching` lands on `/afspraak?dienst=coaching`.
 
 ### 12.2 Layout split
 
@@ -835,11 +837,11 @@ appear in no structured data.
 
 ### 12.6 Seeding
 
-`npm run cms:seed` creates, fills and **publishes** the seventeen Dutch pages
+`npm run cms:seed` creates, fills and **publishes** the sixteen Dutch pages
 (`/`, `/aanbod`, seven `/aanbod/<slug>`, `/voor-wie`, `/bikefit`, `/ons-team`,
-`/veelgestelde-vragen`, `/contact`, `/afspraak`, `/privacy`,
+`/veelgestelde-vragen`, `/afspraak`, `/privacy`,
 `/algemene-voorwaarden`), both menus and the redirects `/bikefit.html →
-/bikefit` and `/over-ons → /ons-team`, through `repo.ts`, so the snapshots,
+/bikefit`, `/over-ons → /ons-team` and `/contact → /afspraak`, through `repo.ts`, so the snapshots,
 audit entries and permission checks are the real ones. It does that by giving
 the write API the request context it expects (`scripts/lib/request-context.mts`):
 `module.registerHooks()` stubs for `server-only`, `next/headers` and
@@ -948,6 +950,17 @@ the way home; the header CTA stays "Afspraak maken"). FAQ, booking and the
 legal pages are in the footer. Every "Boek je bikefit" button books like that CTA
 (`/afspraak`); only visible phone numbers use `tel:` (`cms:patch-booking-cta` fixes
 older content, `staging-runbook.md` §10).
+
+**Site review (13 Oct 2026).** `/afspraak` is the one place to book or ask: it
+opens on "Kies je moment" (the booking section owns the `<h1>`; widget headings
+follow one level below), then "Voor je komt" with "Andere vraag?" (mail and
+phone). `/contact` is retired like `/over-ons` (unpublished, 301 to
+`/afspraak`) and the "Contact" menu items point at `/afspraak`. No "Ninove"
+kicker and no second heading on `/aanbod`, `/voor-wie`, `/ons-team`; the
+footer shows the public e-mail (settings `contact.email`) and no longer the
+company identity line, which stays on the legal pages. The edits for existing
+databases are pure data in `src/lib/studio/seed-content/page-cleanup.ts`,
+applied by `cms:patch-page-cleanup` (`staging-runbook.md` §11).
 
 **One source per offer.** Title, summary, price and duration live on the offer
 page's `offer` block. Overviews derive their cards from the published pages

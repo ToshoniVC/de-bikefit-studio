@@ -1,4 +1,5 @@
 import { BookingSummaryList } from './booking-summary';
+import { BookingHeading } from './heading-level';
 
 /**
  * The last step: what, when, where and with whom, plus what happens next
@@ -39,9 +40,13 @@ export function Confirmation({
   return (
     <div className="studio-booking__confirm">
       <p className="studio-eyebrow">Bevestigd</p>
-      <h3 className="studio-booking__confirm-title" tabIndex={-1} data-step-heading="done">
+      <BookingHeading
+        className="studio-booking__confirm-title"
+        tabIndex={-1}
+        data-step-heading="done"
+      >
         {title}
-      </h3>
+      </BookingHeading>
       {text ? <p className="studio-booking__confirm-text">{text}</p> : null}
 
       <BookingSummaryList
