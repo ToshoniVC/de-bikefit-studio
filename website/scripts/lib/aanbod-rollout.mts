@@ -134,10 +134,14 @@ function toJson(row: object): Record<string, unknown> {
   return JSON.parse(JSON.stringify(row)) as Record<string, unknown>;
 }
 
-export async function writeBackup(backup: RolloutBackup, dir: string): Promise<string> {
+export async function writeBackup(
+  backup: RolloutBackup,
+  dir: string,
+  prefix = 'aanbod-rollout',
+): Promise<string> {
   const target = resolve(dir);
   await mkdir(target, { recursive: true });
-  const file = join(target, `aanbod-rollout-${backup.createdAt.replace(/[:.]/g, '-')}.json`);
+  const file = join(target, `${prefix}-${backup.createdAt.replace(/[:.]/g, '-')}.json`);
   // `wx`: never overwrite an earlier backup.
   await writeFile(file, `${JSON.stringify(backup, null, 2)}\n`, { flag: 'wx' });
   return file;

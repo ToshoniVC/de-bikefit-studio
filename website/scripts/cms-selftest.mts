@@ -29,6 +29,10 @@
  *      apply/backup, booking tables untouched, catalogue, menus, /over-ons
  *      301, `?dienst=` resolution, idempotent re-apply, restore
  *      (`scripts/selftest/aanbod.mts`)
+ *  16. booking CTA patch: dry run writes nothing, refuses unpublished drafts,
+ *      retargets only "Boek je bikefit" hrefs to /afspraak (phone links keep
+ *      dialling), session cleanup, idempotent, restore
+ *      (`scripts/selftest/booking-cta.mts`)
  *
  * Counts failures and exits non-zero at the end when any check failed.
  *
@@ -416,6 +420,16 @@ async function main() {
 
   const { aanbodSection } = await import('./selftest/aanbod.mjs');
   await aanbodSection({
+    db,
+    admin: user,
+    check,
+    section,
+    cookieJar,
+    backupDir: resolve(process.cwd(), DATA_DIR, 'rollout-backups'),
+  });
+
+  const { bookingCtaSection } = await import('./selftest/booking-cta.mjs');
+  await bookingCtaSection({
     db,
     admin: user,
     check,

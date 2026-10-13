@@ -71,7 +71,8 @@ export function readOnlyDb(db: CmsDatabase): CmsDatabase {
   });
 }
 
-async function findActor(deps: PlanDeps) {
+/** The oldest active admin; the CLIs act as this user (never create one). */
+export async function findActor(deps: Pick<PlanDeps, 'db' | 'orm' | 'schema'>) {
   const { db, orm, schema } = deps;
   const [actor] = await db
     .select({ id: schema.cmsUsers.id, email: schema.cmsUsers.email })
@@ -118,14 +119,7 @@ export async function runAanbodRollout(
   }
 
   log('=', `acting as ${actor.email}`);
-  const { createSession, revokeSession } = await import('@/lib/cms/session');
-  const session = await createSession(context.db, actor.id, {
-    userAgent: 'cms-rollout-aanbod',
-  });
-  const previousCookie = context.cookieJar.get('cms_session');
-  context.cookieJar.set('cms_session', session.token);
-
-  try {
+  await withAdminSession(context, actor.id, 'cms-rollout-aanbod', async () => {
     const deps: RolloutDeps = {
       ...planDeps,
       repo: await import('@/lib/cms/repo'),
@@ -158,6 +152,26 @@ export async function runAanbodRollout(
     console.log(
       '  Deployed sites pick this up within 5 minutes (cache fallback); see docs/staging-runbook.md §9.',
     );
+  });
+}
+
+/**
+ * Runs `work` with a real, short-lived admin session in the cookie store the
+ * stubbed `next/headers` reads (so the repo's permission checks apply), and
+ * always revokes it and restores the previous cookie afterwards.
+ */
+export async function withAdminSession<T>(
+  context: Pick<RolloutRunContext, 'db' | 'cookieJar'>,
+  actorId: string,
+  userAgent: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  const { createSession, revokeSession } = await import('@/lib/cms/session');
+  const session = await createSession(context.db, actorId, { userAgent });
+  const previousCookie = context.cookieJar.get('cms_session');
+  context.cookieJar.set('cms_session', session.token);
+  try {
+    return await work();
   } finally {
     await revokeSession(context.db, session.token);
     if (previousCookie === undefined) context.cookieJar.delete('cms_session');

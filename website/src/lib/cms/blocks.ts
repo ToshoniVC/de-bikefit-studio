@@ -307,7 +307,7 @@ export const blockRegistry = {
       titleEmphasis: 'comfort.',
       subtitle:
         'Het leven is te kort voor pijn op de fiets. We lijnen de fiets uit op jou — niet omgekeerd — zodat elke rit beter voelt en je langer gezond blijft op de fiets.',
-      primaryCta: { label: 'Boek je bikefit →', href: '#contact', external: false },
+      primaryCta: { label: 'Boek je bikefit →', href: '/afspraak', external: false },
       secondaryCta: { label: 'Hoe verloopt een bikefit?', href: '/bikefit', external: false },
       image: emptyImage,
     },
@@ -514,7 +514,7 @@ export const blockRegistry = {
       variant: 'accent',
       title: 'Comfort is een keuze. Maak ze.',
       body: '',
-      primaryCta: { label: 'Boek je bikefit →', href: 'tel:+32473952633', external: false },
+      primaryCta: { label: 'Boek je bikefit →', href: '/afspraak', external: false },
       secondaryCta: null,
     },
   },
@@ -617,7 +617,7 @@ export const blockRegistry = {
       city: 'Ninove',
       hours: 'Op afspraak',
       mapEmbedUrl: '',
-      cta: { label: 'Boek je bikefit →', href: 'tel:+32473952633', external: false },
+      cta: { label: 'Boek je bikefit →', href: '/afspraak', external: false },
     },
   },
 

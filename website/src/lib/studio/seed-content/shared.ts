@@ -97,3 +97,15 @@ export const CONTACT_BLOCK: SeedBlock = {
     cta: null,
   },
 };
+
+/** Closing band on FAQ, contact and appointment; books like the header's "Afspraak maken". */
+export const CALLOUT_BLOCK: SeedBlock = {
+  type: 'cta',
+  data: {
+    variant: 'accent',
+    title: 'Comfort is een keuze. Maak ze.',
+    body: '',
+    primaryCta: { label: 'Boek je bikefit →', href: BOOKING_PATH, external: false },
+    secondaryCta: null,
+  },
+};

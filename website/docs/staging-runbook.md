@@ -376,3 +376,49 @@ block types.
 **Images.** The three temporary images ship in the build (`public/images/editorial/`); nothing
 to upload. Replacing one later: `docs/editorial-images.md`.
 
+## 10. Booking CTA patch ("Boek je bikefit" → /afspraak, 13 Oct 2026)
+
+The accent band "Comfort is een keuze. Maak ze." on `/veelgestelde-vragen`, `/contact` and
+`/afspraak` was seeded with a "Boek je bikefit →" button that dialled the phone. It now goes
+where the header's "Afspraak maken" goes (`/afspraak`); seeds and block defaults are fixed in
+code, and `npm run cms:patch-booking-cta` corrects pages that already exist. It changes only
+the `href` of links labelled "Boek je bikefit…" that point at `tel:` or `#contact`; labels,
+styles, the visible phone-number links and all other content stay as they are. Unpublished
+pages are reported and left alone; settings, menus, redirects, media, users and booking tables
+are never written (booking counts verified before and after). **No migrations. Never a full
+`cms:seed` or a rerun of `cms:rollout-aanbod` for this.**
+
+1. Deploy the code first (release gate, staging READY). The code change alone does not alter
+   existing pages.
+2. **Dry run** — read-only like §9 (no session, no audit, write-refusing db handle; self-test
+   section 16):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:patch-booking-cta
+   ```
+
+   Expect `~ page /afspraak`, `~ page /contact`, `~ page /veelgestelde-vragen`, each
+   `retarget 1 link(s)` with `"Boek je bikefit →" tel:+32473952633 → /afspraak`, then
+   `dry run: run again with --apply to write`. A `!` line means that page has unpublished draft
+   edits: the apply refuses (it never publishes an editor's draft). Publish or discard that
+   draft in `/admin` first, then dry-run again. Any other page in the list: check it before
+   applying.
+3. **Apply** (Neon snapshot first is optional for a three-link change; the tool writes its own
+   backup before the first write):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:patch-booking-cta -- --apply \
+     --expect-host '<host part of the staging DATABASE_URL>'
+   ```
+
+   Backup: `website/.rollout-backups/booking-cta-patch-<timestamp>.json` (page rows and blocks
+   only). It updates the blocks through the repo, publishes each page, re-checks that nothing
+   is left to patch and the booking tables are unchanged, and logs `patch.booking-cta.apply`
+   in the audit log. The short-lived admin session is revoked in every case. A second run
+   prints "nothing to do".
+4. **Verify** after 5 minutes (cache fallback, see §9 step 6): on the three pages the "Boek je
+   bikefit" button links to `/afspraak`, the "0473 95 26 33" links still use `tel:`.
+
+**Rollback:** `npm run cms:patch-booking-cta -- --restore <backup.json> --expect-host '<host>'`
+puts the page rows and draft blocks back exactly (the backup uses the §9 format and restore).
+

@@ -102,6 +102,7 @@ Run inside `website/`. Scripts that touch a database use PGlite unless `DATABASE
 | `npm run cms:seed` | Idempotent Dutch content, published. `-- --only-missing` leaves existing pages/menus alone; `-- --refresh-slug <slug>` re-seeds and republishes one page |
 | `npm run cms:seed-booking` | Idempotent first provider, hours and service subscriptions (`PROVIDER_EMAIL` / `PROVIDER_NAME` for another) |
 | `npm run cms:rollout-aanbod` | Offer redesign onto an existing database: dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §9 |
+| `npm run cms:patch-booking-cta` | Points existing "Boek je bikefit" buttons that dial (or jump to `#contact`) at `/afspraak`: dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §10 |
 | `npm run images:import -- --slot <slot> --src <file>` | Compress a delivered editorial image into `public/images/editorial/` and record it (`docs/editorial-images.md`) |
 | `npm run cms:selftest` | Integration checks on a throwaway PGlite in `.pglite-selftest/` |
 | `npm run cms:retention` | GDPR retention purge, dry run; `-- --apply` deletes, `-- --json` for a report |

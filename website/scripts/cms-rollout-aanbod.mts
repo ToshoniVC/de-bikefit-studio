@@ -30,6 +30,12 @@
 import { config } from 'dotenv';
 import { cookieJar, installRequestContextStubs } from './lib/request-context.mjs';
 import { runAanbodRollout } from './lib/aanbod-rollout-run.mjs';
+import {
+  assertWriteTarget,
+  databaseHost,
+  rejectUnknownOptions,
+  valueOf,
+} from './lib/cli-options.mjs';
 
 config({ path: '.env.local' });
 installRequestContextStubs();
@@ -42,31 +48,14 @@ type Options = {
   allowDraftOverwrite: boolean;
 };
 
-function valueOf(args: string[], flag: string): string | null {
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (arg === flag) {
-      const value = args[index + 1];
-      if (value === undefined || value.startsWith('--')) throw new Error(`${flag} needs a value`);
-      return value;
-    }
-    if (arg.startsWith(`${flag}=`)) return arg.slice(flag.length + 1);
-  }
-  return null;
-}
-
 function parseOptions(args: string[]): Options {
-  const known = new Set([
+  rejectUnknownOptions(args, [
     '--apply',
     '--restore',
     '--expect-host',
     '--backup-dir',
     '--allow-draft-overwrite',
   ]);
-  for (const arg of args) {
-    const flag = arg.split('=')[0];
-    if (arg.startsWith('--') && !known.has(flag)) throw new Error(`unknown option ${arg}`);
-  }
   const options: Options = {
     apply: args.includes('--apply'),
     restore: valueOf(args, '--restore'),
@@ -80,17 +69,6 @@ function parseOptions(args: string[]): Options {
 
 function log(symbol: string, message: string) {
   console.log(`${symbol} ${message}`);
-}
-
-/** Host part of DATABASE_URL — never the credentials. */
-function databaseHost(): string | null {
-  const url = process.env.DATABASE_URL;
-  if (!url) return null;
-  try {
-    return new URL(url).host;
-  } catch {
-    return 'unparseable';
-  }
 }
 
 async function main() {
@@ -110,18 +88,7 @@ async function main() {
         : 'mode: dry run (nothing is written)',
   );
 
-  if (writing && driver === 'neon-http') {
-    if (!options.expectHost) {
-      throw new Error(
-        `--expect-host is required to write to Neon; this DATABASE_URL points at ${host}`,
-      );
-    }
-    if (options.expectHost !== host) {
-      throw new Error(
-        `--expect-host ${options.expectHost} does not match DATABASE_URL host ${host}`,
-      );
-    }
-  }
+  if (writing) assertWriteTarget(driver, host, options.expectHost);
 
   await runAanbodRollout(options, { db: await getCmsDb(), driver, cookieJar, log });
 }

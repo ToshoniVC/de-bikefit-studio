@@ -23,6 +23,7 @@
     "cms:seed": "tsx scripts/cms-seed.mts",
     "cms:seed-booking": "tsx scripts/cms-seed-booking.mts",
     "cms:rollout-aanbod": "tsx scripts/cms-rollout-aanbod.mts",
+    "cms:patch-booking-cta": "tsx scripts/cms-patch-booking-cta.mts",
     "cms:selftest": "tsx scripts/cms-selftest.mts",
     "cms:retention": "tsx scripts/cms-retention.mts",
     "images:import": "tsx scripts/import-editorial-image.mts"

@@ -34,7 +34,7 @@ File ownership during parallel work comes from the work-block file (see
 | Public site | `src/app/(studio)/**`, `src/components/studio/**`, `src/lib/studio/**`, `src/app/sitemap.ts`, `src/app/robots.ts` |
 | Booking | `src/lib/booking/**`, `src/lib/email/**`, `src/app/api/google/oauth/**` — see `booking-architecture.md` |
 | Analytics | `src/lib/analytics/{consent,ga4-tag,ga4}.ts(x)`, `src/components/studio/{analytics,consent-banner}.tsx`, `src/components/admin/analytics-panel.tsx` |
-| Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-rollout-aanbod,cms-selftest,cms-retention,import-editorial-image}.mts`, shared helpers in `scripts/lib/`, self-test section 15 in `scripts/selftest/` |
+| Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-rollout-aanbod,cms-patch-booking-cta,cms-selftest,cms-retention,import-editorial-image}.mts`, shared helpers in `scripts/lib/`, self-test sections 15–16 in `scripts/selftest/` |
 | Shared | `src/middleware.ts`, `src/lib/env.ts`, `.env.example`, `next.config.ts`, `package.json`, `src/app/layout.tsx` |
 
 ---
@@ -945,7 +945,9 @@ after the hero is the grouped offer, and `/bikefit` with the 3D-analysis
 section and the Bikefit offers instead of the old "Vier manieren om te
 boeken". Main menu: Aanbod, Voor wie, Bikefit, Ons team, Contact (the logo is
 the way home; the header CTA stays "Afspraak maken"). FAQ, booking and the
-legal pages are in the footer.
+legal pages are in the footer. Every "Boek je bikefit" button books like that CTA
+(`/afspraak`); only visible phone numbers use `tel:` (`cms:patch-booking-cta` fixes
+older content, `staging-runbook.md` §10).
 
 **One source per offer.** Title, summary, price and duration live on the offer
 page's `offer` block. Overviews derive their cards from the published pages

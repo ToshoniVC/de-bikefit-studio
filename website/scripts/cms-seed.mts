@@ -77,10 +77,10 @@ import {
   MAIN_MENU,
 } from '@/lib/studio/seed-content/aanbod';
 import {
+  CALLOUT_BLOCK,
   CONTACT_BLOCK,
   PHONE_HREF,
   PHONE_LABEL,
-  type SeedBlock,
   type SeedPage,
 } from '@/lib/studio/seed-content/shared';
 import { cookieJar, installRequestContextStubs } from './lib/request-context.mjs';
@@ -161,17 +161,6 @@ const BOOKABLE_CARDS = [
     body: 'Voor groepen, clubs en gezinnen komen we op locatie. Neem contact op en we bekijken het samen.',
   },
 ];
-
-const CALLOUT_BLOCK: SeedBlock = {
-  type: 'cta',
-  data: {
-    variant: 'accent',
-    title: 'Comfort is een keuze. Maak ze.',
-    body: '',
-    primaryCta: { label: 'Boek je bikefit →', href: PHONE_HREF, external: false },
-    secondaryCta: null,
-  },
-};
 
 /**
  * The legal pages' contact address. The texts carry the placeholder
