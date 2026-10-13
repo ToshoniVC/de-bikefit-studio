@@ -120,7 +120,7 @@ const LABELS: Record<string, string> = {
   members: 'Teamleden',
   name: 'Naam',
   role: 'Rol',
-  showPrices: 'Prijzen tonen',
+  showPrices: 'Prijzen tonen (enkel op /aanbod en de dienstpagina’s)',
   sortOrder: 'Volgorde binnen de categorie',
   summary: 'Korte omschrijving (overzicht; leeg = inleiding)',
   // `giftVoucher` block

@@ -993,6 +993,16 @@ page's `offer` block. Overviews derive their cards from the published pages
 updates the home page, `/aanbod` and `/bikefit` at once. Category order is
 fixed (Bikefit, Begeleiding); inside a category `sortOrder`, then title.
 
+**Prices only under `/aanbod` (13 Oct 2026, Toshoni).** An `offerCatalogue`
+card shows its price line only when "Prijzen tonen" is on *and* the page is
+`/aanbod` or an offer page (`showsOfferPrices`, `src/lib/offers/catalogue.ts`).
+The home page and `/bikefit` therefore never show prices, also for content
+published before the rule (no data patch needed); their seeds set the switch
+off. The offer page itself always shows Kostprijs. Booking, checkout and the
+admin are not affected. The site header is the logo, menu and "Afspraak maken"
+only: the prototype's utility bar (city, phone, hours) is gone; the footer
+keeps those contact details.
+
 **Booking link.** Every offer page links to `/afspraak?dienst=<offer slug>#boeken`.
 The booking block resolves it on the server (`resolveBookingSelection`,
 `src/lib/offers/catalogue.ts`); the reconciliation with the booking catalogue is

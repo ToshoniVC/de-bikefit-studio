@@ -77,6 +77,18 @@ export function offerSlugFromPageSlug(pageSlug: string): string | null {
   return SLUG_PATTERN.test(rest) ? rest : null;
 }
 
+/**
+ * Offer prices are shown only on `/aanbod` and on the offer pages under it
+ * (Toshoni, 13 Oct 2026): never on the home page or other marketing pages, even
+ * when an overview block there has "Prijzen tonen" switched on. Booking,
+ * checkout and the admin keep their own price display; this rule is about the
+ * offer overviews only.
+ */
+export function showsOfferPrices(pageSlug: string): boolean {
+  const normalized = pageSlug.replace(/^\/+/, '').replace(/\/+$/, '');
+  return normalized === OFFER_PAGE_PREFIX || offerSlugFromPageSlug(normalized) !== null;
+}
+
 /** `/afspraak?dienst=<slug>#boeken` — the booking block's section anchor. */
 export function offerBookingHref(offerSlug: string): string {
   return `${BOOKING_PAGE_PATH}?${SERVICE_PARAM}=${encodeURIComponent(offerSlug)}#boeken`;

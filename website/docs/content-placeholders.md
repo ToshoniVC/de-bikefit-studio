@@ -49,9 +49,10 @@ Plaats: CMS → de dienstpagina → blok *Dienst (aanbod)* → veld **Prijslabel
   dan "Prijs op aanvraag" wint van het bedrag.
 - Nooit € 0 invullen. Pas met een bedrag in eurocent komt er een prijs in de gestructureerde data
   (JSON-LD) van de pagina.
-- De prijs verschijnt op de dienstpagina (bovenaan en bij **Kostprijs**) en op de kaart in elk
-  aanbodoverzicht: home, `/aanbod`, en voor de vijf Bikefit-diensten ook `/bikefit`. Die kaarten
-  lezen de dienstpagina zelf; er is geen tweede plek om aan te passen.
+- De prijs verschijnt op de dienstpagina (bovenaan en bij **Kostprijs**) en op de kaarten van
+  het overzicht `/aanbod`. Die kaarten lezen de dienstpagina zelf; er is geen tweede plek om aan te
+  passen. De overzichten op de home en op `/bikefit` tonen nooit een prijs (beslissing Toshoni,
+  13 okt 2026), ook niet als **Prijzen tonen** daar aan staat.
 
 | ID | Pagina (titel in CMS) | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
