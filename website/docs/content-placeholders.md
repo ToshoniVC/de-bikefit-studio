@@ -33,8 +33,9 @@ datum).
 | T | Team | 13 | 10 | 2 | 1 | 0 |
 | B | AI-beelden en lege beeldvakken | 5 | 5 | 0 | 0 | 0 |
 | K | Online boeken per dienst | 6 | 5 | 1 | 0 | 0 |
-| G | Bestaande hiaten in aangeraakte inhoud | 7 | 4 | 1 | 1 | 1 |
-| | **Totaal** | **53** | **39** | **11** | **2** | **1** |
+| G | Bestaande hiaten in aangeraakte inhoud | 7 | 2 | 1 | 2 | 2 |
+| C | Cadeaubon (bestelformulier) | 4 | 3 | 1 | 0 | 0 |
+| | **Totaal** | **57** | **40** | **12** | **3** | **2** |
 
 ## 1. Prijzen (P)
 
@@ -159,7 +160,7 @@ Vervangen kan op twee manieren:
 Zie [`booking-architecture.md`](./booking-architecture.md) §14. Plaats: CMS → de dienstpagina →
 blok *Dienst (aanbod)* → veld **Online boeken via dienst(en)** (slug uit `/admin` → **Diensten**,
 één per regel). Leeg = de knop "Boek een afspraak voor deze dienst" leidt naar een contactvraag
-(bellen, of mailen zodra G-01 ingevuld is) die de dienst noemt.
+(bellen of mailen naar het adres uit G-01) die de dienst noemt.
 
 | ID | Onderwerp | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
@@ -174,10 +175,27 @@ blok *Dienst (aanbod)* → veld **Online boeken via dienst(en)** (slug uit `/adm
 
 | ID | Waar (exacte plaats) | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
-| G-01 | Publiek e-mailadres: `/admin` → **Instellingen** → Contact → **E-mail** (footer, contactvraag bij niet-boekbare diensten); blok *Contact* → **E-mail** op home, `/contact` en `/afspraak` | overal leeg → die rijen worden niet getoond; de juridische pagina's (`/privacy`, `/algemene-voorwaarden`) kregen bij de seed het onbevestigde `info@debikefitstudio.be` | bevestigd publiek e-mailadres; daarna ook de tekst van de juridische pagina's nakijken | open |
-| G-02 | Adres van de studio: **Instellingen** → Contact → **Adresregels** en **Postcode**; blok *Contact* → **Adresregels** op home, `/contact` en `/afspraak`; `/admin` → **Locaties** → "De Bikefit Studio, Ninove" → **Adresregels** | enkel "Ninove", geen straat en postcode; JSON-LD laat het adres weg | adres van de studio (optioneel ook **Kaart-embed URL** in blok *Contact*) | open |
-| G-03 | `/afspraak` (niet in deze rollout) | toont nog "Vier manieren om te boeken" (Volwassenenfit, Jeugdfit, Gezinspakket, Fit aan huis) | afstemmen op het nieuwe aanbod na K-02 – K-04 | open |
+| G-01 | Publiek e-mailadres: `/admin` → **Instellingen** → Contact → **E-mail** (footer, contactvraag bij niet-boekbare diensten); `/afspraak` → *Vrije tekst* "Voor je komt" → "Andere vraag?"; `/privacy` en `/algemene-voorwaarden` (tekst) | `info@debikefitstudio.be`, bevestigd door Toshoni (review 13 okt 2026); in de instellingen gezet door `cms:patch-page-cleanup` (staging) en door de seed/bootstrap; blok *Contact* op home laat zijn eigen veld **E-mail** leeg | — | bevestigd |
+| G-02 | Adres van de studio: **Instellingen** → Contact → **Adresregels** en **Postcode**; blok *Contact* → **Adresregels** op home (sinds 13 okt niet meer op `/afspraak`; `/contact` verwijst door naar `/afspraak`); `/admin` → **Locaties** → "De Bikefit Studio, Ninove" → **Adresregels** | enkel "Ninove", geen straat en postcode; JSON-LD laat het adres weg | adres van de studio (optioneel ook **Kaart-embed URL** in blok *Contact*) | open |
+| G-03 | `/afspraak` | "Vier manieren om te boeken" is op vraag van Toshoni verwijderd (review 13 okt 2026, `cms:patch-page-cleanup`); de pagina begint nu bij "Kies je moment" | — (de keuze in de widget zelf volgt K-02 – K-04) | afgerond 2026-10-13 |
 | G-04 | `/veelgestelde-vragen` (niet in deze rollout) | antwoorden noemen jeugdfit en 60/90 minuten | nakijken na D-01 – D-07 | open |
-| G-05 | Korte verbindingszinnen: inleidingen van de groepen Bikefit/Begeleiding in blok *Aanbod (overzicht)* (home, `/aanbod`, `/bikefit`); sectietitels op home ("Wat we voor je doen"), `/voor-wie` ("Waar je ook staat") en `/bikefit` ("Meten om beter te kijken", "Onze bikefitdiensten") | neutraal geschreven door de implementatie, zonder nieuwe claims | nagekeken en aanvaard door Winston (review 13 okt 2026), geen wijziging nodig | afgerond 2026-10-13 |
+| G-05 | Korte verbindingszinnen: inleidingen van de groepen Bikefit/Begeleiding in blok *Aanbod (overzicht)* (home, `/aanbod`, `/bikefit`); sectietitels op home ("Wat we voor je doen"), `/voor-wie` ("Waar je ook staat", op vraag van Toshoni verwijderd op 13 okt 2026) en `/bikefit` ("Meten om beter te kijken", "Onze bikefitdiensten") | neutraal geschreven door de implementatie, zonder nieuwe claims | nagekeken en aanvaard door Winston (review 13 okt 2026), geen wijziging nodig | afgerond 2026-10-13 |
 | G-06 | "nieuwste 3D-bewegingsanalyse": `/bikefit` en home → *Beeld + tekst* → **Alinea's**; `/aanbod/bikefit-huidige-fiets` → **Inhoud** | tekst aangeleverd door Toshoni; geen merk of toestel genoemd | merk of toestel enkel noemen met bron | bevestigd |
 | G-07 | "bij jou thuis / op locatie": home → *Hero* → **Ondertitel**; `/aanbod` → *Hero* → **Ondertitel**; `/bikefit` → *Beeld + tekst* "Kan een bikefit ook bij mij thuis?" | tekst aangeleverd (hero, aanbod) of uit het prototype (`/bikefit`); belooft fits aan huis | na K-04 nakijken: wordt Fit aan huis uitgezet, dan deze zinnen aanpassen | te bevestigen |
+
+## 8. Cadeaubon (C)
+
+Sinds 13 oktober 2026 (vraag van Toshoni): `/aanbod` → groep **Overige** → kaart *Cadeaubon* →
+`/aanbod/cadeaubon`, met een bestelformulier (bedrag naar keuze, persoonlijke boodschap,
+contactgegevens). **Bestel nu** mailt de aanvraag naar de studio; factuur en betaallink maakt de
+studio zelf op. Er is geen betaling, factuur, boncode of automatische mail naar de klant. Zolang
+C-01 of C-02 open is, krijgt elke bezoeker "Je bestelling is niet verstuurd" met het
+telefoonnummer, en blijft alles wat de bezoeker invulde staan. Uitleg en instellingen:
+`docs/booking-runbook.md` § Cadeaubon.
+
+| ID | Waar (exacte plaats) | Nu | Nodig | Status |
+| --- | --- | --- | --- | --- |
+| C-01 | E-mailverzending (Resend): **Beheer → E-mail** (`/admin/email`: API-sleutel en afzender), of de omgevingsvariabelen `RESEND_API_KEY` en `EMAIL_FROM` in Vercel (Arend; hebben voorrang) | niet ingesteld op staging en productie (preflight Arend, 13 okt 2026): elke bestelling meldt "niet verstuurd" | Resend-account, een afzenderdomein dat in Resend geverifieerd is (DNS), dan sleutel en afzender in `/admin/email` (of de variabelen) en een testbericht; de afzender is nooit het adres van de bezoeker | open |
+| C-02 | Ontvanger van de bestellingen: **Beheer → E-mail** (`/admin/email`) → *Ontvanger cadeaubonbestellingen*, of omgevingsvariabele `GIFT_VOUCHER_RECIPIENT` (heeft voorrang). Bewust los van het publieke adres (G-01): geen automatische terugval op `info@debikefitstudio.be` | leeg: elke bestelling meldt "niet verstuurd". Het gevraagde publieke adres `info@debikefitstudio.be` blijft in footer en contacttekst; het domein gaf op 13 okt 2026 geen DNS (NXDOMAIN), dus mail daarheen zou niet aankomen | een werkende mailbox kiezen (Toshoni) en die in de instelling of de variabele zetten | open |
+| C-03 | `/aanbod/cadeaubon` (*Cadeaubon*) → blok *Cadeaubon (bestelformulier)* → **Inleiding**, **Korte omschrijving**, **Titel boven het formulier** | neutraal geschreven door de implementatie: bedrag en boodschap naar keuze, factuur en betaallink na de bestelling | nakijken door Toshoni | te bevestigen |
+| C-04 | Voorwaarden van de bon: geldigheid, vorm (digitaal of op papier), levering, minimum- en maximumbedrag | nergens vermeld; het formulier aanvaardt technisch € 1 tot € 5.000 (daarboven: "bel ons best even") | beslissing van de studio; daarna in de **Inleiding** en zo nodig in de algemene voorwaarden | open |

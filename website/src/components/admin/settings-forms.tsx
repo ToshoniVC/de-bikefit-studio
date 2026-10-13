@@ -71,7 +71,7 @@ export function SettingsForms({
         locale={locale}
         canEdit={canEdit}
         title="Contact"
-        description="Gebruikt in de footer en in de LocalBusiness structured data."
+        description="Gebruikt in de footer en in de LocalBusiness structured data. Cadeaubonbestellingen gaan niet automatisch naar dit e-mailadres: de ontvanger en de e-maildienst stel je in onder E-mail."
       >
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Telefoon (label)" htmlFor="contact-phoneLabel">

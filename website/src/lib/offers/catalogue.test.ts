@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SERVICES } from '@/lib/booking/defaults';
 import {
+  GIFT_VOUCHER_PRICE_LABEL,
   OFFER_CTA_LABEL,
   OFFER_PRICE_FALLBACK,
   offerBookingHref,
@@ -20,6 +21,7 @@ const emptyImage = { mediaId: null, url: null, alt: '', decorative: false };
 
 function offer(partial: Partial<CatalogueOffer> & { slug: string }): CatalogueOffer {
   return {
+    kind: 'service',
     path: offerPagePath(partial.slug),
     category: 'bikefit',
     sortOrder: 0,
@@ -143,6 +145,25 @@ describe('offerFromPage', () => {
     expect(offerFromPage({ slug: 'bikefit', blocks })).toBeNull();
     expect(offerFromPage({ slug: 'aanbod/x', blocks: [blocks[0]] })).toBeNull();
   });
+
+  it('lists the gift voucher page under Overige, amount of choice, never bookable', () => {
+    const voucher = {
+      type: 'giftVoucher',
+      data: { sortOrder: 0, title: 'Cadeaubon', summary: '', intro: 'Schenk fietsplezier.' },
+    };
+    const entry = offerFromPage({ slug: 'aanbod/cadeaubon', blocks: [voucher] });
+    expect(entry).toMatchObject({
+      kind: 'giftVoucher',
+      slug: 'cadeaubon',
+      path: '/aanbod/cadeaubon',
+      category: 'overige',
+      summary: 'Schenk fietsplezier.',
+      priceLabel: GIFT_VOUCHER_PRICE_LABEL,
+      bookingServiceSlugs: [],
+    });
+    // An offer block on the same page still wins.
+    expect(offerFromPage({ slug: 'aanbod/x', blocks: [voucher, blocks[1]] })?.kind).toBe('service');
+  });
 });
 
 describe('sorting and grouping', () => {
@@ -154,6 +175,11 @@ describe('sorting and grouping', () => {
       offer({ slug: 'nieuw', category: 'bikefit', sortOrder: 10 }),
     ]);
     expect(sorted.map((entry) => entry.slug)).toEqual(['nieuw', 'zadel', 'lactaat', 'coaching']);
+    const withOther = sortOffers([
+      offer({ slug: 'bon', category: 'overige', kind: 'giftVoucher' }),
+      ...sorted,
+    ]);
+    expect(withOther.map((entry) => entry.slug).at(-1)).toBe('bon');
     expect(offersInCategory(sorted, 'begeleiding').map((entry) => entry.slug)).toEqual([
       'lactaat',
       'coaching',
@@ -241,6 +267,16 @@ describe('resolveBookingSelection (service preselection)', () => {
     expect(resolveBookingSelection({ requested: 'jeugdfit', offers: clash, services }).kind).toBe(
       'offer',
     );
+  });
+
+  it('never turns the gift voucher into a booking or an enquiry', () => {
+    const withVoucher = [
+      ...offers,
+      offer({ slug: 'cadeaubon', category: 'overige', kind: 'giftVoucher' }),
+    ];
+    expect(
+      resolveBookingSelection({ requested: 'cadeaubon', offers: withVoucher, services }),
+    ).toEqual({ kind: 'unknown', requested: 'cadeaubon' });
   });
 });
 

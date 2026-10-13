@@ -13,7 +13,7 @@
  * 3. the exceptions work: the `allowMustChangePassword` path and `logout()`;
  * 4. `changePassword()` refuses a wrong current password (flag stays set),
  *    then succeeds: flag cleared, old session revoked, fresh cookie issued,
- *    and the same calls pass. Sections 14–16 therefore act as an admin who
+ *    and the same calls pass. Sections 14–19 therefore act as an admin who
  *    chose their own password (and, after section 5c, enrolled MFA).
  *
  * The sessions here are created with `mfaVerified` on purpose: this section

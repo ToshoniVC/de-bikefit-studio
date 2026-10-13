@@ -254,6 +254,41 @@ describe('cmsAccessDenial: recent re-authentication for sensitive changes', () =
     expect(cmsAccessDenial(stepped('admin', null), { role: 'admin' }, NOW)).toBeNull();
     expect(cmsAccessDenial(stepped('admin', null), { permission: 'user.manage' }, NOW)).toBeNull();
   });
+
+  it('combines with a permission: the permission first, then the stamp, for every permission', () => {
+    for (const permission of CMS_PERMISSIONS) {
+      const requirement = { permission, recentReauthentication: true };
+      for (const role of ROLES) {
+        const held = can(role, permission);
+        const label = `${role} ${permission}`;
+        expect(cmsAccessDenial(stepped(role, ago(60_000)), requirement, NOW), label).toBe(
+          held ? null : 'forbidden',
+        );
+        for (const at of [null, ago(REAUTH_WINDOW_MS + 1)]) {
+          expect(cmsAccessDenial(stepped(role, at), requirement, NOW), label).toBe(
+            held ? 'reauth_required' : 'forbidden',
+          );
+        }
+      }
+    }
+  });
+
+  it('e-mail service changes: admins only, after MFA and the password gate, then the stamp', () => {
+    const EMAIL_CHANGE = { permission: 'email.manage' as const, recentReauthentication: true };
+    expect(cmsAccessDenial(stepped('admin', ago(60_000)), EMAIL_CHANGE, NOW)).toBeNull();
+    expect(cmsAccessDenial(stepped('admin', null), EMAIL_CHANGE, NOW)).toBe('reauth_required');
+    expect(
+      cmsAccessDenial({ ...stepped('admin', ago(0)), mfaVerified: false }, EMAIL_CHANGE, NOW),
+    ).toBe('mfa_required');
+    expect(
+      cmsAccessDenial({ ...stepped('admin', ago(0)), mustChangePassword: true }, EMAIL_CHANGE, NOW),
+    ).toBe('password_change_required');
+    for (const role of ['editor', 'provider'] as const) {
+      expect(cmsAccessDenial(stepped(role, ago(0)), EMAIL_CHANGE, NOW), role).toBe('forbidden');
+    }
+    // Reading the status and sending the test message ask for the permission alone.
+    expect(cmsAccessDenial(stepped('admin', null), { permission: 'email.manage' }, NOW)).toBeNull();
+  });
 });
 
 describe('assertCmsAccess', () => {

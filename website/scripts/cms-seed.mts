@@ -23,8 +23,8 @@
  *
  * ---------------------------------------------------------------------------
  * COPY PROVENANCE — every string below is lifted from the source material.
- * Nothing is invented: no prices, no street address, no e-mail address, no
- * commercial claims, no testimonials.
+ * Nothing is invented: no prices, no street address, no commercial claims, no
+ * testimonials. The one e-mail address is the confirmed CONTACT_EMAIL.
  *
  *   /, /aanbod, /aanbod/*, src/lib/studio/seed-content/aanbod.ts — the 13 Oct 2026
  *   /voor-wie, /bikefit,   redesign (work block 2026-10-13-aanbod-staging-brief.md
@@ -34,21 +34,21 @@
  *                          `/ons-team`.
  *   /veelgestelde-vragen   content/about.html §2 = prototype/bikefit.html
  *                          #vragen (identical 8 Q&A)
- *   /contact               prototype footer contact column + block registry
- *                          defaults (phone, Ninove, "Op afspraak")
- *   /afspraak              content/booking.html (step order: dienst → datum &
+ *   /afspraak              src/lib/studio/seed-content/appointment.ts:
+ *                          content/booking.html (step order: dienst → datum &
  *                          tijd → gegevens → bevestiging; tone notes) + the
  *                          `booking` block (online booking, decided 24 Sep
  *                          2026: no payment) + the "wat breng je mee" / "hoe
- *                          lang duurt het" answers from content/about.html
+ *                          lang duurt het" answers from content/about.html +
+ *                          "Andere vraag?" (Toshoni's review, 13 Oct 2026).
+ *                          `/contact` is no longer seeded: it redirects here.
  *   /privacy               .winston work block 2026-09-24-legal-pages.md,
  *   /algemene-voorwaarden  pages 1 and 2 (standard Belgian texts, to be read
  *                          by a lawyer before production). Identity from the
  *                          KBO register (Qarakter BV, Weversstraat 7, 1730
- *                          Asse, BE 1036.912.281). The only exception to "no
- *                          e-mail address" above: `[E-MAILADRES]` is filled in
- *                          at seed time from settings `contact.email`, else
- *                          LEGAL_FALLBACK_EMAIL (UNVERIFIED, logged with `!`).
+ *                          Asse, BE 1036.912.281). `[E-MAILADRES]` is filled
+ *                          in at seed time from settings `contact.email`, else
+ *                          CONTACT_EMAIL (confirmed by Toshoni, 13 Oct 2026).
  *
  * ---------------------------------------------------------------------------
  * WHY THE MODULE STUBS BELOW
@@ -75,9 +75,11 @@ import {
   FOOTER_MENU,
   MAIN_MENU,
 } from '@/lib/studio/seed-content/aanbod';
+import { AFSPRAAK_PAGE, CONTACT_REDIRECT } from '@/lib/studio/seed-content/appointment';
+import { CADEAUBON_PAGE } from '@/lib/studio/seed-content/cadeaubon';
 import {
   CALLOUT_BLOCK,
-  CONTACT_BLOCK,
+  CONTACT_EMAIL,
   PHONE_HREF,
   PHONE_LABEL,
   type SeedPage,
@@ -138,38 +140,13 @@ const FAQ_ITEMS = [
   },
 ];
 
-/** "Vier manieren om te boeken" — prototype/bikefit.html #diensten. */
-const BOOKABLE_CARDS = [
-  {
-    title: 'Volwassenenfit',
-    duration: '90 minuten',
-    body: 'De standaard bikefit. Reken op 90 minuten; complexe gevallen, eerste keren of fits na een blessure kunnen tot twee uur duren.',
-  },
-  {
-    title: 'Jeugdfit',
-    duration: '60 minuten',
-    body: 'Korter, ongeveer 60 minuten, en afgestemd op een lichaam in groei. Betaalbaar, duidelijk, op hun tempo.',
-  },
-  {
-    title: 'Gezinspakket',
-    duration: '',
-    body: 'Mama, papa, kinderen — één sessie in de studio, alle fietsen gepast. Iedereen rijdt beter naar huis.',
-  },
-  {
-    title: 'Fit aan huis',
-    duration: '',
-    body: 'Voor groepen, clubs en gezinnen komen we op locatie. Neem contact op en we bekijken het samen.',
-  },
-];
-
 /**
  * The legal pages' contact address. The texts carry the placeholder
  * `[E-MAILADRES]` verbatim; `main()` replaces it with `contact.email` from the
- * site settings, or with LEGAL_FALLBACK_EMAIL when that is empty. The fallback
- * is NOT a confirmed mailbox — it must be confirmed by Toshoni.
+ * site settings, or with the confirmed CONTACT_EMAIL when that is empty.
  */
 const LEGAL_EMAIL_PLACEHOLDER = '[E-MAILADRES]';
-const LEGAL_FALLBACK_EMAIL = 'info@debikefitstudio.be';
+const LEGAL_FALLBACK_EMAIL = CONTACT_EMAIL;
 
 /** Privacyverklaring — work block 2026-09-24-legal-pages.md, page 1 (verbatim + KBO substitutions). */
 const PRIVACY_HTML = `<p><em>Laatst bijgewerkt: 24 september 2026</em></p>
@@ -294,6 +271,8 @@ const TERMS_HTML = `<p><em>Versie van 24 september 2026</em></p>
 const PAGES: SeedPage[] = [
   // ------------------------- /, /aanbod, /aanbod/*, /voor-wie, /bikefit, /ons-team
   ...AANBOD_PAGES,
+  // ------------------------------------------------- /aanbod/cadeaubon ---
+  CADEAUBON_PAGE,
 
   // ----------------------------------------------- /veelgestelde-vragen ---
   {
@@ -334,101 +313,8 @@ const PAGES: SeedPage[] = [
     ],
   },
 
-  // ----------------------------------------------------------- /contact ---
-  {
-    slug: 'contact',
-    title: 'Contact',
-    translationGroup: 'contact',
-    source: 'prototype/index.html footer contact column + block registry defaults',
-    metaTitle: 'Contact',
-    metaDescription:
-      'De Bikefit Studio in Ninove werkt op afspraak. Bel 0473 95 26 33 en we zoeken samen een moment.',
-    structuredDataType: 'ContactPage',
-    blocks: [
-      {
-        type: 'hero',
-        data: {
-          variant: 'pageHead',
-          eyebrow: 'Contact · Ninove',
-          title: 'Contact',
-          titleEmphasis: '',
-          subtitle: 'We werken op afspraak. Bel ons en we zoeken samen een moment.',
-          primaryCta: { label: PHONE_LABEL, href: PHONE_HREF, external: false },
-          secondaryCta: null,
-        },
-      },
-      CONTACT_BLOCK,
-      CALLOUT_BLOCK,
-    ],
-  },
-
   // ---------------------------------------------------------- /afspraak ---
-  {
-    slug: 'afspraak',
-    title: 'Een afspraak maken',
-    translationGroup: 'appointment',
-    source: 'content/booking.html + booking block + content/about.html answers',
-    metaTitle: 'Een afspraak maken',
-    metaDescription:
-      'Boek je bikefit in Ninove online: kies je fit, een dag en een uur. Liever bellen? 0473 95 26 33. Breng je fiets, schoenen en fietskleding mee.',
-    structuredDataType: 'WebPage',
-    blocks: [
-      {
-        type: 'hero',
-        data: {
-          variant: 'pageHead',
-          eyebrow: 'Afspraak · Ninove',
-          title: 'Een afspraak maken',
-          titleEmphasis: '',
-          subtitle:
-            'Kies je fit, een dag en een uur — online, in een paar rustige stappen. Liever even bellen? Dat kan altijd.',
-          primaryCta: { label: 'Online boeken', href: '#boeken', external: false },
-          secondaryCta: { label: PHONE_LABEL, href: PHONE_HREF, external: false },
-        },
-      },
-      {
-        type: 'booking',
-        data: {
-          variant: 'default',
-          eyebrow: 'Online boeken',
-          title: 'Kies je moment',
-          lede: 'Kies je fit, bij wie en wanneer. Je krijgt meteen een bevestiging per e-mail.',
-          serviceIds: [],
-          showProviderChoice: true,
-          successTitle: 'Je afspraak staat vast',
-          successText: '',
-        },
-      },
-      {
-        type: 'richText',
-        data: {
-          variant: 'default',
-          eyebrow: 'Goed om te weten',
-          title: 'Voor je komt',
-          html: [
-            '<h3>Breng het juiste mee</h3>',
-            '<p>Je fiets (proper en in werkende staat), de schoenen en fietskleding waarin je écht rijdt, en eventuele notities over wat je dwars zit. Meer hebben we niet nodig. De rest doen wij.</p>',
-            '<h3>Reken op de tijd</h3>',
-            '<p>Reken op 90 minuten voor een standaard bikefit voor volwassenen. Een jeugdfit is korter — ongeveer 60 minuten. We haasten ons niet — als het klaar is, is het klaar.</p>',
-            `<p>Liever bellen, of vind je geen moment dat past? Bel <a href="${PHONE_HREF}">${PHONE_LABEL}</a> en we zoeken samen een moment.</p>`,
-          ].join(''),
-        },
-      },
-      {
-        type: 'services',
-        data: {
-          variant: 'gray',
-          eyebrow: 'Onze fits',
-          title: 'Vier manieren om te boeken',
-          lede: 'We fitten koers-, gravel-, mountain-, stads-, toer- en e-bikes. De principes blijven dezelfde: het lichaam van de fietser moet bij de fiets passen.',
-          columns: 4,
-          cards: BOOKABLE_CARDS,
-        },
-      },
-      CONTACT_BLOCK,
-      CALLOUT_BLOCK,
-    ],
-  },
+  AFSPRAAK_PAGE,
 
   // ----------------------------------------------------------- /privacy ---
   {
@@ -510,7 +396,7 @@ const DEFAULT_SETTINGS: Record<string, unknown> = {
   contact: {
     phoneLabel: PHONE_LABEL,
     phoneHref: PHONE_HREF,
-    email: '',
+    email: CONTACT_EMAIL,
     addressLines: [],
     postalCode: '',
     city: 'Ninove',
@@ -543,7 +429,7 @@ const DEFAULT_SETTINGS: Record<string, unknown> = {
   },
 };
 
-/** The prototype's old URL, and `/over-ons` → `/ons-team` (13 Oct 2026). */
+/** The prototype's old URL, `/over-ons` → `/ons-team` and `/contact` → `/afspraak` (13 Oct 2026). */
 const REDIRECTS = [
   {
     fromPath: '/bikefit.html',
@@ -552,6 +438,7 @@ const REDIRECTS = [
     notes: 'Oude statische prototypepagina.',
   },
   ...AANBOD_REDIRECTS,
+  CONTACT_REDIRECT,
 ];
 
 // ---------------------------------------------------------------------------
@@ -718,8 +605,8 @@ async function main() {
         log('=', `legal pages: e-mail ${legalEmail} (from settings ${locale}/contact.email)`);
       } else {
         log(
-          '!',
-          `legal pages: settings ${locale}/contact.email is empty — writing the UNVERIFIED fallback ${LEGAL_FALLBACK_EMAIL}; confirm it with Toshoni`,
+          '=',
+          `legal pages: settings ${locale}/contact.email is empty — writing ${LEGAL_FALLBACK_EMAIL}`,
         );
       }
     }

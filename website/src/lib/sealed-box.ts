@@ -2,7 +2,8 @@ import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 
 /**
  * AES-256-GCM "sealed box" for secrets stored in the database: the Google
- * tokens (`src/lib/booking/google.ts`) and the CMS TOTP secrets
+ * tokens (`src/lib/booking/google.ts`), the e-mail service API key
+ * (`src/lib/email/settings.ts`) and the CMS TOTP secrets
  * (`src/lib/cms/mfa/crypto.ts`). The caller owns the 32-byte key.
  *
  * Format: `v1.<iv>.<tag>.<ciphertext>`, base64url parts, 96-bit random IV.

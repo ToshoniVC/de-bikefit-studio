@@ -368,7 +368,8 @@ Google consent ────────────► GET /api/google/oauth/cal
   call). `access_type=offline` + `prompt=consent` → Google always returns a
   refresh token. Publish the consent screen ("In production") or refresh tokens
   expire after 7 days (see `booking-runbook.md`).
-- Tokens are encrypted with AES-256-GCM before they touch the database. Key:
+- Tokens are encrypted with AES-256-GCM (`src/lib/sealed-box.ts`, shared with
+  the e-mail API key and the TOTP secrets) before they touch the database. Key:
   `GOOGLE_TOKEN_ENCRYPTION_KEY` (base64, 32 bytes), else HKDF-SHA256 of
   `CMS_SESSION_SECRET` (info `google-token`). **Rotating either value makes
   the stored tokens unreadable: every provider must reconnect Google.** The
@@ -388,10 +389,19 @@ Google consent ────────────► GET /api/google/oauth/cal
 ## 8. E-mail flow
 
 Sent by `notifications.ts` through `sendEmail()` (Resend REST API,
-`https://api.resend.com/emails`, `Authorization: Bearer RESEND_API_KEY`, from
-`EMAIL_FROM`, optional `EMAIL_REPLY_TO`). No key → one console line (recipients masked) and
+`https://api.resend.com/emails`). Key, sender and reply-to come from `loadEmailSettings()`
+(`src/lib/email/settings.ts`): per field `RESEND_API_KEY` / `EMAIL_FROM` / `EMAIL_REPLY_TO`
+win over what an admin stored in `/admin/email` (see `cms-architecture.md`, "Site settings
+keys"). No key → one console line (recipients masked) and
 `{ sent: false, reason: 'not_configured' }`. A failing mail never fails a
-booking.
+booking. Provider error text is passed through `redactSecrets()` before it is logged.
+
+The gift voucher order form (`src/lib/gift-voucher/`, `booking-runbook.md` §12) uses the same
+`sendEmail()` with the opposite rule: there the mail *is* the order, so a skipped or failed send
+is reported to the visitor as "niet verstuurd" and only a provider-accepted send counts as
+success. It mails the studio's order inbox (env `GIFT_VOUCHER_RECIPIENT`, else `/admin/email` →
+*Ontvanger cadeaubonbestellingen*; never `contact.email`, `src/lib/gift-voucher/recipient.ts`)
+with the visitor as Reply-To, never the visitor.
 
 | Event | Customer (+ guardian e-mail if different) | Provider (`cms_providers.email` or login e-mail) |
 | --- | --- | --- |
@@ -439,7 +449,7 @@ All optional; defined in `src/lib/env.ts`, documented in `.env.example`.
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | `google.ts` | "Web application" OAuth client. `features.googleCalendar`. |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | `google.ts` | base64 of 32 bytes (`openssl rand -base64 32`). Rotating signs providers out of Google. |
 | `GA4_PROPERTY_ID`, `GA4_SERVICE_ACCOUNT_JSON` | Worker D (`src/lib/analytics`) | `features.ga4Data` = service account present. |
-| `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | `email/send.ts` | `features.email`. |
+| `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | `email/settings.ts` → `email/send.ts` | Optional: the same values can be stored in `/admin/email`; env wins per field. `features.email` = env key present only. |
 
 Secrets are read through `src/lib/env.ts` (zod-validated, read at call time so
 scripts and the self-test can set them before use) and derived through

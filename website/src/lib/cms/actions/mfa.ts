@@ -129,9 +129,10 @@ export async function mfaCancelAction(): Promise<void> {
 // --- Signed in (/admin/account) ---------------------------------------------
 
 /**
- * "Bevestig je identiteit" (step-up) on `/admin/users`, `/admin/account` and
- * `/admin/password`. The window is recorded on the session; the sensitive
- * changes check it themselves (`recentReauthentication` in the guard).
+ * "Bevestig je identiteit" (step-up) on `/admin/users`, `/admin/providers`,
+ * `/admin/email`, `/admin/account` and `/admin/password`. The window is
+ * recorded on the session; the sensitive changes check it themselves
+ * (`recentReauthentication` in the guard).
  */
 export async function confirmIdentityAction(
   _prevState: ActionState,

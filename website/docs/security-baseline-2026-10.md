@@ -37,9 +37,10 @@ layout redirect. Details in `docs/cms-architecture.md` (auth section).
 
 ## Admin two-step verification (TOTP) and its one new dependency
 
-Shipped in the same branch: mandatory TOTP two-step verification for CMS admins (design in
-`docs/cms-architecture.md` §4, rollout in `docs/staging-runbook.md` §11). It adds exactly one
-runtime package:
+Shipped in the same branch: mandatory TOTP two-step verification for CMS admins, migration
+`0005_cms_admin_mfa` (design in `docs/cms-architecture.md` §4, rollout in
+`docs/staging-runbook.md` §14; together with the e-mail settings from `staging` and block 3:
+§16). It adds exactly one runtime package:
 
 | Package | Version | Why | Supply-chain notes |
 | --- | --- | --- | --- |
@@ -58,8 +59,9 @@ Shipped in the same branch, no new dependency (`node:crypto`, Web Crypto and Nex
 
 - **Admin sessions** end after 15 minutes without a request and 8 hours after sign-in at the
   latest, enforced on the server (`src/lib/cms/session-policy.ts`); editors and providers keep
-  14 days, sliding. Migration `0005_cms_session_limits` (two nullable columns).
-- **Step-up**: user management and an admin's own password change need a full
+  14 days, sliding. Migration `0006_cms_session_limits` (two nullable columns).
+- **Step-up**: user management, an admin's own password change and, since the merge with
+  `staging`, changes to the e-mail service settings in `/admin/email` need a full
   re-authentication (password + code) within 5 minutes, checked inside the library functions
   (`recentReauthentication` in `src/lib/cms/guard.ts`).
 - **scrypt** N = 2^17, r = 8, p = 1 for new hashes (~128 MiB each), legacy hashes verified and
@@ -68,7 +70,8 @@ Shipped in the same branch, no new dependency (`node:crypto`, Web Crypto and Nex
 - **Admin Content-Security-Policy**, nonce per request, report-only until validated on
   staging (`docs/admin-csp.md`). Public pages unchanged (no CSP).
 
-Design in `docs/cms-architecture.md` §4, rollout in `docs/staging-runbook.md` §12. After the
-change `npm audit` is unchanged: **15 findings (0 critical / 9 high / 6 moderate)**, the same
-three accepted root causes (`braces`, `esbuild` via drizzle-kit, `postcss-selector-parser`);
-`npm audit --omit=dev` reports **0 findings**.
+Design in `docs/cms-architecture.md` §4, rollout in `docs/staging-runbook.md` §15 (combined
+order with 0004 and 0005: §16). After the change `npm audit` is unchanged: **15 findings
+(0 critical / 9 high / 6 moderate)**, the same three accepted root causes (`braces`, `esbuild`
+via drizzle-kit, `postcss-selector-parser`); `npm audit --omit=dev` reports **0 findings**.
+The merge with `staging` (site content, `/admin/email`, gift voucher) added no dependency.

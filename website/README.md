@@ -15,7 +15,7 @@ Conventions for anyone changing this code (checks, architecture rules, security,
 | Framework | Next.js 16 (App Router, React Server Components), React 19, strict TypeScript |
 | Styling | Tailwind CSS v4 + design-system tokens (`--ds-*`); shadcn/ui (Base UI) in the admin |
 | Database | Drizzle ORM. Neon (neon-http) when `DATABASE_URL` is set, embedded PGlite in `website/.pglite/` otherwise |
-| CMS auth | Own sessions + scrypt passwords, roles `admin` / `editor` / `provider` (not Clerk) |
+| CMS auth | Own sessions + scrypt passwords, roles `admin` / `editor` / `provider` (not Clerk); admins also TOTP two-step verification |
 | Integrations | Google Calendar (OAuth, per provider), GA4 tag + GA4 Data API, Resend (e-mail) |
 | Tests | vitest (unit), `cms:selftest` (integration on PGlite) |
 | Hosting | Vercel (Root Directory `website`), Neon Postgres |
@@ -31,8 +31,9 @@ website/
 │   ├── app/
 │   │   ├── (studio)/        public site: home, CMS catch-all [...slug], /afspraak/bevestigd,
 │   │   │                    /afspraak/annuleren/[token], /og
-│   │   ├── admin/           CMS: /admin/login, /admin/password, (dashboard)/… (pages, media,
-│   │   │                    bookings, agenda, services, locations, providers, settings, users, audit)
+│   │   ├── admin/           CMS: /admin/login, /admin/mfa, /admin/password, (dashboard)/… (pages,
+│   │   │                    media, navigation, redirects, bookings, agenda, services, locations,
+│   │   │                    providers, settings, email, users, account, audit)
 │   │   ├── api/             cms/media/[id], google/oauth/{start,callback}, checkout, webhooks/*
 │   │   ├── (shop)/ (webshop)/ (content)/ (auth)/   legacy webshop
 │   │   └── layout.tsx, sitemap.ts, robots.ts, not-found.tsx
@@ -43,12 +44,12 @@ website/
 │   │   ├── cms/             auth, sessions, permissions, block registry, content (read), repo (write),
 │   │   │                    actions/ (server actions, sanitiser)
 │   │   ├── booking/         availability engine, time zones, repo, public booking, Google Calendar
-│   │   ├── email/           Resend client, ICS builder, Dutch templates
+│   │   ├── email/           Resend client, settings (env or /admin/email), ICS builder, Dutch templates
 │   │   ├── analytics/       consent cookie, GA4 tag, GA4 Data API
 │   │   ├── studio/          locale, SEO, JSON-LD, OG images, legal identity
 │   │   └── env.ts           zod-validated env vars + `features` flags
 │   └── middleware.ts        Clerk pass-through + /admin cookie redirect (no database)
-├── drizzle/                 SQL migrations 0000–0003 + meta snapshots
+├── drizzle/                 SQL migrations 0000–0006 + meta snapshots
 ├── scripts/                 migrate, bootstrap, seeds, self-test, retention, staging reset/anonymise
 └── docs/                    architecture and runbooks (below)
 ```
@@ -76,10 +77,14 @@ Remove-Item Env:CMS_BOOTSTRAP_PASSWORD`. Never store that password in `.env.loca
 Sign in as `contact@toshoni.be` with the bootstrap password; the first login forces a new one
 and then the set-up of two-step verification (admins always sign in with a password and a code
 from an authenticator app such as 1Password; locally the encryption key for it is derived, no
-variable needed). The write scripts (`cms:seed`, rollouts) act as the oldest active admin with
-a permanent password and an authenticator and stop with a message while there is none — so
-finish the first sign-in before seeding. Stop the dev server first: both open the same `.pglite/`.
-Reset the local database by deleting `website/.pglite/` and repeating the commands.
+variable needed). The write scripts (`cms:seed`, rollouts, patches) act as the oldest active
+admin with a permanent password and an authenticator and stop with a message while there is
+none — so finish the first sign-in before seeding. Stop the dev server first: both open the
+same `.pglite/`.
+Reset the local database by deleting `website/.pglite/` and repeating the commands. Do that
+too if your `.pglite/` ran the security migrations under their earlier numbers (0004 = MFA,
+0005 = session limits): `db:migrate` would never add `0004_integration_settings` to it
+(`docs/cms-architecture.md` §2, Migrations).
 
 With no variables set: the CMS and booking run on PGlite, availability uses business hours
 and existing bookings only (no Google), booking e-mails are logged and skipped, no analytics
@@ -110,10 +115,12 @@ Run inside `website/`. Scripts that touch a database use PGlite unless `DATABASE
 | `npm run cms:seed-booking` | Idempotent first provider, hours and service subscriptions (`PROVIDER_EMAIL` / `PROVIDER_NAME` for another) |
 | `npm run cms:rollout-aanbod` | Offer redesign onto an existing database: dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §9 |
 | `npm run cms:patch-booking-cta` | Points existing "Boek je bikefit" buttons that dial (or jump to `#contact`) at `/afspraak`: dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §10 |
+| `npm run cms:patch-page-cleanup` | Applies Toshoni's site review of 13 Oct 2026 to existing content (kickers, headings, "jeugd", `/afspraak` layout, `/contact` → `/afspraak`, menus, public e-mail): dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §11 |
+| `npm run cms:patch-cadeaubon` | Adds the gift voucher of 13 Oct 2026 to existing content (`/aanbod/cadeaubon` created and published, "Overige" on `/aanbod`): dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §12 |
 | `npm run images:import -- --slot <slot> --src <file>` | Compress a delivered editorial image into `public/images/editorial/` and record it (`docs/editorial-images.md`) |
 | `npm run cms:selftest` | Integration checks on a throwaway PGlite in `.pglite-selftest/` |
 | `npm run cms:retention` | GDPR retention purge, dry run; `-- --apply` deletes, `-- --json` for a report |
-| `npm run cms:mfa-reset -- --email <address>` | Break-glass: remove a user's two-step verification when no other admin can; dry run by default, `-- --apply --expect-host <host>`. See `docs/staging-runbook.md` §11 |
+| `npm run cms:mfa-reset -- --email <address>` | Break-glass: remove a user's two-step verification when no other admin can; dry run by default, `-- --apply --expect-host <host>`. See `docs/staging-runbook.md` §14 |
 
 ## Testing
 
@@ -122,10 +129,12 @@ Three layers, all in CI ([`../CLAUDE.md`](../CLAUDE.md) §5):
 1. **Unit** — `npm test`. vitest, `*.test.ts` next to the module. Pure modules only: no
    database, no network, no Next runtime. Every bug fix starts with a failing test.
 2. **Integration** — `npm run cms:selftest`. Migrations, schema, passwords, sessions,
-   admin two-step verification (sign-in, replay, rate limits, recovery, break-glass),
-   permissions, block registry, publish, the booking schema, the provider role,
-   `computeSlots()`, e-mail/ICS/token encryption, the full booking flow and the offer rollout
-   with service preselection, on a throwaway PGlite. Section list in the header of `scripts/cms-selftest.mts`.
+   admin two-step verification (sign-in, replay, rate limits, recovery, break-glass), admin
+   session limits and step-up, permissions, block registry, publish, the booking schema, the
+   provider role, `computeSlots()`, e-mail/ICS/token encryption, the full booking flow, the
+   offer rollout with service preselection, the content patches (booking CTA, page cleanup,
+   gift voucher) and the e-mail service in `/admin/email`, on a throwaway PGlite. Section list
+   in the header of `scripts/cms-selftest.mts`.
 3. **Smoke** — after every preview and staging deployment the DevOps agent (Arend) runs
    `site-health` (status codes, `robots.txt`, `noindex`, key paths).
 
@@ -144,8 +153,10 @@ is never merged. Branch flow: `feat/<topic>` → `staging` → `main`.
 | [`DEPLOYMENT.md`](DEPLOYMENT.md) | Environments, who deploys, Neon/Vercel setup, env var contract, GDPR caveats |
 | [`docs/cms-architecture.md`](docs/cms-architecture.md) | CMS data model, auth, roles and permissions, blocks, caching, public site |
 | [`docs/booking-architecture.md`](docs/booking-architecture.md) | Booking schema, availability, Google Calendar, e-mail |
-| [`docs/staging-runbook.md`](docs/staging-runbook.md) | Staging deploy procedure, rollback, production checklist |
-| [`docs/booking-runbook.md`](docs/booking-runbook.md) | Google Cloud, GA4, Resend setup; GDPR and retention (§11) |
+| [`docs/staging-runbook.md`](docs/staging-runbook.md) | Staging deploy procedure, rollouts per release (security release: §16), rollback, production checklist |
+| [`docs/booking-runbook.md`](docs/booking-runbook.md) | Google Cloud, GA4, Resend setup; GDPR and retention (§11); gift voucher orders (§12) |
+| [`docs/admin-csp.md`](docs/admin-csp.md) | The admin Content-Security-Policy: how it works, staging browser check, switch to enforce |
+| [`docs/security-baseline-2026-10.md`](docs/security-baseline-2026-10.md) | Dependency audit status and the security changes of October 2026 |
 | [`docs/content-placeholders.md`](docs/content-placeholders.md) | Register (NL) of every temporary price, duration, bio, image and booking link |
 | [`docs/editorial-images.md`](docs/editorial-images.md) | Provenance and import of the temporary AI images |
 | [`AGENTS.md`](AGENTS.md) | Next.js 16 warning for agents |

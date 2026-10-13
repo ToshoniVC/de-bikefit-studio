@@ -37,6 +37,7 @@ const MATRIX: Record<CmsPermission, [provider: boolean, editor: boolean, admin: 
   'user.read': [false, false, true],
   'user.manage': [false, false, true],
   'audit.read': [false, false, true],
+  'email.manage': [false, false, true],
   'booking.read': [false, true, true],
   'booking.read.own': [true, false, true],
   'booking.manage': [false, false, true],

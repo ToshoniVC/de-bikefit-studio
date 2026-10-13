@@ -13,19 +13,23 @@ export function OfferEnquiry({
   phoneLabel,
   phoneHref,
   email,
+  titleTag = 'h3',
 }: {
   offer: { title: string; path: string };
   phoneLabel: string;
   phoneHref: string;
   email: string;
+  /** `h2` when the surrounding section owns the page's `<h1>`. */
+  titleTag?: 'h2' | 'h3';
 }) {
+  const Title = titleTag;
   const hasPhone = Boolean(phoneLabel && phoneHref);
   const subject = encodeURIComponent(`Afspraak: ${offer.title}`);
 
   return (
     <div className="studio-booking studio-booking__enquiry">
       <p className="studio-eyebrow">Je koos</p>
-      <h3 className="studio-booking__enquiry-title">{offer.title}</h3>
+      <Title className="studio-booking__enquiry-title">{offer.title}</Title>
       <p>
         Deze dienst kun je nog niet online boeken. Neem contact met ons op, dan plannen we samen een
         moment dat bij je past.

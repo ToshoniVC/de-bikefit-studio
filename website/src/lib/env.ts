@@ -110,11 +110,19 @@ const envSchema = z.object({
   GA4_SERVICE_ACCOUNT_JSON: z.string().optional(),
 
   // --- Transactional e-mail (Resend REST API) ---
+  // All four are optional: an admin can set the same values in /admin/email
+  // (`src/lib/email/settings.ts`). When set here, each one wins over the admin.
 
   RESEND_API_KEY: z.string().optional(),
   /** e.g. `De Bikefit Studio <afspraken@debikefitstudio.be>` (verified domain). */
   EMAIL_FROM: z.string().optional(),
   EMAIL_REPLY_TO: z.string().optional(),
+  /**
+   * Inbox for gift voucher orders; overrides /admin/email → *Ontvanger
+   * cadeaubonbestellingen*. Never falls back to the public contact address.
+   * An invalid value means "not sent" (see `gift-voucher/recipient.ts`).
+   */
+  GIFT_VOUCHER_RECIPIENT: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -214,7 +222,10 @@ export const features = {
   get ga4Data() {
     return Boolean(env.GA4_SERVICE_ACCOUNT_JSON);
   },
-  /** Transactional e-mail is sent (otherwise logged and skipped). */
+  /**
+   * `RESEND_API_KEY` is set in the environment. Not the whole story: a key can
+   * also be stored in /admin/email, see `loadEmailSettings()`.
+   */
   get email() {
     return Boolean(env.RESEND_API_KEY);
   },

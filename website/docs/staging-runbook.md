@@ -9,9 +9,12 @@ inline at the moment it is needed and lives only in 1Password and Vercel.
 Previews and staging go automatically once the release gate is green; production, the
 production database and DNS only after an explicit go from Toshoni (`../DEPLOYMENT.md` §2).
 Arend records every deployment in its infrastructure log, outside this repository. A person
-with Vercel and Neon access can follow the same steps. The offer redesign of 13 Oct 2026 has its
-own rollout procedure in §9; admin two-step verification (migration 0004 and a new secret) in
-§11.
+with Vercel and Neon access can follow the same steps. The changes of 13 Oct 2026 each have their
+own rollout section: the offer redesign §9, the booking CTA patch §10, the page cleanup §11, the
+gift voucher §12, the e-mail service in the admin §13 (migration 0004), admin two-step
+verification §14 (migration 0005 and a new secret) and admin session limits, step-up and the
+admin CSP §15 (migration 0006). Rolling 0004–0006 out together, as the security release does:
+the combined order in §16.
 
 Environments, the Hobby-plan staging setup and the full env var contract:
 [`../DEPLOYMENT.md`](../DEPLOYMENT.md). Google, GA4 and Resend setup, GDPR and retention:
@@ -58,13 +61,14 @@ come from 1Password.
 | Variable | Staging value | Notes |
 | --- | --- | --- |
 | `DATABASE_URL` | pooled URL of Neon `Staging` (§1) | Without it the app tries PGlite, which `src/db/cms.ts` refuses on any deployment (`NODE_ENV=production`). |
-| `CMS_SESSION_SECRET` | `openssl rand -base64 48`, staging's own | Rotating it signs every CMS user out and, without a token key, disconnects Google. Never reuse production's. |
-| `CMS_MFA_ENCRYPTION_KEY` | `openssl rand -base64 32`, staging's own | **Required** for admin sign-in (two-step verification, §11). Treat as permanent: rotating it forces every admin to re-enrol with a recovery code. Never reuse production's. |
+| `CMS_SESSION_SECRET` | `openssl rand -base64 48`, staging's own | Rotating it signs every CMS user out, makes an e-mail API key stored in `/admin/email` unreadable (§13) and, without a token key, disconnects Google. Never reuse production's. |
+| `CMS_MFA_ENCRYPTION_KEY` | `openssl rand -base64 32`, staging's own | **Required** for admin sign-in (two-step verification, §14); set it before the deploy that brings it (§16). Treat as permanent: rotating it forces every admin to re-enrol with a recovery code. Never reuse production's. |
 | `NEXT_PUBLIC_SITE_URL` | `https://de-bikefit-studio-git-staging-toshoni.vercel.app` | Canonicals, sitemap, OG, e-mail links, OAuth redirect URI. |
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | the shared web client | Staging redirect URI must be registered on the client (`booking-runbook.md` §4). |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32`, staging's own | Optional (falls back to a key derived from `CMS_SESSION_SECRET`); treat as permanent. |
-| `RESEND_API_KEY` | staging key | Without it mails are logged and skipped. |
-| `EMAIL_FROM`, `EMAIL_REPLY_TO` | sender on the verified domain, reply-to | |
+| `RESEND_API_KEY` | staging key | Optional: an admin can store it in `/admin/email` instead (§13); env wins. Without a key anywhere mails are logged and skipped. |
+| `EMAIL_FROM`, `EMAIL_REPLY_TO` | sender on the verified domain, reply-to | Optional, same as above. |
+| `GIFT_VOUCHER_RECIPIENT` | **empty** until a working order inbox is chosen | Optional, same as above (`/admin/email` → *Ontvanger cadeaubonbestellingen*). Unset in both places = gift voucher orders are "niet verstuurd" (§12). |
 | `GA4_PROPERTY_ID`, `GA4_SERVICE_ACCOUNT_JSON` | property id, service-account key | Admin analytics panel. Optional. |
 | `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | **empty**, unless testing the cookie banner | Build-time; the tag also needs *Analytics ingeschakeld* in the admin. |
 
@@ -98,10 +102,13 @@ DATABASE_URL='<staging pooled url>' npm run db:migrate
 | `0001_cms_foundation.sql` | Two enums and eleven `cms_*` tables. |
 | `0002_role_provider.sql` | Adds `provider` to `cms_role`. |
 | `0003_booking.sql` | The eight booking tables. |
-| `0004_cms_admin_mfa.sql` | Four `cms_mfa_*` tables and `cms_sessions.mfa_verified_at` (§11). |
+| `0004_integration_settings.sql` | `cms_integration_settings`, the e-mail service set up in `/admin/email` (§13). |
+| `0005_cms_admin_mfa.sql` | Four `cms_mfa_*` tables and `cms_sessions.mfa_verified_at` (§14). |
+| `0006_cms_session_limits.sql` | `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at` (§15). |
 
 All additive and guarded (no `DROP`, `TRUNCATE` or webshop `ALTER`); already-applied files
-are skipped. Expect `→ driver: neon-http (<host>)` and `✓ migrations applied to Neon`.
+are skipped. Expect `→ driver: neon-http (<host>)` and `✓ migrations applied to Neon`. The
+current build needs 0005 and 0006 before anyone signs in to `/admin` (§16).
 
 ### 3.2 Bootstrap
 
@@ -123,15 +130,18 @@ DATABASE_URL='<staging pooled url>' npm run cms:seed
 DATABASE_URL='<staging pooled url>' npm run cms:seed-booking
 ```
 
-`cms:seed` writes as the oldest active admin who has chosen their own password: a session
-with a temporary password may do nothing but change it (`cms-architecture.md` §4). On a fresh
-database, first sign in as `contact@toshoni.be` and replace the bootstrap password (§6, steps
-1–2, on a deployment that uses this database); until then `cms:seed` stops with that
-explanation and writes nothing. `cms:seed-booking` writes directly and does not need it.
+`cms:seed` writes as the oldest active admin who has chosen their own password and set up
+two-step verification: a session with a temporary password may do nothing but change it, and
+an admin without an authenticator gets no session at all (`cms-architecture.md` §4). On a
+fresh database, first sign in as `contact@toshoni.be`, replace the bootstrap password and set
+up the authenticator (§6, steps 1–2, on a deployment that uses this database); until then
+`cms:seed` stops with that explanation and writes nothing. `cms:seed-booking` writes directly
+and does not need it.
 
-`cms:seed` creates, fills and **publishes** eight pages (`/`, `/bikefit`, `/over-ons`,
-`/veelgestelde-vragen`, `/contact`, `/afspraak`, `/privacy`, `/algemene-voorwaarden`), both
-menus and the `/bikefit.html → /bikefit` redirect, through the real write API. Once real
+`cms:seed` creates, fills and **publishes** the Dutch pages (home, `/aanbod`, its seven
+offer pages and `/aanbod/cadeaubon`, `/voor-wie`, `/bikefit`, `/ons-team`,
+`/veelgestelde-vragen`, `/afspraak`, `/privacy`, `/algemene-voorwaarden`), both menus and the
+redirects (`/bikefit.html`, `/over-ons`, `/contact`), through the real write API. Once real
 editing has started use `-- --only-missing` or `-- --refresh-slug <slug>` instead of a full
 run: a full run overwrites the draft blocks of every seeded page.
 
@@ -203,7 +213,7 @@ Production (`main`) deploys the same way, only after an explicit go.
    store the ten recovery codes shown once (in 1Password, with the account). Only then is
    there a session. Every later sign-in asks for the password and a code.
 3. On the dashboard, check:
-   - **Pagina's** — eight pages, all "Gepubliceerd".
+   - **Pagina's** — the seventeen pages from §3.3, all "Gepubliceerd".
    - **Diensten**, **Locaties**, **Aanbieders** — five services, two locations, one provider.
    - **Instellingen → SEO** — `allowIndexing` is **off**; `<alias>/robots.txt` says
      `Disallow: /` and pages carry `<meta name="robots" content="noindex, nofollow">`.
@@ -241,12 +251,13 @@ Faster on Vercel: **Promote** or redeploy an earlier deployment from the Deploym
 
 ### Database
 
-**Nothing needs undoing.** All four migrations are additive; the webshop tables and data are
-identical before and after, and rolling back the code alone restores the previous
-behaviour. Older code ignores the booking tables; a page that uses the `booking` block reads
-as unpublished on code that predates it.
+**Nothing needs undoing.** All migrations (0000–0006) are additive; the webshop tables and data
+are identical before and after, and rolling back the code alone restores the previous
+behaviour. Older code ignores the booking tables, `cms_integration_settings`, the `cms_mfa_*`
+tables and the new `cms_sessions` columns; a page that uses the `booking` block reads as
+unpublished on code that predates it.
 
-The `cms_*` tables can stay in place. To remove them, drop the nineteen `cms_*` tables plus
+The `cms_*` tables can stay in place. To remove them, drop the twenty-four `cms_*` tables plus
 the `cms_role` and `cms_page_status` enum types. For a clean slate, reset the Neon `Staging`
 branch from its parent (`DEPLOYMENT.md` §7, mind the anonymisation warning) and re-run §3.
 
@@ -271,17 +282,19 @@ production step (database, env vars, DNS, deploy) needs an explicit go; Arend ex
 **Environment variables (Vercel → Production)**
 
 - [ ] `DATABASE_URL` (Neon `production`, pooled), a fresh `CMS_SESSION_SECRET` (never
-      staging's), a fresh `CMS_MFA_ENCRYPTION_KEY` (never staging's), `NEXT_PUBLIC_SITE_URL` =
-      the production origin.
+      staging's), a fresh `CMS_MFA_ENCRYPTION_KEY` (never staging's; set before the deploy,
+      §16), `NEXT_PUBLIC_SITE_URL` = the production origin.
 - [ ] `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, a production-only
       `GOOGLE_TOKEN_ENCRYPTION_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO`,
       `NEXT_PUBLIC_GA4_MEASUREMENT_ID`, `GA4_SERVICE_ACCOUNT_JSON`, optionally
-      `GA4_PROPERTY_ID`. Staging keeps its own values.
+      `GA4_PROPERTY_ID`. Staging keeps its own values. The e-mail values and the gift voucher
+      order inbox may instead be set by an admin in `/admin/email` (§13); an env value wins.
 
 **Database (Neon `production`)**
 
-- [ ] `db:migrate` (0000–0004), then `cms:bootstrap` (change the admin password and set up
-      two-step verification immediately), `cms:seed`, `cms:seed-booking` — or, if production already has content,
+- [ ] `db:migrate` (0000–0006, before the deploy that needs them, §16), then `cms:bootstrap`
+      (change the admin password and set up two-step verification immediately), `cms:seed`,
+      `cms:seed-booking` — or, if production already has content,
       `cms:seed -- --refresh-slug` for **`afspraak`**, **`privacy`** and
       **`algemene-voorwaarden`**.
 - [ ] **Retention** scheduled: `npm run cms:retention` monthly against production, dry run
@@ -300,7 +313,7 @@ production step (database, env vars, DNS, deploy) needs an explicit go; Arend ex
 - [ ] **Pricing** decided: real prices entered and the flag cleared, or deliberately hidden.
 - [ ] **Photography** replaced with real studio photos via *Media*, Dutch alt text on every
       image.
-- [ ] **Content-Security-Policy**: the admin CSP enforced and validated on staging (§12,
+- [ ] **Content-Security-Policy**: the admin CSP enforced and validated on staging (§15,
       `admin-csp.md`); public-site CSP decided (not set yet; `booking-runbook.md` §11.4).
 
 **Go-live**
@@ -437,13 +450,165 @@ puts the page rows and draft blocks back exactly (the backup uses the §9 format
 
 ---
 
-## 11. Admin two-step verification (TOTP), 13 Oct 2026
+## 11. Page cleanup patch (Toshoni's site review, 13 Oct 2026)
+
+What the review changes, and where:
+
+| Where | Code (deploy) | Content (`cms:patch-page-cleanup`) |
+| --- | --- | --- |
+| Top-level pages | no visible "Home / …" breadcrumb (JSON-LD stays; nested pages keep theirs), compact top spacing | — |
+| `/aanbod`, `/voor-wie`, `/ons-team` | card/name headings become `<h2>` when the section has no title | kicker without "· Ninove"; no "Waar je ook staat" / "Wie je ontmoet" heading; "Junioren" → "Jeugd" and the new junior text; meta description of `/voor-wie` |
+| `/afspraak` | widget headings follow the section level | page head, "Vier manieren om te boeken", the "Boek je bikefit" contact section and closing band removed; kicker "Online boeken" emptied; "Andere vraag?" (mail + phone) appended to "Voor je komt" |
+| `/contact` | redirects keep the query string (`/contact?dienst=x` → `/afspraak?dienst=x`) | 301 → `/afspraak`, then the page unpublished (row, draft, snapshot kept) |
+| Menus | — | "Contact" links → `/afspraak` (labels kept) |
+| Footer | identity line and "Ninove · Op afspraak" note removed | settings `contact.email` `""` → `info@debikefitstudio.be` |
+
+Every field edit names the value it expects (the seed at `staging@9c655fe`); a field an editor
+changed since, a page with unpublished draft edits, an existing `/contact` redirect to another
+target or a different e-mail address makes the patch refuse — no override. **No migrations.
+Never a full `cms:seed`, `--refresh-slug` or a rerun of `cms:rollout-aanbod` for this.**
+
+1. Deploy the code first (release gate, staging READY). Old content renders fine on the new
+   code; the footer shows the e-mail only once step 3 has run.
+2. **Dry run** (read-only like §9; self-test section 17):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:patch-page-cleanup
+   ```
+
+   Expected, in this order: `~ page /aanbod — 1 change(s)`, `~ page /voor-wie — 7 change(s)`,
+   `~ page /ons-team — 3 change(s)`, `~ page /afspraak — 6 change(s)` (each change listed),
+   `~ page /contact — unpublish`, `+ redirect /contact → /afspraak (301) — create`,
+   `~ menu main` and `~ menu footer — "Contact" /contact → /afspraak`,
+   `~ settings contact.email — "" → info@debikefitstudio.be`, the guard counts, then
+   `dry run: run again with --apply to write`. **Stop and report on any `!` line.**
+3. **Apply** (optional Neon snapshot first; the tool writes its own backup before the first
+   write):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:patch-page-cleanup -- --apply \
+     --expect-host '<host part of the staging DATABASE_URL>' --backup-dir <dir>
+   ```
+
+   Backup `page-cleanup-patch-<timestamp>.json`: rows and blocks of the five pages, both menus,
+   and the contact settings value. Order: e-mail, pages (publish last per page), redirect, then
+   unpublish `/contact`, menus. It verifies the published snapshots, the redirect, the menus
+   and the e-mail, checks the booking tables are unchanged, audits `patch.page-cleanup.apply`
+   and always revokes its session. A second dry run prints `dry run: nothing to do`.
+4. **Verify** after the 5-minute cache window (load each page twice): see the smoke list in the
+   work-block report; no bookings, no mail.
+
+**Rollback:** `npm run cms:patch-page-cleanup -- --restore <backup.json> --expect-host '<host>'`
+restores the five pages (re-publishing `/contact`) and both menus, disables the `/contact`
+redirect and sets `contact.email` back (other contact fields untouched). Then, if needed, the
+code: redeploy `staging@9c655fe`.
+
+
+## 12. Gift voucher patch ("Cadeaubon", 13 Oct 2026)
+
+What it adds, and where:
+
+| Where | Code (deploy) | Content (`cms:patch-cadeaubon`) |
+| --- | --- | --- |
+| `/aanbod/cadeaubon` | block `giftVoucher` (order form + server action, `src/lib/gift-voucher/`) | page created with one `giftVoucher` block and published |
+| `/aanbod` | category `overige` ("Overige"); a `giftVoucher` page becomes a card "Bedrag naar keuze" | catalogue groups: "Overige" appended after Bikefit and Begeleiding (exact-value guard) |
+
+Nothing else: no settings, menus, redirects, booking tables, migrations or env vars. Home and
+`/bikefit` keep their own groups. Independent of §11 (different fields); run it after §11.
+The order recipient is **not** set by any patch: it is `/admin/email` (§13)
+or env `GIFT_VOUCHER_RECIPIENT` (see `booking-runbook.md` § Cadeaubon), and stays empty until
+a working inbox is chosen, so orders show "niet verstuurd". **Never a full `cms:seed` or
+`--refresh-slug` for this.**
+
+1. Deploy the code first (release gate, staging READY). Old content renders unchanged on the
+   new code.
+2. **Dry run** (read-only; self-test section 18):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:patch-cadeaubon
+   ```
+
+   Expected: `+ page /aanbod/cadeaubon — create and publish`,
+   `~ page /aanbod — 1 change(s), then publish` with `offerCatalogue.groups: "…meegroeit.\"}]…" →
+   "…meegroeit.\"},{\"category\":\"overige\",\"title\":\"Overige\",\"lede\":\"\"}]…"`, the guard
+   counts, then `dry run: run again with --apply to write`. **Stop and report on any `!` line.**
+3. **Apply** (the tool writes its own backup before the first write):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:patch-cadeaubon -- --apply \
+     --expect-host '<host part of the staging DATABASE_URL>' --backup-dir <dir>
+   ```
+
+   Backup `cadeaubon-patch-<timestamp>.json` (the `/aanbod` row and blocks; the new page is
+   recorded as created). Order: voucher page (create, block, publish), then `/aanbod` (groups,
+   publish). It verifies both published snapshots, checks the booking tables, audits
+   `patch.cadeaubon.apply` and always revokes its session. A second dry run prints
+   `dry run: nothing to do`.
+4. **Verify** after the 5-minute cache window (GETs only, load twice): `/aanbod` lists
+   "Overige" last with a "Cadeaubon" card ("Bedrag naar keuze") linking to `/aanbod/cadeaubon`;
+   that page has one `<h1>` "Cadeaubon", the breadcrumb Home / Aanbod / Cadeaubon, the labels
+   "Bedrag in euro", "Persoonlijke boodschap", "Voornaam en naam", "E-mail", "Telefoon" and the
+   button "Bestel nu". `/afspraak?dienst=cadeaubon` shows the normal widget, not an enquiry.
+   **Do not submit the form against a configured mail provider** unless an order mail to the
+   studio is intended; without an API key (env or `/admin/email`) a submit shows "Je
+   bestelling is niet verstuurd" and sends nothing (that is the expected staging state today).
+
+**Rollback:** `npm run cms:patch-cadeaubon -- --restore <backup.json> --expect-host '<host>'`
+unpublishes `/aanbod/cadeaubon` (row kept; a later apply re-publishes it) and puts `/aanbod`
+back. Then, if needed, the code. Mail delivery itself is configured separately:
+`docs/booking-runbook.md` § 12.
+
+## 13. E-mail service in the admin (`/admin/email`, migration 0004, 13 Oct 2026)
+
+Admins can set up the e-mail service themselves: **Beheer → E-mail** (`/admin/email`,
+permission `email.manage`). API key (write-only, stored AES-256-GCM sealed in
+`cms_integration_settings`, key derived from `CMS_SESSION_SECRET`), sender, reply-to, gift
+voucher order inbox, a status card and a test-mail button. Env variables keep working and win
+per field. Details: `cms-architecture.md` (site settings section) and `booking-runbook.md` §6.7.
+With the security release (§15), storing or removing the key and saving the addresses are
+sensitive changes: an admin confirms their identity first (*Bevestig je identiteit*, password
+and code, valid 5 minutes).
+
+**Release steps (staging):** as written below for a build **without** the security release.
+A build that contains it (§14, §15) must not be deployed before 0005 and 0006 exist: then
+follow the combined order in §16, which migrates 0004 in the same run.
+
+1. Deploy the code (release gate, READY). Safe before the migration: a missing table counts as
+   "nothing stored"; `/admin/email` then shows a red notice and refuses to save.
+2. **Migrate** (additive, idempotent; 0004 creates only `cms_integration_settings`):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run db:migrate
+   ```
+
+   Expect `→ driver: neon-http (<host>)` and `✓ migrations applied to Neon`. Re-running is a
+   no-op.
+3. **Verify** (admin login, nothing sent): `/admin/email` loads without the red notice; Status
+   reads "Niet ingesteld" with *Te doen* for API key, sender and recipient; the nav shows
+   "E-mail" for admins only. Optional: save an invalid sender (`abc`) and see it refused
+   (with the security release: within 5 minutes of signing in, or after *Bevestig je
+   identiteit*). Do **not** paste a real key or press *Testbericht versturen* unless sending
+   is intended.
+4. `CMS_SESSION_SECRET` must stay as it is: rotating it makes a stored key unreadable (the page
+   then says so; nothing is sent until the key is pasted again).
+5. After a prod→staging refresh, `anonymize-staging.sql` has cleared the stored key and the
+   order inbox (`DEPLOYMENT.md` §7): set a staging key and a staging inbox again before testing
+   sends.
+
+**Rollback:** code back to the previous SHA; the table can stay (older code ignores it). If a key
+was stored and must go: **Opgeslagen sleutel verwijderen** in `/admin/email` first.
+
+---
+
+## 14. Admin two-step verification (TOTP, migration 0005, 13 Oct 2026)
 
 Admins now sign in with a password **and** a code from an authenticator app (1Password or a
 free app such as Aegis, Ente Auth or Google Authenticator); recovery codes cover a lost
 phone. Editors and providers are unchanged. Design: `cms-architecture.md` §4, "Two-step
 verification". It needs one migration and one new secret, in this order. Arend executes;
-staging is autonomous after the release gate, production needs Toshoni's go.
+staging is autonomous after the release gate, production needs Toshoni's go. It ships together
+with §15 (same branch, `feat/security-baseline-20261013`); rolling both out after §13: the
+combined order in §16. The steps below are the detail of that order.
 
 1. **Secret first.** Generate a staging-only key (`openssl rand -base64 32`), store it in
    1Password, then set `CMS_MFA_ENCRYPTION_KEY` in Vercel → Preview (branch `staging`) as
@@ -456,24 +621,27 @@ staging is autonomous after the release gate, production needs Toshoni's go.
    DATABASE_URL='<staging pooled url>' npm run db:migrate
    ```
 
-   Expect `0004_cms_admin_mfa` to be applied and `✓ migrations applied to Neon`. Check:
-   `cms_mfa_factors`, `cms_mfa_recovery_codes`, `cms_mfa_challenges`, `cms_mfa_attempts`
-   exist and `cms_sessions.mfa_verified_at` is a nullable column. Nothing else changes.
+   Expect `0005_cms_admin_mfa` to be applied and `✓ migrations applied to Neon`; the same run
+   applies `0004_integration_settings` if §13 has not run yet and `0006_cms_session_limits`
+   (§15), since the code ships them together. Check: `cms_mfa_factors`,
+   `cms_mfa_recovery_codes`, `cms_mfa_challenges`, `cms_mfa_attempts` exist and
+   `cms_sessions.mfa_verified_at` is a nullable column.
 3. **Deploy** the code (release gate, READY). From that moment every existing **admin**
    session is refused: admins are sent to sign in again.
 4. **First admin sign-in** (Toshoni, `contact@toshoni.be`): password → *Tweestapsverificatie
    instellen* → scan the QR code → six-digit code → store the ten recovery codes in 1Password
    with the account → dashboard. No lockout: an admin without an authenticator always gets the
    enrolment step after the password. *Gebruikers* shows "Tweestapsverificatie aan".
-5. **CLI scripts** (`cms:seed`, `cms:rollout-aanbod`, `cms:patch-booking-cta`) act only as an
-   admin who has enrolled; until step 4 is done they stop with "no active admin has two-step
+5. **CLI scripts** (`cms:seed`, `cms:rollout-aanbod`, `cms:patch-booking-cta`,
+   `cms:patch-page-cleanup`, `cms:patch-cadeaubon`) act only as an admin who has enrolled;
+   until step 4 is done they stop, dry runs included, with "no active admin has two-step
    verification yet".
 6. **Checks:** `/admin/login` does **not** show "Tweestapsverificatie is op deze server niet
    geconfigureerd" (if it does, the key is missing or malformed: fix it in Vercel, redeploy); a
    wrong code is refused; `/admin` without a session goes to the login page; an editor still
    signs in with a password only; the audit log shows `auth.mfa_enrol` and `auth.mfa_verify`.
 
-   **Order matters:** the new build reads the 0004 tables at sign-in, so deploying it before
+   **Order matters:** the new build reads the 0005 tables at sign-in, so deploying it before
    step 2 breaks `/admin/login` until the migration runs. Migrate first.
 
 **Lost authenticator.** Sign in with a recovery code, then *Mijn account →
@@ -513,13 +681,14 @@ staging admins enrol anew.
 Production, `db:migrate` against Neon `production` after a snapshot, deploy, then the first
 admin enrols immediately.
 
+---
 
-## 12. Admin session limits, step-up, stronger password hashing and admin CSP, 13 Oct 2026
+## 15. Admin session limits, step-up, stronger password hashing and admin CSP (migration 0006, 13 Oct 2026)
 
-Security block 3, on the same branch as §11 (`feat/security-baseline-20261013`) and rolled out
-together with it or right after it. Design: `cms-architecture.md` §4 (Passwords, Sessions,
-Step-up) and `docs/admin-csp.md`. No new secret. Arend executes; staging is autonomous after
-the release gate, production needs Toshoni's go.
+Security block 3, on the same branch as §14 (`feat/security-baseline-20261013`) and rolled out
+together with it or right after it (combined order: §16). Design: `cms-architecture.md` §4
+(Passwords, Sessions, Step-up) and `docs/admin-csp.md`. No new secret. Arend executes; staging
+is autonomous after the release gate, production needs Toshoni's go.
 
 What changes for people:
 
@@ -527,8 +696,9 @@ What changes for people:
   signing in** at the latest. Editors and providers keep their 14-day sessions (a separate
   decision, not changed silently).
 - **Sensitive admin changes** (create a user, change a role, (de)activate, reset a password,
-  change your own password) need *Bevestig je identiteit* (password + code) within the last
-  5 minutes. Signing in counts; the form sits above those forms.
+  change your own password, change the e-mail service settings in `/admin/email`) need
+  *Bevestig je identiteit* (password + code) within the last 5 minutes. Signing in counts; the
+  form sits above those forms.
 - **Password hashes** get stronger at the next sign-in of each user (automatic, nothing to do).
 - **`/admin` sends a Content-Security-Policy in report-only mode**: nothing is blocked yet.
 
@@ -540,9 +710,10 @@ Steps:
    DATABASE_URL='<staging pooled url>' npm run db:migrate
    ```
 
-   Expect `0005_cms_session_limits` (and `0004_cms_admin_mfa` if §11 has not run yet) to be
-   applied. Check: `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at`
-   exist as nullable `timestamptz`. Nothing else changes.
+   Expect `0006_cms_session_limits` (and `0004_integration_settings` / `0005_cms_admin_mfa` if
+   §13 / §14 have not run yet) to be applied; after §14 step 2 this is a no-op. Check:
+   `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at` exist as nullable
+   `timestamptz`. Nothing else changes.
 
    **Order matters:** the new build reads both columns on every admin request, so deploying it
    before the migration breaks `/admin`. Migrate first.
@@ -565,9 +736,10 @@ Steps:
    the normal branch flow, then repeat step 4 (now nothing may break). Rollback: set it back
    to `'report-only'` and redeploy.
 
-**CLI note.** `cms:seed`, `cms:rollout-aanbod` and `cms:patch-booking-cta` act through an admin
-session, which now also ends after 15 idle minutes; they make requests continuously, so this
-only matters if a run is paused for that long — run it again.
+**CLI note.** `cms:seed`, `cms:rollout-aanbod`, `cms:patch-booking-cta`, `cms:patch-page-cleanup`
+and `cms:patch-cadeaubon` act through an admin session, which now also ends after 15 idle
+minutes; they make requests continuously, so this only matters if a run is paused for that
+long — run it again.
 
 **Rollback.** Code first: redeploy the previous build; it ignores the two columns (sessions
 then behave as before: 14 days, sliding, no step-up) and sends no admin CSP. The migration does
@@ -577,3 +749,64 @@ the parameters are read from the hash itself).
 **Production** (after Toshoni's go): the same steps against Neon `production` after a
 snapshot, then deploy; CSP enforcement on production only after it was enforced and validated
 on staging.
+
+---
+
+## 16. Security release on staging: migrations 0004 → 0005 → 0006 in one rollout
+
+The order to follow when the security branch (`feat/security-baseline-20261013`: §14 and §15)
+reaches staging after the e-mail service of §13, whether or not 0004 is already on the staging
+database. One new secret, one migration run, one deploy. Arend executes; staging is autonomous
+after the release gate, production needs Toshoni's go.
+
+1. **Release gate** on the exact SHA (six steps).
+2. **Secret, before the deploy.** `CMS_MFA_ENCRYPTION_KEY` in Vercel → Preview (branch
+   `staging`), *Sensitive*, a staging-only value kept in 1Password (§14 step 1). Leave
+   `CMS_SESSION_SECRET` exactly as it is: rotating it signs everyone out, and the e-mail API key
+   stored in `/admin/email` is sealed under a key derived from it (§13 step 4).
+3. **Neon snapshot**: a branch from `Staging` (e.g. `staging-pre-security-2026-10-13`).
+4. **Migrate, once:**
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run db:migrate
+   ```
+
+   Applies, in this order, whatever the database still lacks: `0004_integration_settings`,
+   `0005_cms_admin_mfa`, `0006_cms_session_limits`. Expect `→ driver: neon-http (<host>)` and
+   `✓ migrations applied to Neon` (the script does not list file names). Check:
+   `cms_integration_settings` and the four `cms_mfa_*` tables exist, and
+   `cms_sessions.mfa_verified_at`, `absolute_expires_at` and `reauthenticated_at` are nullable
+   `timestamptz`. The live build keeps working on the extended schema. (A database that once
+   ran the security migrations under their earlier numbers does not get 0004 this way:
+   `cms-architecture.md` §2, Migrations.)
+
+   **Migrate before deploying:** the security build reads the 0005 tables at sign-in and the
+   0006 columns on every admin request, so without them `/admin/login` and `/admin` break.
+   0004 is safe either way: the e-mail code treats a missing table as "nothing stored".
+5. **Deploy** (merge to `staging`, wait for READY). Every existing admin session is refused
+   from then on: admins sign in again.
+6. **Admin enrolment, right after the deploy** (Toshoni, `contact@toshoni.be`): password (a
+   temporary one is replaced first) → *Tweestapsverificatie instellen* → QR code → six-digit
+   code → the ten recovery codes into 1Password with the account → dashboard (§14 step 4).
+   `/admin/login` must not say "Tweestapsverificatie is op deze server niet geconfigureerd";
+   if it does, step 2 is missing or malformed: fix it, redeploy.
+7. **Checks:** the two-step checks (§14 step 6), the step-up and idle checks (§15 step 3), and
+   `/admin/email` (§13 step 3): no red notice, and a save more than 5 minutes after signing in
+   asks for *Bevestig je identiteit* first. No real key, no test message, no bookings.
+8. **CSP browser checklist** (`admin-csp.md` §3, `/admin/email` included; §15 step 4). The
+   switch to enforcement stays a separate change (§15 step 5).
+9. **CLIs from now on.** `cms:seed`, `cms:rollout-aanbod`, `cms:patch-booking-cta`,
+   `cms:patch-page-cleanup` and `cms:patch-cadeaubon` refuse to run, dry runs included, until an
+   admin has a permanent password and an authenticator (step 6): they stop with "every active
+   admin still has a temporary password" or "no active admin has two-step verification yet".
+   If the page cleanup (§11) or the gift voucher (§12) is not on staging yet, run it after
+   step 6.
+
+**Rollback.** Code first: redeploy the previous build (effects in §14 and §15, Rollback); the
+migrations stay, older code ignores the new tables and columns. Keep `CMS_MFA_ENCRYPTION_KEY`
+and `CMS_SESSION_SECRET` unchanged for a later re-deploy.
+
+**Production** (after Toshoni's go): the same order with a production-only
+`CMS_MFA_ENCRYPTION_KEY` in Vercel → Production, a snapshot of Neon `production`, `db:migrate`,
+deploy, and the first admin enrols immediately; CSP enforcement on production only after it was
+enforced and validated on staging.

@@ -415,3 +415,25 @@
     }
   }
 }
+
+/* ---- gift voucher order form (`giftVoucher`, /aanbod/cadeaubon) --------- */
+/* Reuses the booking form fields; only the panel spacing is its own, the
+   same as the enquiry panel. */
+@layer components {
+  /* Doubled class: `.studio-booking` (globals.css) loads later in the layer. */
+  .studio-booking.studio-voucher {
+    max-width: 720px;
+    padding: var(--ds-space-xl) var(--ds-space-lg);
+  }
+  .studio-voucher .studio-booking__confirm {
+    padding: 0;
+  }
+  .studio-voucher .studio-booking__alert p + p {
+    margin-top: var(--ds-space-2xs);
+  }
+  @media (max-width: 560px) {
+    .studio-booking.studio-voucher {
+      padding: var(--ds-space-md);
+    }
+  }
+}

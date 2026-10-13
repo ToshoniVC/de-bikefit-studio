@@ -11,7 +11,8 @@ import type { CmsRole } from '@/db/cms-schema';
  *                 plus read-only access to bookings, services, locations and
  *                 providers.
  *  - **admin**  — everything, including publishing, users, redirects, site
- *                 settings, the audit log and all booking management.
+ *                 settings, the e-mail service, the audit log and all booking
+ *                 management.
  *
  * Worker B must call `can(user.role, '<permission>')` (or `requireCmsUser`
  * with a role) in every server action *and* use it to hide UI. Hiding alone is
@@ -47,6 +48,11 @@ export const CMS_PERMISSIONS = [
   'user.read',
   'user.manage',
   'audit.read',
+  /**
+   * `/admin/email`: e-mail service key, sender, reply-to, order inbox, test
+   * mail. Changes also need a recent step-up (`src/lib/email/repo.ts`).
+   */
+  'email.manage',
   // Booking
   'booking.read',
   'booking.read.own',

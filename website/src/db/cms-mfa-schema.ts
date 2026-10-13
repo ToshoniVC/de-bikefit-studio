@@ -1,6 +1,6 @@
 /**
  * CMS two-step verification (TOTP) tables, created by
- * `drizzle/0004_cms_admin_mfa.sql`. Kept apart from `./cms-schema.ts`, which is
+ * `drizzle/0005_cms_admin_mfa.sql`. Kept apart from `./cms-schema.ts`, which is
  * already past the file-size limit; the same `cms_` prefix and conventions
  * apply, and `drizzle.config.ts` lists both files. Architecture:
  * docs/cms-architecture.md §4 (MFA).

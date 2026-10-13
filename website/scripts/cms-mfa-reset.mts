@@ -19,7 +19,7 @@
  *
  * The operator's database credentials are the authorisation, as for every
  * CMS CLI; --expect-host must equal the DATABASE_URL host for a Neon write.
- * Logic: `scripts/lib/mfa-reset.mts`. Runbook: docs/staging-runbook.md §11.
+ * Logic: `scripts/lib/mfa-reset.mts`. Runbook: docs/staging-runbook.md §14.
  */
 import { config } from 'dotenv';
 import {

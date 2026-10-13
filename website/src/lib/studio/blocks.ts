@@ -48,6 +48,7 @@ const ANCHOR_BY_TYPE: Partial<Record<BlockType, string>> = {
   booking: 'boeken',
   offer: 'dienst',
   offerCatalogue: 'aanbod',
+  giftVoucher: 'bestellen',
   team: 'team',
 };
 

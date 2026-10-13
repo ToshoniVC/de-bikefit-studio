@@ -28,8 +28,10 @@ both `security` modules.
    every `<script>` it emits, its script preloads and its stylesheet links.
 3. **Per-request rendering.** `src/app/admin/layout.tsx` awaits
    `connection()`, so every admin route renders per request (a prerendered page
-   would carry no nonce). After `npm run build` all 21 `/admin` routes are `ƒ`;
-   `/admin/logout` was the only static one.
+   would carry no nonce). After `npm run build` all 21 `/admin` routes of the
+   security branch were `ƒ`; `/admin/logout` was the only static one.
+   `/admin/email`, merged from `staging` afterwards, renders under the same
+   layout: check that it shows as `ƒ` in the next build output (22 routes).
 4. **Client-side navigation** inside the admin keeps the first document's
    policy and nonce; the chunks it loads are trusted through
    `'strict-dynamic'`.
@@ -122,7 +124,9 @@ Pages:
 6. `/admin/users`.
 7. `/admin/account` and `/admin/password`.
 8. `/admin/bookings`; `/admin/agenda` as a provider account.
-9. `/admin/settings`: every section.
+9. `/admin/settings`: every section; `/admin/email`: the status card, the
+   forms and *Bevestig je identiteit* (do not store a real key or send a
+   test message unless that is intended).
 10. `/admin/services`: the colour swatches show their colours.
 11. Quick visits: `/admin/locations`, `/admin/providers` and one provider,
     `/admin/navigation`, `/admin/redirects`, `/admin/audit`.

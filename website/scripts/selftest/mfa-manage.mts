@@ -323,7 +323,7 @@ export async function managementChecks(
   const reEnrolled = again.ok
     ? await flow.challengeConfirmEnrolment(codeAt(secretOf(again.data.otpauthUri)), CTX)
     : again;
-  check('re-enrolled (sections 14–16 act as this admin)', reEnrolled.ok);
+  check('re-enrolled (sections 14–19 act as this admin)', reEnrolled.ok);
   check(
     'CLI actor lookup picks the re-enrolled admin',
     (await findActingAdmin({ db, orm, schema }))?.id === admin.id,

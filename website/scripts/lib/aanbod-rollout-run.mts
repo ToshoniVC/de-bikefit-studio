@@ -73,8 +73,9 @@ export function readOnlyDb(db: CmsDatabase): CmsDatabase {
 }
 
 /**
- * The oldest active admin who has chosen their own password (`./cms-actor.mts`
- * explains why); the CLIs act as this user (never create one).
+ * The oldest active admin who has chosen their own password and set up
+ * two-step verification (`./cms-actor.mts` explains why); the CLIs act as
+ * this user (never create one).
  */
 export async function findActor(deps: Pick<PlanDeps, 'db' | 'orm' | 'schema'>) {
   const actor = await findActingAdmin(deps);

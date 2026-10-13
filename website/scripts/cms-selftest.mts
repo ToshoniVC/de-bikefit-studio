@@ -46,6 +46,26 @@
  *      retargets only "Boek je bikefit" hrefs to /afspraak (phone links keep
  *      dialling), session cleanup, idempotent, restore
  *      (`scripts/selftest/booking-cta.mts`)
+ *  17. page cleanup patch (review 13 Oct 2026): from the staging content
+ *      before the review (fixture), dry run writes nothing, refuses drafts and
+ *      editor-changed fields, applies exactly the review (pages, /contact
+ *      301 + unpublish, menus, e-mail), verified, idempotent, restore
+ *      (`scripts/selftest/page-cleanup.mts`)
+ *  18. gift voucher: `cms:patch-cadeaubon` (dry run writes nothing, draft
+ *      guard, page + "Overige" published and verified, idempotent, restore)
+ *      and the order service on the database with `fetch` replaced (missing
+ *      key/sender or a refusal is "not sent", only an accepted request is a
+ *      success, no double mail, rate limit, the recipient is its own setting
+ *      with an env override and never `contact.email`)
+ *      (`scripts/selftest/cadeaubon.mts`)
+ *  19. e-mail service set up in /admin/email: migration 0004, admin-only
+ *      access (no session / editor / provider / admin without MFA refused,
+ *      nothing written), changing key or addresses only after a recent
+ *      step-up (status and test mail without one; `selftest/email-access.mts`),
+ *      missing config is "not sent" without a provider call, validation, the
+ *      key sealed and never in status, settings, audit or logs, admin config
+ *      end to end, provider failure, env wins per field, rotated secret,
+ *      missing table, key removal (`scripts/selftest/email-service.mts`)
  *
  * Counts failures and exits non-zero at the end when any check failed.
  *
@@ -227,6 +247,7 @@ async function main() {
     'cms_redirects',
     'cms_site_settings',
     'cms_audit_log',
+    'cms_integration_settings',
     // webshop tables must be created by the baseline migration, untouched
     'users',
     'products',
@@ -335,7 +356,7 @@ async function main() {
     cookieJar,
   });
 
-  // 5c: two-step verification; leaves the admin enrolled for sections 14–16.
+  // 5c: two-step verification; leaves the admin enrolled for sections 14–19.
   const { mfaSection } = await import('./selftest/mfa.mjs');
   await mfaSection({ db, admin: user, password: ADMIN_NEW_PASSWORD, check, section, cookieJar });
 
@@ -483,6 +504,36 @@ async function main() {
     section,
     cookieJar,
     backupDir: resolve(process.cwd(), DATA_DIR, 'rollout-backups'),
+  });
+
+  const { pageCleanupSection } = await import('./selftest/page-cleanup.mjs');
+  await pageCleanupSection({
+    db,
+    admin: user,
+    check,
+    section,
+    cookieJar,
+    backupDir: resolve(process.cwd(), DATA_DIR, 'rollout-backups'),
+  });
+
+  const { cadeaubonSection } = await import('./selftest/cadeaubon.mjs');
+  await cadeaubonSection({
+    db,
+    admin: user,
+    check,
+    section,
+    cookieJar,
+    backupDir: resolve(process.cwd(), DATA_DIR, 'rollout-backups'),
+  });
+
+  const { emailServiceSection } = await import('./selftest/email-service.mjs');
+  await emailServiceSection({
+    db,
+    admin: user,
+    password: ADMIN_NEW_PASSWORD,
+    check,
+    section,
+    cookieJar,
   });
 }
 

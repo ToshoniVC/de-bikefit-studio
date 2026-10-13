@@ -1,6 +1,6 @@
 {
-  "id": "76cad101-2b14-4714-9dfe-2fb01ce5669e",
-  "prevId": "ec9235cc-bcd5-4215-aded-54984bb63c8f",
+  "id": "ec9235cc-bcd5-4215-aded-54984bb63c8f",
+  "prevId": "44197f5d-65e3-4e05-843a-ee050f72ee9d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1048,6 +1048,77 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.cms_integration_settings": {
+      "name": "cms_integration_settings",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "config": {
+          "name": "config",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "secret_ciphertext": {
+          "name": "secret_ciphertext",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "secret_hint": {
+          "name": "secret_hint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "secret_updated_at": {
+          "name": "secret_updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_by": {
+          "name": "updated_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "cms_integration_settings_updated_by_cms_users_id_fk": {
+          "name": "cms_integration_settings_updated_by_cms_users_id_fk",
+          "tableFrom": "cms_integration_settings",
+          "tableTo": "cms_users",
+          "columnsFrom": [
+            "updated_by"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -2420,18 +2491,6 @@
         },
         "mfa_verified_at": {
           "name": "mfa_verified_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "absolute_expires_at": {
-          "name": "absolute_expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reauthenticated_at": {
-          "name": "reauthenticated_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false

@@ -26,6 +26,7 @@ import {
  * - `offerCatalogue`  the grouped overview; its cards are DERIVED from the
  *                     published offer pages, so a title or price edited on an
  *                     offer page changes every overview without a second edit
+ * - `giftVoucher`     the "Cadeaubon" order form, listed under Overige
  * - `team`            team profiles with an initials fallback for portraits
  *
  * Defaults are deliberately neutral: an editor who adds a block sees the
@@ -91,6 +92,28 @@ export const offerCatalogueSchema = z.object({
     .default([]),
   showPrices: z.boolean().default(true),
   cta: optionalLinkSchema,
+});
+
+/**
+ * `giftVoucher` — the "Cadeaubon" page: a short intro and the order form
+ * (amount of the visitor's choice, personal message, contact details, "Bestel
+ * nu"). The form and its rules are code (`src/lib/gift-voucher/`); the block
+ * owns only the copy around it. Its page under `/aanbod/` also gives it a
+ * card in the overview (category Overige), like an `offer` block.
+ */
+export const giftVoucherSchema = z.object({
+  /** Position inside Overige on every overview (lower first). */
+  sortOrder: z.number().int().min(0).max(999).default(0),
+  eyebrow,
+  title: z.string().min(1),
+  /** One or two sentences for the overview card; empty = the intro. */
+  summary: z.string().default(''),
+  intro: z.string().default(''),
+  /** Shown above the form; plain text. */
+  formTitle: z.string().default(''),
+  /** Shown once the mail provider accepted the request; empty = a neutral default. */
+  sentTitle: z.string().default(''),
+  sentText: z.string().default(''),
 });
 
 /**
@@ -161,6 +184,25 @@ export const aanbodBlockRegistry = {
       })),
       showPrices: true,
       cta: { label: 'Bekijk het volledige aanbod', href: OFFER_INDEX_PATH, external: false },
+    },
+  },
+
+  giftVoucher: {
+    label: 'Cadeaubon (bestelformulier)',
+    description:
+      'Bestelformulier voor een cadeaubon: bedrag naar keuze, persoonlijke boodschap en contactgegevens. “Bestel nu” mailt de aanvraag naar de ontvanger uit Beheer → E-mail; factuur en betaallink maak je zelf op. Hoort op /aanbod/cadeaubon.',
+    editorHint:
+      'Zonder werkende e-mailverzending of zonder ontvanger (Beheer → E-mail) meldt het formulier dat de bestelling niet verstuurd is. Vermeld geen geldigheid of voorwaarden die nog niet beslist zijn.',
+    schema: giftVoucherSchema,
+    defaultData: {
+      sortOrder: 0,
+      eyebrow: 'Aanbod',
+      title: 'Cadeaubon',
+      summary: '',
+      intro: '',
+      formTitle: 'Bestel je cadeaubon',
+      sentTitle: 'Je bestelling is verstuurd',
+      sentText: '',
     },
   },
 

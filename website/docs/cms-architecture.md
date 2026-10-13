@@ -27,14 +27,14 @@ File ownership during parallel work comes from the work-block file (see
 
 | Area | Paths |
 | --- | --- |
-| Data | `src/db/cms-schema.ts` (all `cms_*` tables, CMS + booking), `src/db/cms.ts` (driver), `drizzle/**`, `drizzle.config.ts` |
+| Data | `src/db/cms-schema.ts` (the `cms_*` tables of the CMS and booking), `src/db/cms-mfa-schema.ts` (the four `cms_mfa_*` tables), `src/db/cms.ts` (driver), `drizzle/**`, `drizzle.config.ts` |
 | CMS core | `src/lib/cms/{auth,guard,session,password,permissions,blocks,block-primitives,blocks-aanbod,content,offers-content,repo,repo-admin}.ts` |
 | Offer ("Aanbod") | `src/lib/offers/{catalogue,defaults}.ts` (plain), `src/lib/studio/seed-content/**` (seed + rollout content), `src/lib/studio/editorial-images.{ts,json}`, `scripts/cms-rollout-aanbod.mts`, `scripts/lib/aanbod-rollout{,-plan,-run}.mts` — see §14 |
 | Admin | `src/app/admin/**`, `src/components/admin/**`, `src/lib/cms/actions/**` (server actions + `sanitize.ts`), `src/app/api/cms/media/**` |
 | Public site | `src/app/(studio)/**`, `src/components/studio/**`, `src/lib/studio/**`, `src/app/sitemap.ts`, `src/app/robots.ts` |
 | Booking | `src/lib/booking/**`, `src/lib/email/**`, `src/app/api/google/oauth/**` — see `booking-architecture.md` |
 | Analytics | `src/lib/analytics/{consent,ga4-tag,ga4}.ts(x)`, `src/components/studio/{analytics,consent-banner}.tsx`, `src/components/admin/analytics-panel.tsx` |
-| Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-rollout-aanbod,cms-patch-booking-cta,cms-selftest,cms-retention,import-editorial-image}.mts`, shared helpers in `scripts/lib/`, self-test sections 5b and 15–16 in `scripts/selftest/` |
+| Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-rollout-aanbod,cms-patch-booking-cta,cms-patch-page-cleanup,cms-patch-cadeaubon,cms-mfa-reset,cms-selftest,cms-retention,import-editorial-image}.mts`, shared helpers in `scripts/lib/`, self-test sections 5b–5e and 15–19 in `scripts/selftest/` |
 | Shared | `src/middleware.ts`, `src/lib/env.ts`, `.env.example`, `next.config.ts`, `package.json`, `src/app/layout.tsx` |
 
 ---
@@ -81,12 +81,13 @@ why `publishPage()` writes the snapshot last).
 
 ### Schema
 
-All tables in `src/db/cms-schema.ts`, all prefixed `cms_`.
+All tables in `src/db/cms-schema.ts` (the two-step verification tables in
+`src/db/cms-mfa-schema.ts`), all prefixed `cms_`.
 
 | Table | Purpose |
 | --- | --- |
 | `cms_users` | CMS operators. `email` lower-cased + unique, `role` (`admin`\|`editor`\|`provider`), scrypt `password_hash`, `must_change_password`, `is_active`, `last_login_at`. |
-| `cms_sessions` | Opaque sessions. Stores only `token_hash`, plus `expires_at`, `user_agent`, `ip_address`. |
+| `cms_sessions` | Opaque sessions. Stores only `token_hash`, plus `expires_at`, `user_agent`, `ip_address`, and (§4) `mfa_verified_at` (0005), `absolute_expires_at` and `reauthenticated_at` (0006). |
 | `cms_login_attempts` | One row per login attempt; drives rate limiting. Pruned opportunistically (>1 day). |
 | `cms_pages` | Page record + all SEO fields + `published_snapshot` jsonb. Unique `(locale, slug)` and `(locale, translation_group)`. |
 | `cms_blocks` | **Draft** blocks, ordered by `sort_order`. Never read by the public site. |
@@ -96,12 +97,15 @@ All tables in `src/db/cms-schema.ts`, all prefixed `cms_`.
 | `cms_redirects` | `from_path` unique → `to_path`, 301/302, `is_enabled`. |
 | `cms_site_settings` | `(locale, key)` primary key → jsonb value. |
 | `cms_audit_log` | Lightweight who/what/when. Denormalised `user_email` survives user deletion. |
+| `cms_integration_settings` | Server-only configuration of an outside service, one row per `key` (today only `email`): `config` jsonb (addresses), `secret_ciphertext` (AES-256-GCM, never plain), `secret_hint` (last four characters). Never read by the public site; only through `src/lib/email/settings.ts` and the admin repo `src/lib/email/repo.ts`. |
 
 Booking adds eight more tables — `cms_locations`, `cms_services`,
 `cms_providers`, `cms_provider_services`, `cms_business_hours`,
 `cms_availability_exceptions`, `cms_bookings`, `cms_booking_rate_limit` —
-described in [`booking-architecture.md`](./booking-architecture.md) §2. That
-makes nineteen `cms_*` tables in total.
+described in [`booking-architecture.md`](./booking-architecture.md) §2.
+Two-step verification adds four — `cms_mfa_factors`, `cms_mfa_recovery_codes`,
+`cms_mfa_challenges`, `cms_mfa_attempts` — described in §4. That makes
+twenty-four `cms_*` tables in total.
 
 Only two real Postgres enums exist (`cms_role` = `admin`, `editor`,
 `provider`; `cms_page_status`). Locale, menu key, block type, media storage and
@@ -130,8 +134,23 @@ URL prefix (`publicPathFor()` in `repo.ts` encodes that rule).
 | `drizzle/0001_cms_foundation.sql` | Two enum types + eleven `cms_*` tables + their indexes and foreign keys. **Additive only** — no `DROP`, no `TRUNCATE`, no `ALTER` of any webshop table. Also idempotent. |
 | `drizzle/0002_role_provider.sql` | `ALTER TYPE cms_role ADD VALUE IF NOT EXISTS 'provider'`, nothing else. |
 | `drizzle/0003_booking.sql` | The eight booking tables, FKs and indexes, all guarded. |
-| `drizzle/0004_cms_admin_mfa.sql` | Two-step verification (§4, MFA): four `cms_mfa_*` tables and one nullable column `cms_sessions.mfa_verified_at`. Additive and guarded; existing sessions get `NULL`, which is what makes existing **admin** sessions sign in again. |
-| `drizzle/0005_cms_session_limits.sql` | Admin session limits and step-up (§4, Sessions): two nullable columns, `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at`. Additive and guarded (`ADD COLUMN IF NOT EXISTS`); existing rows get `NULL`, so an existing admin session ends at `created_at` + 8 h at the latest and has no recent step-up. |
+| `drizzle/0004_integration_settings.sql` | `cms_integration_settings` + its FK to `cms_users`, guarded. Code treats a missing table as "nothing stored", so deploying before migrating is safe. |
+| `drizzle/0005_cms_admin_mfa.sql` | Two-step verification (§4, MFA): four `cms_mfa_*` tables and one nullable column `cms_sessions.mfa_verified_at`. Additive and guarded; existing sessions get `NULL`, which is what makes existing **admin** sessions sign in again. |
+| `drizzle/0006_cms_session_limits.sql` | Admin session limits and step-up (§4, Sessions): two nullable columns, `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at`. Additive and guarded (`ADD COLUMN IF NOT EXISTS`); existing rows get `NULL`, so an existing admin session ends at `created_at` + 8 h at the latest and has no recent step-up. |
+
+**Rollout order of 0004–0006.** The e-mail settings (from `staging`) and the
+security release met in one merge: the MFA and session migrations were
+renumbered from 0004/0005 to 0005/0006 with their journal timestamps kept, so
+the order is 0004 → 0005 → 0006 everywhere and one `db:migrate` applies
+whichever of them a database still lacks. Set `CMS_MFA_ENCRYPTION_KEY` first,
+migrate **before** deploying the security build (it breaks `/admin/login`
+without 0005 and `/admin` without 0006; 0004 is safe either way), then deploy,
+then let the first admin enrol; step by step in `staging-runbook.md` §16.
+Drizzle's migrator only applies journal entries newer than the last one a
+database recorded, so a database that already ran the security migrations
+under their old numbers never receives 0004 from `db:migrate`: apply
+`drizzle/0004_integration_settings.sql` to it by hand (guarded, safe to
+repeat) or, locally, delete `website/.pglite/`.
 
 `drizzle.config.ts` lists the schema files (`schema.ts`, `cms-schema.ts`,
 `cms-mfa-schema.ts`) and falls back to a placeholder URL
@@ -233,7 +252,7 @@ Minimum 12 chars, needs lower + upper + digit (`validatePasswordStrength`).
     at the latest, however active the admin is. Each request moves
     `expires_at` to now + 15 min, but never past `absolute_expires_at`
     (stored at sign-in; capped at `created_at` + 8 h, which also covers rows
-    from before 0005). The cookie expires at the absolute end, so the browser
+    from before 0006). The cookie expires at the absolute end, so the browser
     never keeps it longer than the server would accept it; the idle limit is
     enforced on the server (a cookie cannot be refreshed during a plain page
     render). An expired row is deleted on the spot.
@@ -265,19 +284,24 @@ Minimum 12 chars, needs lower + upper + digit (`validatePasswordStrength`).
 
 Some admin changes need a **recent full authentication on this session**,
 within the last **5 minutes** (`REAUTH_WINDOW_MS` in `guard.ts`): creating a
-user, changing a role, (de)activating an account, resetting a password, and an
-admin's own password change. They call `requireCmsUser('admin', {
-recentReauthentication: true })` inside the library function (`users.ts`,
-`changePassword()` in `auth.ts`), so a forged or replayed server-action POST
-gets exactly the same check as the form; the guard answers `reauth_required`
-after the MFA, temporary-password and role checks (an editor still gets
-`forbidden`). A stamp in the future (beyond 30 s of clock skew) or of the wrong
-type counts as none.
+user, changing a role, (de)activating an account, resetting a password, an
+admin's own password change, and changing the e-mail service settings on
+`/admin/email` (storing or removing the API key; sender, reply-to and gift
+voucher order inbox; reading the status and sending the test message need no
+step-up). They call
+`requireCmsUser('admin', { recentReauthentication: true })` inside the
+library function (`users.ts`, `changePassword()` in `auth.ts`; the e-mail
+service writes in `src/lib/email/repo.ts` call
+`requirePermission('email.manage', { recentReauthentication: true })`), so a
+forged or replayed server-action POST gets exactly the same check as the form;
+the guard answers `reauth_required` after the MFA, temporary-password and role
+checks (an editor still gets `forbidden`). A stamp in the future (beyond 30 s
+of clock skew) or of the wrong type counts as none.
 
 Signing in opens the window. After that, *Bevestig je identiteit* on
-*Gebruikers*, *Mijn account* and `/admin/password` (`StepUpPanel`,
-`confirmIdentity()` in `src/lib/cms/mfa/reauth.ts`) asks for the current
-password **and** a code or recovery code (admins and anyone with an
+*Gebruikers*, *Aanbieders*, *E-mail*, *Mijn account* and `/admin/password`
+(`StepUpPanel`, `confirmIdentity()` in `src/lib/cms/mfa/reauth.ts`) asks for
+the current password **and** a code or recovery code (admins and anyone with an
 authenticator; password only otherwise), checked in that order, rate limited
 with the sign-in codes and audited (`auth.step_up`, failures as
 `auth.mfa_reauth_failed`), and stamps **this session only**: another browser
@@ -343,7 +367,9 @@ requireCmsUser(role?: CmsRole, options?: {
   allowMustChangePassword?: boolean;
   recentReauthentication?: boolean;               // sensitive change: step-up within 5 min
 }): Promise<CmsSessionUser>                       // throws CmsAuthError
-requirePermission(permission: CmsPermission): Promise<CmsSessionUser>
+requirePermission(permission: CmsPermission, options?: {
+  recentReauthentication?: boolean;               // e.g. the e-mail service writes
+}): Promise<CmsSessionUser>
 changePassword(input: { currentPassword: string; newPassword: string }): Promise<AuthResult<true>>
 createUser(input: { email; name; role; password? }): Promise<AuthResult<{ user; temporaryPassword: string | null }>>
 ```
@@ -397,7 +423,7 @@ codes, no Google or Microsoft dependency.
 opt-out) → temporary password → role/permission. A password sign-in of an
 admin creates **no session**, only a challenge, so every page, server action
 and repo call refuses that state as `unauthenticated`; an old admin session
-from before 0004 is refused as `mfa_required`. Self-test 5c calls the repos
+from before 0005 is refused as `mfa_required`. Self-test 5c calls the repos
 directly with both and checks nothing is written.
 
 **Sign-in** (`/admin/login` → `/admin/mfa`, `src/lib/cms/mfa/flow.ts`):
@@ -462,7 +488,7 @@ password (`user.mfa_reset`). Password and sessions are replaced first, the
 factors removed last, so a crash in between never leaves the old password
 without a second factor. Not for yourself. With no admin left, an operator
 with database access runs `npm run cms:mfa-reset -- --email <address>` (dry
-run; `--apply --expect-host <host>` to write; `staging-runbook.md` §11): same
+run; `--apply --expect-host <host>` to write; `staging-runbook.md` §14): same
 deletion and revocation, nothing secret printed, audited as
 `auth.mfa_break_glass` without an actor. Pass a new temporary password inline
 as `CMS_BREAK_GLASS_PASSWORD` (recommended); without it the password is left
@@ -475,12 +501,13 @@ stage and reason), `auth.mfa_enrol`, `auth.mfa_verify` (method `totp` or
 `auth.mfa_break_glass`, `auth.password_change` (also during the challenge),
 `auth.step_up`.
 
-**Existing admins (upgrade).** After 0004 and the deploy, an admin's old
+**Existing admins (upgrade).** After 0005 and the deploy, an admin's old
 session is refused; the dashboard sends them to sign in again, which leads to
 the enrolment step with only their password: no lockout, nothing to prepare.
 Staging/production need `CMS_MFA_ENCRYPTION_KEY` set *before* that first
-sign-in (`staging-runbook.md` §11); while it is missing or malformed the login
-page itself says so ("niet geconfigureerd"), before anyone types a password.
+sign-in (`staging-runbook.md` §14, combined order §16); while it is missing or
+malformed the login page itself says so ("niet geconfigureerd"), before anyone
+types a password.
 
 **Known residual risks** (independent review, 13 Oct 2026):
 - *First come, first enrolled.* An admin without an authenticator enrols with
@@ -534,6 +561,7 @@ navigation, redirects or settings**.
 | **Change site settings** | `settings.update` | ❌ | ❌ | ✅ |
 | **Manage users** | `user.read`, `user.manage` | ❌ | ❌ | ✅ |
 | **Read audit log** | `audit.read` | ❌ | ❌ | ✅ |
+| **E-mail service** (`/admin/email`: key, sender, reply-to, order inbox, test mail) | `email.manage` | ❌ | ❌ | ✅ |
 | All bookings | `booking.read` | ❌ | ✅ | ✅ |
 | Own bookings | `booking.read.own` | ✅ | ❌ | ✅ |
 | Cancel / complete any booking | `booking.manage` | ❌ | ❌ | ✅ |
@@ -590,11 +618,11 @@ repo call. A forged cookie gets past middleware and is rejected there.
 
 ## 5. Block registry
 
-`src/lib/cms/blocks.ts`. Fifteen block types: eleven derived from the real
+`src/lib/cms/blocks.ts`. Sixteen block types: eleven derived from the real
 prototype (`prototype/index.html`, `prototype/bikefit.html`) and copy decks
 (`content/index.html`, `content/about.html`, `content/booking.html`),
-`booking` for the online booking widget, and `offer`, `offerCatalogue` and
-`team` for the 13 Oct 2026 redesign (defined in `blocks-aanbod.ts` and spread
+`booking` for the online booking widget, and `offer`, `offerCatalogue`,
+`giftVoucher` and `team` for the 13 Oct 2026 redesign (defined in `blocks-aanbod.ts` and spread
 into the registry; shared field schemas such as `imageRefSchema` live in
 `block-primitives.ts` and are re-exported from `blocks.ts`).
 
@@ -622,7 +650,8 @@ defaultDataFor('hero')          // deep clone of the above
 | `contact` | Contact | phone, city, "Op afspraak" — no street address or e-mail is known |
 | `testimonial` | Ervaringen | 4 reviews from the copy deck, all marked placeholder |
 | `offer` | Dienst (aanbod) | one service on `/aanbod/<slug>`: title, intro, the booking button "Boek een afspraak voor deze dienst" (→ `/afspraak?dienst=<slug>#boeken`), Doel, Inhoud, Duur, Kostprijs, Mogelijke extra's. `category` (`bikefit`\|`begeleiding`), `sortOrder`, `summary` (overview card), `priceCents`/`priceLabel` (seeded as the visible, editable placeholder "Prijs op aanvraag"; a free-text label wins over cents, except that the placeholder never hides a confirmed `priceCents`; empty both = "Prijs op aanvraag"), `duration` (default "Duur in overleg"), `bookingServiceSlugs` (see §14). The page path is the offer's identity. The editor shows a hint pointing at `content-placeholders.md`. |
-| `offerCatalogue` | Aanbod (overzicht) | grouped overview (Bikefit, Begeleiding); owns only its title and per-group title/lede — the cards are read from the published offer pages at render time (`listPublishedOffers`), so nothing is duplicated |
+| `offerCatalogue` | Aanbod (overzicht) | grouped overview (Bikefit, Begeleiding, Overige); owns only its title and per-group title/lede — the cards are read from the published offer pages at render time (`listPublishedOffers`), so nothing is duplicated |
+| `giftVoucher` | Cadeaubon (bestelformulier) | the gift voucher page `/aanbod/cadeaubon`: page head (owns the `<h1>`) + the order form (amount of choice, personal message, contact details, button "Bestel nu"). Owns only copy (`eyebrow`, `title`, `intro`, `summary` for the card, `formTitle`, `sentTitle`, `sentText`, `sortOrder`); fields, rules and sending are code in `src/lib/gift-voucher/` (server action → `sendEmail` to the order inbox from `/admin/email` / env `GIFT_VOUCHER_RECIPIENT`, never `contact.email`; success only when Resend accepted it). Its page becomes a card in category `overige` ("Bedrag naar keuze") and is never a booking target. Ops: `booking-runbook.md` §12 |
 | `team` | Team | profiles: name, role, bio paragraphs (verified text only), image; without an image the initials are drawn. `internalNote` is never rendered and names the person's open register rows; interim profiles end with "Een uitgebreid profiel volgt binnenkort." |
 | `booking` | Afspraak boeken | the booking widget on `/afspraak` (service → provider → day → slot → details → confirmation). Carries copy and a filter only: `serviceIds` (empty = every active service), `showProviderChoice` (AND-ed with the `booking.showProviderChoice` setting), `successTitle`, `successText` (empty → `booking.confirmationText`). Services, providers and live availability are read at render time through `@/lib/booking/content`, so nothing in the block goes stale. |
 
@@ -726,6 +755,35 @@ in the prototype). Validate with `validateNavigationItems(items)`.
 
 Admin → Instellingen has one form per key: Site, Contact, SEO, Organisatie
 (JSON-LD), Afspraken, Analytics.
+
+The e-mail service is deliberately **not** a site setting (site settings are per locale and
+read by the public site): it lives in `cms_integration_settings` and on its own admin page,
+**Beheer → E-mail** (`/admin/email`, permission `email.manage`, admins only). The table
+comes with migration 0004; until it is applied the page shows a notice and refuses to save,
+and sending uses the env variables alone.
+
+- **Status:** API key (source: env / admin / none; the admin sees only the last four
+  characters, or "kan niet meer ontsleuteld worden" after a `CMS_SESSION_SECRET` rotation),
+  sender, reply-to and the gift voucher order inbox, each with its source.
+- **API-sleutel:** write-only password field. The key is sealed with AES-256-GCM
+  (`seal()` in `src/lib/sealed-box.ts`, the helper the Google tokens and TOTP secrets use)
+  under HKDF-SHA256(`CMS_SESSION_SECRET`, info `email-service-credential`) (`derivedSecret()`
+  in `src/lib/secrets.ts`) and never returned to any client, not even masked; "Opgeslagen
+  sleutel verwijderen" clears it. Rotating `CMS_SESSION_SECRET` makes a stored key
+  unreadable: nothing is sent with it until an admin pastes it again.
+- **Step-up:** storing or removing the key and saving sender, reply-to or order inbox are
+  sensitive changes (they could swap the sending account or divert visitors' orders): they
+  need a full re-authentication on this session within the last 5 minutes (*Bevestig je
+  identiteit* on the page, §4). Reading the status and the test message need none.
+- **Afzender en ontvangers:** sender (`naam@domein` or `Naam <naam@domein>`, no quotes or
+  control characters), optional reply-to, *Ontvanger cadeaubonbestellingen* (one address;
+  never a fallback to `contact.email`, see `src/lib/gift-voucher/recipient.ts`).
+- **Testbericht:** sends one real message on an explicit click (with a confirm).
+- Per field an env variable (`RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO`,
+  `GIFT_VOUCHER_RECIPIENT`) wins over the admin value; the page says so.
+- Audit actions `email.settings.update` (metadata: names of the changed fields),
+  `email.key.set`, `email.key.clear` (no metadata) and `email.test` (masked address,
+  `sent`, a reason code). No value, key, ciphertext or hint is ever audited or logged.
 
 `getSiteSettings()` always returns every key with schema defaults filled in, so
 it never throws and never returns `undefined` fields.
@@ -907,7 +965,7 @@ The full contract (every variable, per environment, secret or not) is in
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `DATABASE_URL` | deployed envs | Neon pooled URL. Unset locally → PGlite. |
-| `CMS_SESSION_SECRET` | deployed envs | Pepper for session-token hashing; also signs the `cms_google_oauth` cookie and the booking confirmation link. `openssl rand -base64 48`. Rotating it signs everyone out. |
+| `CMS_SESSION_SECRET` | deployed envs | Pepper for session-token hashing; also signs the `cms_google_oauth` cookie and the booking confirmation link, and is the key source for the e-mail API key stored in `/admin/email` (§5). `openssl rand -base64 48`. Rotating it signs everyone out and makes that stored key unreadable (paste it again). |
 | `CMS_MFA_ENCRYPTION_KEY` | deployed envs | base64 of 32 bytes (`openssl rand -base64 32`), own value per environment. Encrypts admins' TOTP secrets. Missing on a deployment → admins cannot finish signing in (fail closed). Rotating it makes stored authenticators unreadable: admins sign in with a recovery code and replace the authenticator. Local development falls back to a derived key. |
 | `CMS_BOOTSTRAP_PASSWORD` | bootstrap only | Pass inline to `npm run cms:bootstrap`. Never store it in `.env.local` or in Vercel. |
 | `NEXT_PUBLIC_SITE_URL` | deployed envs | Canonical origin for canonicals, sitemap, OG, e-mail links and the Google OAuth redirect URI. `siteUrl()` in `src/lib/env.ts` falls back to `NEXT_PUBLIC_APP_URL`, then `VERCEL_URL`, then localhost. |
@@ -933,7 +991,7 @@ cd website
 npm ci
 npm run db:migrate                                      # creates website/.pglite/
 CMS_BOOTSTRAP_PASSWORD='<strong password>' npm run cms:bootstrap
-npm run dev            # sign in at /admin/login, choose a new password, stop the server
+npm run dev            # sign in at /admin/login, choose a new password, set up the authenticator, stop the server
 npm run cms:seed                                        # Dutch pages, menus, redirect
 npm run cms:seed-booking                                # first provider (temp password printed once)
 npm run dev
@@ -945,8 +1003,9 @@ settings (`site`, `contact`, `seo`, `organization`, `analytics`, `booking`),
 empty `main` + `footer` menus, the two locations and the five services.
 Running it twice changes nothing.
 
-`cms:seed` writes as an admin who has chosen their own password (§4), so the
-bootstrap password is replaced first; until then it stops with an explanation.
+`cms:seed` writes as an admin who has chosen their own password and enrolled
+two-step verification (§4), so the bootstrap password is replaced and the
+authenticator set up first; until then it stops with an explanation.
 Stop the dev server before running a script: both would open the same
 `.pglite/` directory. `cms:seed-booking` writes directly and needs no sign-in.
 
@@ -958,7 +1017,7 @@ Checks (all six are the Definition of Done in `CLAUDE.md` §2):
 ```bash
 npm run typecheck && npm run lint && npm run format:check
 npm test               # vitest unit tests
-npm run cms:selftest   # sections 1–16 + 5b: migrations … forced password change … full booking flow, aanbod rollout, on a throwaway PGlite
+npm run cms:selftest   # sections 1–19 + 5b–5e: migrations … forced password change, MFA, session limits … full booking flow, rollouts and patches, e-mail service, on a throwaway PGlite
 npm run build
 ```
 
@@ -987,10 +1046,10 @@ git checkout webshop-baseline-2026-09-23 -- website
 git clone .winston/repos/de-bikefit-studio/baselines/webshop-baseline-2026-09-23.bundle restored
 ```
 
-Database rollback: nothing needs undoing. All four migrations are additive, so
-the webshop tables and data are byte-identical before and after. If you want
-the CMS gone from a database, drop the nineteen `cms_*` tables and the two
-`cms_*` enum types — no webshop object references them.
+Database rollback: nothing needs undoing. All migrations (0000–0006) are
+additive, so the webshop tables and data are byte-identical before and after.
+If you want the CMS gone from a database, drop the twenty-four `cms_*` tables
+and the two `cms_*` enum types — no webshop object references them.
 
 ---
 
@@ -1025,7 +1084,7 @@ Added with the Dutch public site. Nothing in `src/lib/cms/*` changed.
 | URL | File | Notes |
 | --- | --- | --- |
 | `/` | `src/app/(studio)/page.tsx` | Dutch home page, slug `''` |
-| `/<anything>` | `src/app/(studio)/[...slug]/page.tsx` | published page → redirect → 404, in that order. Includes the seeded `/afspraak` (booking block), `/privacy` and `/algemene-voorwaarden`, and nested slugs such as `/aanbod/voetanalyse` (`cms_pages.slug = 'aanbod/voetanalyse'`; the breadcrumb shows published ancestors). Reads `?dienst=` (validated by `parseServiceParam`) for the booking block only |
+| `/<anything>` | `src/app/(studio)/[...slug]/page.tsx` | published page → redirect → 404, in that order. Includes the seeded `/afspraak` (booking block), `/privacy` and `/algemene-voorwaarden`, and nested slugs such as `/aanbod/voetanalyse` (`cms_pages.slug = 'aanbod/voetanalyse'`; the breadcrumb shows published ancestors and is visible only on such nested pages — top-level pages keep just the `BreadcrumbList` JSON-LD). Reads `?dienst=` (validated by `parseServiceParam`) for the booking block only |
 | `/afspraak/bevestigd` | `src/app/(studio)/afspraak/bevestigd/page.tsx` | booking confirmation; `?ref=` is an HMAC-signed summary without personal data; `noindex` |
 | `/afspraak/annuleren/[token]` | `src/app/(studio)/afspraak/annuleren/[token]/page.tsx` | customer cancellation by e-mailed token; `noindex` |
 | `/og` | `src/app/(studio)/og/route.tsx` | generated 1200×630 share card |
@@ -1046,7 +1105,9 @@ webshop and admin route still wins: `/shop`, `/checkout`, `/account`, `/blog`,
 
 Redirects are resolved in the catch-all (301 → `permanentRedirect` → HTTP 308,
 302 → `redirect` → HTTP 307), **not** in middleware, which must stay
-database-free.
+database-free. The request's query string is carried over
+(`src/lib/cms/redirect-target.ts`; parameters in the stored target win), so
+`/contact?dienst=coaching` lands on `/afspraak?dienst=coaching`.
 
 ### 12.2 Layout split
 
@@ -1095,16 +1156,16 @@ appear in no structured data.
 ### 12.6 Seeding
 
 `npm run cms:seed` creates, fills and **publishes** the seventeen Dutch pages
-(`/`, `/aanbod`, seven `/aanbod/<slug>`, `/voor-wie`, `/bikefit`, `/ons-team`,
-`/veelgestelde-vragen`, `/contact`, `/afspraak`, `/privacy`,
+(`/`, `/aanbod`, seven `/aanbod/<slug>`, `/aanbod/cadeaubon`, `/voor-wie`,
+`/bikefit`, `/ons-team`, `/veelgestelde-vragen`, `/afspraak`, `/privacy`,
 `/algemene-voorwaarden`), both menus and the redirects `/bikefit.html →
-/bikefit` and `/over-ons → /ons-team`, through `repo.ts`, so the snapshots,
+/bikefit`, `/over-ons → /ons-team` and `/contact → /afspraak`, through `repo.ts`, so the snapshots,
 audit entries and permission checks are the real ones. It does that by giving
 the write API the request context it expects (`scripts/lib/request-context.mts`):
 `module.registerHooks()` stubs for `server-only`, `next/headers` and
 `next/cache`, plus a genuine `cms_sessions` row (revoked again on exit) for the
-oldest active admin who has chosen their own password
-(`scripts/lib/cms-actor.mts`; it never creates one). The redesign's pages and menus are defined once in
+oldest active admin who has chosen their own password and enrolled two-step
+verification (`scripts/lib/cms-actor.mts`; it never creates one). The redesign's pages and menus are defined once in
 `src/lib/studio/seed-content/aanbod.ts`; **existing databases get them through
 `npm run cms:rollout-aanbod`, never a full `cms:seed`** (§14).
 
@@ -1217,6 +1278,17 @@ the way home; the header CTA stays "Afspraak maken"). FAQ, booking and the
 legal pages are in the footer. Every "Boek je bikefit" button books like that CTA
 (`/afspraak`); only visible phone numbers use `tel:` (`cms:patch-booking-cta` fixes
 older content, `staging-runbook.md` §10).
+
+**Site review (13 Oct 2026).** `/afspraak` is the one place to book or ask: it
+opens on "Kies je moment" (the booking section owns the `<h1>`; widget headings
+follow one level below), then "Voor je komt" with "Andere vraag?" (mail and
+phone). `/contact` is retired like `/over-ons` (unpublished, 301 to
+`/afspraak`) and the "Contact" menu items point at `/afspraak`. No "Ninove"
+kicker and no second heading on `/aanbod`, `/voor-wie`, `/ons-team`; the
+footer shows the public e-mail (settings `contact.email`) and no longer the
+company identity line, which stays on the legal pages. The edits for existing
+databases are pure data in `src/lib/studio/seed-content/page-cleanup.ts`,
+applied by `cms:patch-page-cleanup` (`staging-runbook.md` §11).
 
 **One source per offer.** Title, summary, price and duration live on the offer
 page's `offer` block. Overviews derive their cards from the published pages

@@ -1,6 +1,8 @@
 /**
  * Verbatim copy of the 13 Oct 2026 redesign, supplied by Toshoni via Winston
  * (work block 2026-10-13-aanbod-staging-brief.md), and the team profiles.
+ * The junior text follows Toshoni's site review of the same day: "jeugd"
+ * instead of "junioren", and the four youth categories named.
  * Only Rutger has a source-backed bio (content/about.html §1); Robin and Goran
  * carry their name and team membership only. Plain data.
  */
@@ -12,7 +14,7 @@ export const AANBOD_INTRO =
   'Elke fietser is anders. Daarom werkt De Bikefit Studio uitsluitend met ervaren, gediplomeerde professionals. Samen zoeken we wat bij jou past: van je eerste kilometers tot een nieuw sportief doel. Persoonlijke fietsbegeleiding, dichtbij — in de studio, op locatie of, waar mogelijk, bij jou thuis.';
 
 export const JUNIOR_TEXT =
-  'Jonge fietsers groeien. Hun fiets groeit niet vanzelf mee. Daarom besteden we extra aandacht aan junioren, met betaalbare begeleiding en opvolging op maat. Zo blijft er ruimte om te groeien, bij te leren en vooral graag te fietsen.';
+  'Jonge fietsers groeien. Hun fiets groeit niet vanzelf mee. Daarom besteden we extra aandacht aan de jeugd, met betaalbare begeleiding en opvolging op maat. Of je nu miniem, aspirant, nieuweling of junior bent, er blijft ruimte om te groeien, bij te leren en vooral graag te fietsen.';
 
 export const MOTION_ANALYSIS_TEXT =
   'We gebruiken de nieuwste 3D-bewegingsanalyse om je houding en trapbeweging vanuit verschillende hoeken te bekijken. Die inzichten combineren we met jouw ervaring en de blik van onze fitter. Technologie helpt ons meten; jij blijft het vertrekpunt.';

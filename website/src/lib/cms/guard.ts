@@ -19,8 +19,9 @@ import { can, roleAtLeast, type CmsPermission } from './permissions';
  *     the call site opts in with `allowMustChangePassword`. Only the forced
  *     password change does: `changePassword()` and the `/admin/password` page;
  *  4. role rank or permission missing  → `forbidden`;
- *  5. a sensitive change (`recentReauthentication`) by a user whose session
- *     has no full authentication in the last 5 minutes → `reauth_required`.
+ *  5. a sensitive change (`recentReauthentication`, next to a role or a
+ *     permission) by a user whose session has no full authentication in the
+ *     last 5 minutes → `reauth_required`.
  *     Sign-in sets it; after that only the step-up ("Bevestig je
  *     identiteit": password plus code for admins) renews it. A session that
  *     replaces another inherits its time, never a fresh one.
@@ -65,9 +66,10 @@ export type CmsAccessRequirement = {
    */
   allowMustChangePassword?: boolean;
   /**
-   * A sensitive change: password, second factor, user accounts and roles.
-   * Requires a full authentication on this session within the last
-   * {@link REAUTH_WINDOW_MS}, checked after the role.
+   * A sensitive change: password, second factor, user accounts and roles,
+   * the e-mail service credential and addresses. Requires a full
+   * authentication on this session within the last {@link REAUTH_WINDOW_MS},
+   * checked after the role and the permission.
    */
   recentReauthentication?: boolean;
 };

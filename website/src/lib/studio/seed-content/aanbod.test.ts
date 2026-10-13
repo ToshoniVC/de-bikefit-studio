@@ -169,14 +169,14 @@ describe('aanbod rollout pages', () => {
 });
 
 describe('aanbod navigation', () => {
-  it('main menu: Aanbod, Voor wie, Bikefit, Ons team, Contact — no Home', () => {
+  it('main menu: Aanbod, Voor wie, Bikefit, Ons team, Contact (→ /afspraak) — no Home', () => {
     expect(validateNavigationItems(MAIN_MENU).ok).toBe(true);
     expect(MAIN_MENU.map((item) => [item.label, item.href])).toEqual([
       ['Aanbod', '/aanbod'],
       ['Voor wie', '/voor-wie'],
       ['Bikefit', '/bikefit'],
       ['Ons team', '/ons-team'],
-      ['Contact', '/contact'],
+      ['Contact', '/afspraak'],
     ]);
   });
 
@@ -187,6 +187,7 @@ describe('aanbod navigation', () => {
       expect(hrefs).toContain(href);
     }
     expect(hrefs).not.toContain('/over-ons');
+    expect(hrefs).not.toContain('/contact');
     expect(hrefs).not.toContain('/');
   });
 

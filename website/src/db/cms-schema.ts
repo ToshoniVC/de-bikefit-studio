@@ -121,7 +121,7 @@ export const cmsSessions = pgTable(
     /**
      * When this session's second step (TOTP or recovery code) succeeded; null
      * for a password-only session. The auth guard refuses an admin session
-     * without it (`src/lib/cms/guard.ts`). Added by 0004_cms_admin_mfa.sql.
+     * without it (`src/lib/cms/guard.ts`). Added by 0005_cms_admin_mfa.sql.
      */
     mfaVerifiedAt: timestamp('mfa_verified_at', { withTimezone: true }),
     /**
@@ -129,14 +129,14 @@ export const cmsSessions = pgTable(
      * that replaces another (password or authenticator change) inherits it.
      * Null for roles without an absolute lifetime (editors, providers); admin
      * rows without it fall back to `created_at` + 8 h
-     * (`src/lib/cms/session-policy.ts`). Added by 0005_cms_session_limits.sql.
+     * (`src/lib/cms/session-policy.ts`). Added by 0006_cms_session_limits.sql.
      */
     absoluteExpiresAt: timestamp('absolute_expires_at', { withTimezone: true }),
     /**
      * Last full authentication on this session (password plus second step for
      * admins): the sign-in itself or the "Bevestig je identiteit" step-up.
      * Sensitive admin changes require it to be recent
-     * (`src/lib/cms/guard.ts`). Added by 0005_cms_session_limits.sql.
+     * (`src/lib/cms/guard.ts`). Added by 0006_cms_session_limits.sql.
      */
     reauthenticatedAt: timestamp('reauthenticated_at', { withTimezone: true }),
   },
@@ -365,6 +365,26 @@ export const cmsAuditLog = pgTable(
     index('cms_audit_log_entity_idx').on(t.entityType, t.entityId),
   ],
 );
+
+/**
+ * Server-only configuration of an outside service, one row per service
+ * (`key`; today only `'email'`, see `src/lib/email/settings.ts`). Deliberately
+ * NOT a site setting: the public readers never select this table.
+ *
+ *  - `config`: non-secret values (addresses), validated by zod in code;
+ *  - `secret_ciphertext`: the credential, AES-256-GCM sealed with a key
+ *    derived from `CMS_SESSION_SECRET` (`src/lib/secrets.ts`); never plain;
+ *  - `secret_hint`: its last four characters, for the masked admin display.
+ */
+export const cmsIntegrationSettings = pgTable('cms_integration_settings', {
+  key: text('key').primaryKey(),
+  config: jsonb('config').$type<Record<string, unknown>>().default({}).notNull(),
+  secretCiphertext: text('secret_ciphertext'),
+  secretHint: text('secret_hint'),
+  secretUpdatedAt: timestamp('secret_updated_at', { withTimezone: true }),
+  updatedBy: text('updated_by').references(() => cmsUsers.id, { onDelete: 'set null' }),
+  updatedAt: updatedAt(),
+});
 
 // ---------------------------------------------------------------------------
 // Booking (drizzle/0003_booking.sql) — see docs/booking-architecture.md

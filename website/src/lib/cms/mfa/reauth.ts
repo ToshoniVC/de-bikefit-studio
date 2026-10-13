@@ -20,8 +20,9 @@ import { hasConfirmedFactor, mfaRateLimited, recordMfaAttempt, verifySecondFacto
  * - **step-up** ({@link confirmIdentity}, "Bevestig je identiteit"): the same
  *   check, recorded on the session as `reauthenticated_at`. For the next
  *   {@link REAUTH_WINDOW_MS} the guard lets this session make the changes
- *   marked `recentReauthentication`: user accounts and roles, and an admin's
- *   own password. Signing in with password and code counts as well.
+ *   marked `recentReauthentication`: user accounts and roles, an admin's own
+ *   password, and the e-mail service key and addresses (`/admin/email`).
+ *   Signing in with password and code counts as well.
  *
  * Both are rate limited together with the sign-in codes (`./repo.ts`) and
  * audited; a successful one upgrades a legacy password hash.

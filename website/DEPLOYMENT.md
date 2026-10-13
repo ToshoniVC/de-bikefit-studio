@@ -72,7 +72,9 @@ After migrating a fresh branch, run the idempotent scripts in this order: `cms:b
 sign in as the bootstrap admin, set a permanent password and set up two-step verification →
 `cms:seed` → `cms:seed-booking` (details in the staging runbook §3). The write scripts act as
 the oldest active admin with a permanent password and an authenticator, and refuse to run
-while no admin qualifies. Rolling admin MFA out on an existing database: staging runbook §11.
+while no admin qualifies. Rolling admin MFA out on an existing database: staging runbook §14;
+together with the e-mail settings and the admin session limits (migrations 0004 → 0005 →
+0006, key before deploy, migrate before deploy): staging runbook §16.
 
 ## 4. Vercel (one project)
 
@@ -94,8 +96,8 @@ its variables are missing. Names and purpose only; values never appear here.
 | Variable | Purpose | Secret | Needed |
 | --- | --- | :-: | --- |
 | `DATABASE_URL` | Neon pooled URL for this environment's branch. Unset → PGlite, which is refused in production. | yes | every deployed env |
-| `CMS_SESSION_SECRET` | Pepper for CMS session-token hashes; also signs the Google OAuth state cookie and the booking confirmation link, and is the fallback source for the token key below. Rotating it signs every CMS user out. Different per environment. | yes | every deployed env |
-| `CMS_MFA_ENCRYPTION_KEY` | base64 of 32 bytes; AES-256-GCM key for admins' TOTP secrets (two-step verification). **Required:** without it admins cannot finish signing in (fail closed; the rest of the site is unaffected). Different per environment, never derived from another secret. Rotating it makes stored authenticators unreadable: admins sign in with a recovery code and replace the authenticator. | yes | every deployed env (Production and Preview) |
+| `CMS_SESSION_SECRET` | Pepper for CMS session-token hashes; also signs the Google OAuth state cookie and the booking confirmation link, is the fallback source for the token key below and the key source for an e-mail API key stored in `/admin/email`. Rotating it signs every CMS user out and makes that stored key unreadable (an admin pastes it again). Different per environment. | yes | every deployed env |
+| `CMS_MFA_ENCRYPTION_KEY` | base64 of 32 bytes; AES-256-GCM key for admins' TOTP secrets (two-step verification). **Required:** without it admins cannot finish signing in (fail closed; the rest of the site is unaffected). Set it before deploying the build that needs it (staging runbook §16). Different per environment, never derived from another secret. Rotating it makes stored authenticators unreadable: admins sign in with a recovery code and replace the authenticator. | yes | every deployed env (Production and Preview) |
 | `CMS_BOOTSTRAP_PASSWORD` | One-shot password for the first admin, passed inline to `cms:bootstrap`. | yes | **never** in Vercel or `.env.local` |
 | `NEXT_PUBLIC_SITE_URL` | Canonical origin: canonicals, sitemap, OG images, e-mail cancel links, Google OAuth redirect URI (`<origin>/api/google/oauth/callback`). | no | every deployed env |
 | `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | GA4 measurement id (`G-…`). The tag loads only when this is valid, *Analytics ingeschakeld* is on in the admin, and the visitor accepts cookies. Build-time. | no | production (staging only to test the banner) |
@@ -104,9 +106,10 @@ its variables are missing. Names and purpose only; values never appear here.
 | `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ("Web application") for per-provider Calendar sync. | no | optional (both or neither) |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Secret of that client. Without the pair the OAuth routes answer 503 and availability ignores Google. | yes | optional |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | base64 of 32 bytes; AES-256-GCM key for stored Google tokens. **Optional:** empty → key derived from `CMS_SESSION_SECRET` (HKDF-SHA256). Rotating either value forces every provider to reconnect Google. One per environment. | yes | optional |
-| `RESEND_API_KEY` | Resend API key for booking e-mails. Without it mails are logged (recipients masked) and skipped. | yes | optional |
-| `EMAIL_FROM` | Sender on a domain verified in Resend. | no | with Resend |
-| `EMAIL_REPLY_TO` | Reply-To for customer mails. | no | optional |
+| `RESEND_API_KEY` | Resend API key for booking e-mails and gift voucher orders. **Optional:** an admin can instead store the key in `/admin/email` (sealed with AES-256-GCM, key derived from `CMS_SESSION_SECRET`); when set here it wins. With no key anywhere, booking mails are logged (recipients masked) and skipped, and every gift voucher order shows "niet verstuurd". | yes | optional |
+| `EMAIL_FROM` | Sender on a domain verified in Resend. Also required for gift voucher orders. Overrides the sender in `/admin/email`. | no | optional |
+| `EMAIL_REPLY_TO` | Reply-To for customer mails (not used for gift voucher orders: their Reply-To is the visitor). Overrides `/admin/email`. | no | optional |
+| `GIFT_VOUCHER_RECIPIENT` | Inbox for gift voucher orders (one plain address). Overrides `/admin/email` → *Ontvanger cadeaubonbestellingen*. Never falls back to the public contact e-mail; unset in both places, or invalid, means every order shows "niet verstuurd". | no | optional |
 | `CMS_PGLITE_DIR` | Local PGlite directory (default `.pglite`). | no | local only |
 | `CMS_PGLITE_AUTO_MIGRATE` | `"false"` stops PGlite auto-migrating on first use. | no | local only |
 | `NEXT_PUBLIC_APP_URL` | Webshop origin; second fallback for the canonical origin. | no | legacy webshop |
@@ -145,9 +148,14 @@ Resets the Neon staging branch from its parent (`production`), then runs
 > customer and guardian names, e-mails (`booking-<id>@example.invalid`), phones, address,
 > bike details and notes, plus the Google event references (so a staging cancellation can
 > never delete a real calendar event); it truncates `cms_sessions`, `cms_login_attempts`
-> and `cms_booking_rate_limit` and nulls every Google token on `cms_providers`. Add a line
-> there whenever a new table stores personal data. After a reset, re-run `db:migrate` and
-> the scripts in §3 if production is behind staging.
+> and `cms_booking_rate_limit`, empties the four `cms_mfa_*` tables when they exist (staging
+> admins then enrol anew) and nulls every Google token on `cms_providers`. On
+> `cms_integration_settings` (when it exists) it clears the stored e-mail API key (ciphertext,
+> hint, date) and the gift voucher order inbox, so staging never uses production's Resend
+> credential or mails test orders to the studio's real inbox; sender and reply-to stay. After a
+> refresh an admin sets a staging key and inbox in `/admin/email` (or via the env vars).
+> Add a line there whenever a new table stores personal data. After a reset, re-run
+> `db:migrate` and the scripts in §3 if production is behind staging.
 
 ## 8. GDPR / PII caveats
 

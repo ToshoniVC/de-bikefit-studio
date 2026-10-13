@@ -397,13 +397,27 @@ export async function requireCmsUser(
   });
 }
 
+/** What `requirePermission()` accepts: the step-up requirement, nothing else. */
+export type RequirePermissionOptions = Pick<RequireCmsUserOptions, 'recentReauthentication'>;
+
 /**
  * Same as `requireCmsUser()` but checks a fine-grained permission. There is no
  * temporary-password opt-in here: no permission-gated path is part of the
- * forced password change.
+ * forced password change. A sensitive change adds the step-up, e.g. the
+ * e-mail service credential and addresses (`src/lib/email/repo.ts`):
+ *
+ * ```ts
+ * await requirePermission('email.manage', { recentReauthentication: true });
+ * ```
  */
-export async function requirePermission(permission: CmsPermission): Promise<CmsSessionUser> {
-  return assertCmsAccess(await getCurrentCmsUser(), { permission });
+export async function requirePermission(
+  permission: CmsPermission,
+  options: RequirePermissionOptions = {},
+): Promise<CmsSessionUser> {
+  return assertCmsAccess(await getCurrentCmsUser(), {
+    permission,
+    recentReauthentication: options.recentReauthentication,
+  });
 }
 
 // --- Password + user management ----------------------------------------------

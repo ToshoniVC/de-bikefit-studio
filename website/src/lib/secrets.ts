@@ -5,16 +5,19 @@ import { env, isProduction } from '@/lib/env';
  * The CMS secret and the keys derived from it — the one implementation behind
  * the session-token pepper (`src/lib/cms/session.ts`), the Google OAuth state
  * cookie (`src/app/api/google/oauth/state.ts`), the booking confirmation ref
- * (`src/components/studio/booking/confirmation-ref.ts`) and the fallback key
- * for Google token encryption (`src/lib/booking/google.ts`). CLAUDE.md §3.
+ * (`src/components/studio/booking/confirmation-ref.ts`), the fallback key
+ * for Google token encryption (`src/lib/booking/google.ts`) and the key for
+ * the e-mail service credential (`src/lib/email/settings.ts`). CLAUDE.md §3.
+ * The AES-256-GCM envelope itself lives in `src/lib/sealed-box.ts`.
  *
  * Deliberately NOT `server-only`: `session.ts` is also loaded by the plain Node
  * scripts (`cms:seed`, `cms:selftest`). Never import it into a client
  * component — it reads the secret.
  *
  * Changing anything here changes stored hashes and signatures: rotating
- * `CMS_SESSION_SECRET` signs every CMS user out and, without
- * `GOOGLE_TOKEN_ENCRYPTION_KEY`, makes stored Google tokens unreadable.
+ * `CMS_SESSION_SECRET` signs every CMS user out, makes the stored e-mail API
+ * key unreadable and, without `GOOGLE_TOKEN_ENCRYPTION_KEY`, the stored Google
+ * tokens too.
  */
 
 /**

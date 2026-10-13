@@ -123,6 +123,10 @@ const LABELS: Record<string, string> = {
   showPrices: 'Prijzen tonen',
   sortOrder: 'Volgorde binnen de categorie',
   summary: 'Korte omschrijving (overzicht; leeg = inleiding)',
+  // `giftVoucher` block
+  formTitle: 'Titel boven het formulier',
+  sentTitle: 'Titel na versturen',
+  sentText: 'Tekst na versturen (leeg = standaardtekst)',
   // `booking` block
   serviceIds: 'Diensten (één dienst-ID per regel; leeg = alle actieve diensten)',
   showProviderChoice: 'Keuze van aanbieder tonen',
@@ -149,6 +153,7 @@ const MULTILINE = new Set([
   'mission',
   'paragraphs',
   'quote',
+  'sentText',
   'subtitle',
   'successText',
   'summary',

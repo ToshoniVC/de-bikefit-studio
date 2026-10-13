@@ -44,7 +44,7 @@ export function StepUpPanel({
   return (
     <form action={formAction} className="flex max-w-md flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Om {what} bevestig je eerst je identiteit met je wachtwoord
+        Wil je {what}? Bevestig dan eerst je identiteit met je wachtwoord
         {needsCode ? ' en een code uit je app' : ''}. Dat geldt 5 minuten.
       </p>
       <Field label="Huidig wachtwoord" htmlFor="step-up-password">

@@ -4,10 +4,10 @@
  * (`src/lib/cms/mfa/*`, `auth.ts`, the content and booking repos) with the
  * cookie-jar stub standing in for the browser. It runs on the self-test's own
  * admin, whose password section 5b made permanent, and ends with that admin
- * enrolled, so sections 14–16 (and the CLIs they drive) act as an admin who
+ * enrolled, so sections 14–19 (and the CLIs they drive) act as an admin who
  * could do the same in the browser.
  *
- *  A. migration 0004: tables, the new session column, re-runnable;
+ *  A. migration 0005: tables, the new session column, re-runnable;
  *  B. legacy admin session (from before MFA): valid, yet refused everywhere
  *     with `mfa_required`, direct repo calls included; nothing written;
  *  C. password sign-in: only a challenge, no session; the challenge token is
@@ -103,7 +103,7 @@ async function signInChecks(kit: MfaKit): Promise<{ secret: Buffer; recoveryCode
     'cms_mfa_challenges',
     'cms_mfa_attempts',
   ]) {
-    check(`migration 0004: table ${table}`, tableNames.includes(table));
+    check(`migration 0005: table ${table}`, tableNames.includes(table));
   }
   const column = await db.execute(
     sql`select data_type, is_nullable from information_schema.columns
@@ -111,16 +111,16 @@ async function signInChecks(kit: MfaKit): Promise<{ secret: Buffer; recoveryCode
   );
   const columnRow = (column as unknown as { rows: Array<Record<string, string>> }).rows[0];
   check(
-    'migration 0004: cms_sessions.mfa_verified_at is a nullable timestamptz',
+    'migration 0005: cms_sessions.mfa_verified_at is a nullable timestamptz',
     columnRow?.data_type === 'timestamp with time zone' && columnRow?.is_nullable === 'YES',
     JSON.stringify(columnRow),
   );
   const migrationSql = await readFile(
-    resolve(process.cwd(), 'drizzle/0004_cms_admin_mfa.sql'),
+    resolve(process.cwd(), 'drizzle/0005_cms_admin_mfa.sql'),
     'utf8',
   );
   check(
-    'migration 0004: additive only (no DROP, no TRUNCATE, no DELETE, no UPDATE)',
+    'migration 0005: additive only (no DROP, no TRUNCATE, no DELETE, no UPDATE)',
     !/\b(DROP|TRUNCATE)\b|\bDELETE\s+FROM\b|\bUPDATE\s+"?\w+"?\s+SET\b/i.test(
       migrationSql.replace(/^--.*$/gm, ''),
     ),
@@ -135,7 +135,7 @@ async function signInChecks(kit: MfaKit): Promise<{ secret: Buffer; recoveryCode
   } catch (error) {
     rerun = error instanceof Error ? error.message : String(error);
   }
-  check('migration 0004: re-running it twice is a no-op', rerun === 'ok', rerun);
+  check('migration 0005: re-running it twice is a no-op', rerun === 'ok', rerun);
 
   // --- B. a legacy admin session (from before MFA) -----------------------------
   const legacy = await createSession(db, admin.id, CTX);

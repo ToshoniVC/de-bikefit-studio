@@ -4,10 +4,10 @@
  * throwaway PGlite of `cms-selftest.mts`, after section 5c left the admin
  * enrolled and signed out.
  *
- *  A. migration 0005: both columns nullable timestamptz, additive, re-runnable;
+ *  A. migration 0006: both columns nullable timestamptz, additive, re-runnable;
  *  B. lifetime on the real rows: 15-minute idle end (row deleted), 8-hour
  *     absolute end however active, expiry never slid past it, admin cookie at
- *     the absolute end, pre-0005 rows capped at created_at + 8 h, concurrent
+ *     the absolute end, pre-0006 rows capped at created_at + 8 h, concurrent
  *     use harmless; editor sessions unchanged (14 days, no absolute end);
  *  C. step-up: user management and an admin's own password change refused
  *     without a recent full authentication — calling the library directly,
@@ -80,7 +80,7 @@ export async function sessionLimitsSection(ctx: {
   const near = (a: Date | null | undefined, b: number, slackMs = 5_000) =>
     !!a && Math.abs(a.getTime() - b) <= slackMs;
 
-  // --- A. migration 0005 ---------------------------------------------------------------
+  // --- A. migration 0006 ---------------------------------------------------------------
   const columns = await db.execute(
     sql`select column_name, data_type, is_nullable from information_schema.columns
         where table_name = 'cms_sessions'
@@ -88,7 +88,7 @@ export async function sessionLimitsSection(ctx: {
   );
   const columnRows = (columns as unknown as { rows: Array<Record<string, string>> }).rows;
   check(
-    'migration 0005: absolute_expires_at and reauthenticated_at are nullable timestamptz',
+    'migration 0006: absolute_expires_at and reauthenticated_at are nullable timestamptz',
     columnRows.length === 2 &&
       columnRows.every(
         (row) => row.data_type === 'timestamp with time zone' && row.is_nullable === 'YES',
@@ -96,11 +96,11 @@ export async function sessionLimitsSection(ctx: {
     JSON.stringify(columnRows),
   );
   const migrationSql = await readFile(
-    resolve(process.cwd(), 'drizzle/0005_cms_session_limits.sql'),
+    resolve(process.cwd(), 'drizzle/0006_cms_session_limits.sql'),
     'utf8',
   );
   check(
-    'migration 0005: additive only (no DROP, no TRUNCATE, no DELETE, no UPDATE)',
+    'migration 0006: additive only (no DROP, no TRUNCATE, no DELETE, no UPDATE)',
     !/\b(DROP|TRUNCATE)\b|\bDELETE\s+FROM\b|\bUPDATE\s+"?\w+"?\s+SET\b/i.test(
       migrationSql.replace(/^--.*$/gm, ''),
     ),
@@ -115,7 +115,7 @@ export async function sessionLimitsSection(ctx: {
   } catch (error) {
     rerun = error instanceof Error ? error.message : String(error);
   }
-  check('migration 0005: re-running it twice is a no-op', rerun === 'ok', rerun);
+  check('migration 0006: re-running it twice is a no-op', rerun === 'ok', rerun);
 
   // --- B. lifetime on real rows ----------------------------------------------------------
   const first = await createSession(db, admin.id, CTX, { mfaVerified: true });
@@ -163,7 +163,7 @@ export async function sessionLimitsSection(ctx: {
   check('admin session: the expiry never slid past the absolute end', neverPastEnd);
 
   const legacy = await createSession(db, admin.id, CTX, { mfaVerified: true });
-  // Test-only: a row from before 0005 (no absolute end, 14-day expiry), signed in 8 h ago.
+  // Test-only: a row from before 0006 (no absolute end, 14-day expiry), signed in 8 h ago.
   await db
     .update(cmsSessions)
     .set({
@@ -173,7 +173,7 @@ export async function sessionLimitsSection(ctx: {
     })
     .where(eq(cmsSessions.id, legacy.id));
   check(
-    'pre-0005 admin row: capped at created_at + 8 h even with a 14-day expiry',
+    'pre-0006 admin row: capped at created_at + 8 h even with a 14-day expiry',
     (await resolveSession(db, legacy.token)) === null && (await sessionRow(legacy.id)) === null,
   );
 

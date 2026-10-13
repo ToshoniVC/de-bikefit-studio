@@ -1,8 +1,9 @@
 /**
  * Which admin the CMS CLIs (`cms:seed`, `cms:rollout-aanbod`,
- * `cms:patch-booking-cta`) act as when they write through the real repo with a
- * short-lived session: the oldest active admin who has chosen their own
- * password AND enrolled two-step verification.
+ * `cms:patch-booking-cta`, `cms:patch-page-cleanup`, `cms:patch-cadeaubon`)
+ * act as when they write through the real repo with a short-lived session:
+ * the oldest active admin who has chosen their own password AND enrolled
+ * two-step verification.
  *
  * Those are the admins who could do the same in the browser. A user whose
  * password is still temporary (`must_change_password`, e.g. the admin

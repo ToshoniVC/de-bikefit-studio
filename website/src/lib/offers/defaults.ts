@@ -25,7 +25,8 @@ import {
 
 export type DefaultOffer = {
   slug: string;
-  category: OfferCategory;
+  /** The seeded services are Bikefit or Begeleiding; Overige holds the gift voucher page. */
+  category: Exclude<OfferCategory, 'overige'>;
   sortOrder: number;
   title: string;
   summary: string;

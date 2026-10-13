@@ -1,5 +1,5 @@
 import type { NavigationItem } from '@/lib/cms/blocks';
-import { LEGAL_IDENTITY, LEGAL_LINKS } from '@/lib/studio/legal';
+import { LEGAL_LINKS } from '@/lib/studio/legal';
 import type { StudioChrome } from '@/lib/studio/site';
 import { studioMeasurementId } from './analytics';
 import { ConsentSettingsLink } from './consent-banner';
@@ -18,12 +18,17 @@ import { StudioLink } from './link';
  *
  * The legal row under the bottom bar is not a menu either, so it exists on
  * every deployment whatever the menu rows say:
- *  - the legal identity from `LEGAL_IDENTITY` (art. III.74 WER), plus the
- *    public e-mail address once `contact.email` is filled in;
  *  - hard links to the privacy statement and the terms, skipped when the
  *    footer menu already links the same path (the seed's "Juridisch" group);
  *  - "Cookies", which reopens the consent banner — only where analytics can
  *    load at all (same guard as the banner), otherwise there is no choice.
+ * The row is left out when it would be empty.
+ *
+ * The company identity line (Qarakter BV, registered office, BTW, RPR) and
+ * the "city · hours" note in the bottom bar were removed at Toshoni's request
+ * (review 13 Oct 2026). The identity stays on `/privacy` and
+ * `/algemene-voorwaarden`, linked from every page, and in `LEGAL_IDENTITY`
+ * for the e-mails; the public e-mail address is in the contact column.
  */
 export function StudioSiteFooter({ chrome }: { chrome: StudioChrome }) {
   const { settings, footerNav } = chrome;
@@ -41,13 +46,6 @@ export function StudioSiteFooter({ chrome }: { chrome: StudioChrome }) {
     { label: 'Algemene voorwaarden', href: LEGAL_LINKS.terms },
   ].filter((link) => !menuHrefs.has(pathKey(link.href)));
   const showCookies = studioMeasurementId(settings) !== null;
-  const identity = [
-    LEGAL_IDENTITY.name,
-    LEGAL_IDENTITY.tradeName,
-    `${LEGAL_IDENTITY.street}, ${LEGAL_IDENTITY.city}`,
-    `BTW ${LEGAL_IDENTITY.kbo}`,
-    `RPR ${LEGAL_IDENTITY.rpr}`,
-  ].join(' · ');
 
   return (
     <footer className="studio-footer">
@@ -101,20 +99,10 @@ export function StudioSiteFooter({ chrome }: { chrome: StudioChrome }) {
         <span>
           &copy; {year} {site.name}
         </span>
-        <span>{[contact.city, contact.hours].filter(Boolean).join(' · ')}</span>
       </div>
 
-      <div className="studio-footer__bottom studio-footer__legal">
-        <p className="studio-footer__identity">
-          {identity}
-          {contact.email ? (
-            <>
-              {' · '}
-              <a href={`mailto:${contact.email}`}>{contact.email}</a>
-            </>
-          ) : null}
-        </p>
-        {legalLinks.length > 0 || showCookies ? (
+      {legalLinks.length > 0 || showCookies ? (
+        <div className="studio-footer__bottom studio-footer__legal">
           <ul className="studio-footer__legal-links">
             {legalLinks.map((link) => (
               <li key={link.href}>
@@ -127,8 +115,8 @@ export function StudioSiteFooter({ chrome }: { chrome: StudioChrome }) {
               </li>
             ) : null}
           </ul>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </footer>
   );
 }

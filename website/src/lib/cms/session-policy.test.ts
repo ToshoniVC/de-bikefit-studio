@@ -76,7 +76,7 @@ describe('admin sessions: 15 minutes idle, 8 hours absolute', () => {
     });
   });
 
-  it('also ends on idle when an old row still carries a long expiry (pre-0005)', () => {
+  it('also ends on idle when an old row still carries a long expiry (pre-0006)', () => {
     const legacy = adminSession({
       expiresAt: at(14 * 24 * HOUR),
       absoluteExpiresAt: null,

@@ -30,6 +30,8 @@ export type SeedNavigationItem = {
 
 export const PHONE_LABEL = '0473 95 26 33';
 export const PHONE_HREF = 'tel:+32473952633';
+/** Public e-mail address, confirmed by Toshoni on 13 Oct 2026 (register G-01). */
+export const CONTACT_EMAIL = 'info@debikefitstudio.be';
 export const BOOKING_PATH = '/afspraak';
 
 /** "Vier dingen, één positie" — prototype/index.html + bikefit.html. */
@@ -98,7 +100,7 @@ export const CONTACT_BLOCK: SeedBlock = {
   },
 };
 
-/** Closing band on FAQ, contact and appointment; books like the header's "Afspraak maken". */
+/** Closing band on the FAQ; books like the header's "Afspraak maken". */
 export const CALLOUT_BLOCK: SeedBlock = {
   type: 'cta',
   data: {

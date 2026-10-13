@@ -1,19 +1,26 @@
 import 'server-only';
 
-import { env, features } from '@/lib/env';
+import { redactSecrets, type ResolvedEmailSettings } from './config';
+import { loadEmailSettings } from './settings';
 
 /**
  * Transactional e-mail through Resend's REST API (`fetch`, no SDK).
  *
- *  - `RESEND_API_KEY` unset → nothing is sent; a one-line notice is logged and
+ * Configuration comes from `loadEmailSettings()` (`./settings.ts`): per field
+ * the environment (`RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO`) wins over
+ * what an admin stored in `/admin/email`, so env-only deployments behave as
+ * before.
+ *
+ *  - No API key → nothing is sent; a one-line notice is logged and
  *    `{ sent: false, reason: 'not_configured' }` comes back. Local development
  *    and the self-test run this way.
- *  - `EMAIL_FROM` must be an address on a domain verified in Resend.
+ *  - No sender → `missing_from`. The sender must be an address on a domain
+ *    verified in Resend.
  *  - Never throws: a failed send returns `{ sent: false, reason }` so a booking
- *    is never lost because a mail bounced.
- *
- * Environment comes from `src/lib/env.ts`, which reads lazily, so scripts can
- * set it before the first call.
+ *    is never lost because a mail bounced. `sent: true` means Resend ACCEPTED
+ *    the message, not that it was delivered.
+ *  - Logs carry masked recipients and the subject, never the key; provider
+ *    messages pass through `redactSecrets()`.
  */
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
@@ -44,31 +51,35 @@ export function maskEmail(address: string): string {
   return `${local.slice(0, 1)}***@${domain}`;
 }
 
-export function isEmailConfigured(): boolean {
-  return features.email;
-}
-
-export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
+/**
+ * `settings` lets a caller that already resolved them (the voucher service,
+ * which also needs the order inbox) avoid a second read.
+ */
+export async function sendEmail(
+  input: SendEmailInput,
+  settings?: ResolvedEmailSettings,
+): Promise<SendEmailResult> {
   const recipients = (Array.isArray(input.to) ? input.to : [input.to])
     .map((address) => address.trim())
     .filter(Boolean);
   if (recipients.length === 0) return { sent: false, reason: 'no_recipient' };
 
-  const apiKey = env.RESEND_API_KEY;
+  const config = settings ?? (await loadEmailSettings());
+  const apiKey = config.apiKey;
   if (!apiKey) {
     console.info(
-      `[email] RESEND_API_KEY ontbreekt — niet verstuurd: “${input.subject}” → ${recipients.map(maskEmail).join(', ')}`,
+      `[email] geen API-sleutel (RESEND_API_KEY of /admin/email) — niet verstuurd: “${input.subject}” → ${recipients.map(maskEmail).join(', ')}`,
     );
     return { sent: false, reason: 'not_configured' };
   }
 
-  const from = env.EMAIL_FROM;
+  const from = config.from;
   if (!from) {
-    console.warn('[email] EMAIL_FROM ontbreekt — e-mail niet verstuurd.');
+    console.warn('[email] geen afzender (EMAIL_FROM of /admin/email) — e-mail niet verstuurd.');
     return { sent: false, reason: 'missing_from' };
   }
 
-  const replyTo = input.replyTo ?? env.EMAIL_REPLY_TO ?? null;
+  const replyTo = input.replyTo ?? (config.replyTo || null);
 
   try {
     const response = await fetch(RESEND_ENDPOINT, {
@@ -106,6 +117,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
       } catch {
         // keep the status line
       }
+      detail = redactSecrets(detail);
       console.error(`[email] Resend weigerde “${input.subject}”: ${detail}`);
       return { sent: false, reason: detail };
     }
@@ -113,7 +125,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     const body = (await response.json().catch(() => ({}))) as { id?: string };
     return { sent: true, id: body.id ?? null };
   } catch (error) {
-    const reason = error instanceof Error ? error.message : 'onbekende fout';
+    const reason = redactSecrets(error instanceof Error ? error.message : 'onbekende fout');
     console.error(`[email] versturen mislukt “${input.subject}”: ${reason}`);
     return { sent: false, reason };
   }
