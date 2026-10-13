@@ -388,10 +388,12 @@ Google consent ────────────► GET /api/google/oauth/cal
 ## 8. E-mail flow
 
 Sent by `notifications.ts` through `sendEmail()` (Resend REST API,
-`https://api.resend.com/emails`, `Authorization: Bearer RESEND_API_KEY`, from
-`EMAIL_FROM`, optional `EMAIL_REPLY_TO`). No key → one console line (recipients masked) and
+`https://api.resend.com/emails`). Key, sender and reply-to come from `loadEmailSettings()`
+(`src/lib/email/settings.ts`): per field `RESEND_API_KEY` / `EMAIL_FROM` / `EMAIL_REPLY_TO`
+win over what an admin stored in `/admin/email` (see `cms-architecture.md`, "Site settings
+keys"). No key → one console line (recipients masked) and
 `{ sent: false, reason: 'not_configured' }`. A failing mail never fails a
-booking.
+booking. Provider error text is passed through `redactSecrets()` before it is logged.
 
 The gift voucher order form (`src/lib/gift-voucher/`, `booking-runbook.md` §12) uses the same
 `sendEmail()` with the opposite rule: there the mail *is* the order, so a skipped or failed send
@@ -444,7 +446,7 @@ All optional; defined in `src/lib/env.ts`, documented in `.env.example`.
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | `google.ts` | "Web application" OAuth client. `features.googleCalendar`. |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | `google.ts` | base64 of 32 bytes (`openssl rand -base64 32`). Rotating signs providers out of Google. |
 | `GA4_PROPERTY_ID`, `GA4_SERVICE_ACCOUNT_JSON` | Worker D (`src/lib/analytics`) | `features.ga4Data` = service account present. |
-| `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | `email/send.ts` | `features.email`. |
+| `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | `email/settings.ts` → `email/send.ts` | Optional: the same values can be stored in `/admin/email`; env wins per field. `features.email` = env key present only. |
 
 Secrets are read through `src/lib/env.ts` (zod-validated, read at call time so
 scripts and the self-test can set them before use) and derived through

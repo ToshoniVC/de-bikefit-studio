@@ -45,6 +45,12 @@
  *      success, no double mail, rate limit, the recipient is its own setting
  *      with an env override and never `contact.email`)
  *      (`scripts/selftest/cadeaubon.mts`)
+ *  19. e-mail service set up in /admin/email: migration 0004, admin-only
+ *      access (no session / editor / provider refused, nothing written),
+ *      missing config is "not sent" without a provider call, validation, the
+ *      key sealed and never in status, settings, audit or logs, admin config
+ *      end to end, provider failure, env wins per field, rotated secret,
+ *      missing table, key removal (`scripts/selftest/email-service.mts`)
  *
  * Counts failures and exits non-zero at the end when any check failed.
  *
@@ -225,6 +231,7 @@ async function main() {
     'cms_redirects',
     'cms_site_settings',
     'cms_audit_log',
+    'cms_integration_settings',
     // webshop tables must be created by the baseline migration, untouched
     'users',
     'products',
@@ -469,6 +476,9 @@ async function main() {
     cookieJar,
     backupDir: resolve(process.cwd(), DATA_DIR, 'rollout-backups'),
   });
+
+  const { emailServiceSection } = await import('./selftest/email-service.mjs');
+  await emailServiceSection({ db, admin: user, check, section, cookieJar });
 }
 
 // ===========================================================================

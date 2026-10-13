@@ -10,7 +10,7 @@
  *                      Bikefit and Begeleiding (exact-value guard), published
  *
  * Never touched: any other page, block or field, menus, redirects, settings
- * (the voucher mails go to Instellingen → Bestellingen or env
+ * (the voucher mails go to the inbox in /admin/email or env
  * `GIFT_VOUCHER_RECIPIENT`, which this patch does not set), media, users and every booking table (`guardCounts()`).
  *
  *   plan     read-only; refuses (lists `!`) when /aanbod has unpublished draft

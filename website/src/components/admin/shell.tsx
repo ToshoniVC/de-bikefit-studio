@@ -36,6 +36,7 @@ const NAV: Array<AdminNavItem & { permission?: CmsPermission; anyOf?: CmsPermiss
   { href: '/admin/navigation', label: 'Menu’s', permission: 'navigation.read' },
   { href: '/admin/redirects', label: 'Redirects', permission: 'redirect.read' },
   { href: '/admin/settings', label: 'Instellingen', permission: 'settings.read' },
+  { href: '/admin/email', label: 'E-mail', permission: 'email.manage' },
   { href: '/admin/users', label: 'Gebruikers', permission: 'user.read' },
   { href: '/admin/audit', label: 'Auditlog', permission: 'audit.read' },
   { href: '/admin/account', label: 'Mijn account' },

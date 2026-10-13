@@ -7,7 +7,6 @@ import { requireCmsUser } from '@/lib/cms/auth';
 import { getSiteSettings } from '@/lib/cms/content';
 import { can } from '@/lib/cms/permissions';
 import { listMedia } from '@/lib/cms/repo';
-import { giftVoucherDeliveryStatus } from '@/lib/gift-voucher/service';
 
 export const metadata = { title: 'Instellingen' };
 
@@ -43,7 +42,6 @@ export default async function AdminSettingsPage({
         locale={locale}
         media={media}
         canEdit={can(user.role, 'settings.update')}
-        orderStatus={giftVoucherDeliveryStatus(settings.orders.giftVoucherRecipient)}
       />
     </>
   );

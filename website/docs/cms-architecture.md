@@ -96,6 +96,7 @@ All tables in `src/db/cms-schema.ts`, all prefixed `cms_`.
 | `cms_redirects` | `from_path` unique → `to_path`, 301/302, `is_enabled`. |
 | `cms_site_settings` | `(locale, key)` primary key → jsonb value. |
 | `cms_audit_log` | Lightweight who/what/when. Denormalised `user_email` survives user deletion. |
+| `cms_integration_settings` | Server-only configuration of an outside service, one row per `key` (today only `email`): `config` jsonb (addresses), `secret_ciphertext` (AES-256-GCM, never plain), `secret_hint` (last four characters). Never read by the public site; only through `src/lib/email/settings.ts` and the admin repo `src/lib/email/repo.ts`. |
 
 Booking adds eight more tables — `cms_locations`, `cms_services`,
 `cms_providers`, `cms_provider_services`, `cms_business_hours`,
@@ -130,6 +131,7 @@ URL prefix (`publicPathFor()` in `repo.ts` encodes that rule).
 | `drizzle/0001_cms_foundation.sql` | Two enum types + eleven `cms_*` tables + their indexes and foreign keys. **Additive only** — no `DROP`, no `TRUNCATE`, no `ALTER` of any webshop table. Also idempotent. |
 | `drizzle/0002_role_provider.sql` | `ALTER TYPE cms_role ADD VALUE IF NOT EXISTS 'provider'`, nothing else. |
 | `drizzle/0003_booking.sql` | The eight booking tables, FKs and indexes, all guarded. |
+| `drizzle/0004_integration_settings.sql` | `cms_integration_settings` + its FK to `cms_users`, guarded. Code treats a missing table as "nothing stored", so deploying before migrating is safe. |
 
 `drizzle.config.ts` lists both schema files and falls back to a placeholder URL
 so `npm run db:generate` works without `DATABASE_URL`.
@@ -285,6 +287,7 @@ navigation, redirects or settings**.
 | **Change site settings** | `settings.update` | ❌ | ❌ | ✅ |
 | **Manage users** | `user.read`, `user.manage` | ❌ | ❌ | ✅ |
 | **Read audit log** | `audit.read` | ❌ | ❌ | ✅ |
+| **E-mail service** (`/admin/email`: key, sender, reply-to, order inbox, test mail) | `email.manage` | ❌ | ❌ | ✅ |
 | All bookings | `booking.read` | ❌ | ✅ | ✅ |
 | Own bookings | `booking.read.own` | ✅ | ❌ | ✅ |
 | Cancel / complete any booking | `booking.manage` | ❌ | ❌ | ✅ |
@@ -372,7 +375,7 @@ defaultDataFor('hero')          // deep clone of the above
 | `testimonial` | Ervaringen | 4 reviews from the copy deck, all marked placeholder |
 | `offer` | Dienst (aanbod) | one service on `/aanbod/<slug>`: title, intro, the booking button "Boek een afspraak voor deze dienst" (→ `/afspraak?dienst=<slug>#boeken`), Doel, Inhoud, Duur, Kostprijs, Mogelijke extra's. `category` (`bikefit`\|`begeleiding`), `sortOrder`, `summary` (overview card), `priceCents`/`priceLabel` (seeded as the visible, editable placeholder "Prijs op aanvraag"; a free-text label wins over cents, except that the placeholder never hides a confirmed `priceCents`; empty both = "Prijs op aanvraag"), `duration` (default "Duur in overleg"), `bookingServiceSlugs` (see §14). The page path is the offer's identity. The editor shows a hint pointing at `content-placeholders.md`. |
 | `offerCatalogue` | Aanbod (overzicht) | grouped overview (Bikefit, Begeleiding, Overige); owns only its title and per-group title/lede — the cards are read from the published offer pages at render time (`listPublishedOffers`), so nothing is duplicated |
-| `giftVoucher` | Cadeaubon (bestelformulier) | the gift voucher page `/aanbod/cadeaubon`: page head (owns the `<h1>`) + the order form (amount of choice, personal message, contact details, button "Bestel nu"). Owns only copy (`eyebrow`, `title`, `intro`, `summary` for the card, `formTitle`, `sentTitle`, `sentText`, `sortOrder`); fields, rules and sending are code in `src/lib/gift-voucher/` (server action → `sendEmail` to the order inbox `orders.giftVoucherRecipient` / env `GIFT_VOUCHER_RECIPIENT`, never `contact.email`; success only when Resend accepted it). Its page becomes a card in category `overige` ("Bedrag naar keuze") and is never a booking target. Ops: `booking-runbook.md` §12 |
+| `giftVoucher` | Cadeaubon (bestelformulier) | the gift voucher page `/aanbod/cadeaubon`: page head (owns the `<h1>`) + the order form (amount of choice, personal message, contact details, button "Bestel nu"). Owns only copy (`eyebrow`, `title`, `intro`, `summary` for the card, `formTitle`, `sentTitle`, `sentText`, `sortOrder`); fields, rules and sending are code in `src/lib/gift-voucher/` (server action → `sendEmail` to the order inbox from `/admin/email` / env `GIFT_VOUCHER_RECIPIENT`, never `contact.email`; success only when Resend accepted it). Its page becomes a card in category `overige` ("Bedrag naar keuze") and is never a booking target. Ops: `booking-runbook.md` §12 |
 | `team` | Team | profiles: name, role, bio paragraphs (verified text only), image; without an image the initials are drawn. `internalNote` is never rendered and names the person's open register rows; interim profiles end with "Een uitgebreid profiel volgt binnenkort." |
 | `booking` | Afspraak boeken | the booking widget on `/afspraak` (service → provider → day → slot → details → confirmation). Carries copy and a filter only: `serviceIds` (empty = every active service), `showProviderChoice` (AND-ed with the `booking.showProviderChoice` setting), `successTitle`, `successText` (empty → `booking.confirmationText`). Services, providers and live availability are read at render time through `@/lib/booking/content`, so nothing in the block goes stale. |
 
@@ -473,12 +476,30 @@ in the prototype). Validate with `validateNavigationItems(items)`.
 | `organization` | `type`, `legalName`, `vatNumber`, `sameAs`, `priceRange`, `areaServed`, `latitude`, `longitude` — the Organization / LocalBusiness JSON-LD source |
 | `analytics` | `ga4MeasurementId` (reference only; the tag reads `NEXT_PUBLIC_GA4_MEASUREMENT_ID`), `ga4PropertyId` (numeric GA4 property for the admin panel; env `GA4_PROPERTY_ID` wins), `enabled` (default **false**; the tag and banner load only when true) |
 | `booking` | `slotStepMinutes` (30), `minNoticeHours` (24), `horizonDays` (56), `defaultBufferAfterMinutes` (15), `cancelUntilHours` (48), `timezone` (`Europe/Brussels`), `introTitle`, `introText`, `confirmationText`, `showProviderChoice` (true) — the booking rules, see `booking-architecture.md` §4 |
-| `orders` | `giftVoucherRecipient` (default empty) — the inbox for gift voucher orders; env `GIFT_VOUCHER_RECIPIENT` wins. Deliberately **not** `contact.email` and no fallback to it: empty or invalid = the order is "niet verstuurd" (`src/lib/gift-voucher/recipient.ts`) |
 
 Admin → Instellingen has one form per key: Site, Contact, SEO, Organisatie
-(JSON-LD), Afspraken, Analytics, Bestellingen. Bestellingen also shows a read-only checklist
-for voucher sending: `RESEND_API_KEY` present (a yes/no only, never the value), `EMAIL_FROM`
-and the effective recipient with its source.
+(JSON-LD), Afspraken, Analytics.
+
+The e-mail service is deliberately **not** a site setting (site settings are per locale and
+read by the public site): it lives in `cms_integration_settings` and on its own admin page,
+**Beheer → E-mail** (`/admin/email`, permission `email.manage`, admins only):
+
+- **Status:** API key (source: env / admin / none; the admin sees only the last four
+  characters, or "kan niet ontsleuteld worden" after a `CMS_SESSION_SECRET` rotation),
+  sender, reply-to and the gift voucher order inbox, each with its source.
+- **API-sleutel:** write-only password field. The key is sealed with AES-256-GCM under
+  HKDF-SHA256(`CMS_SESSION_SECRET`, info `email-service-credential`) (`src/lib/secrets.ts`)
+  and never returned to any client, not even masked; "Opgeslagen sleutel verwijderen"
+  clears it.
+- **Afzender en ontvangers:** sender (`naam@domein` or `Naam <naam@domein>`, no quotes or
+  control characters), optional reply-to, *Ontvanger cadeaubonbestellingen* (one address;
+  never a fallback to `contact.email`, see `src/lib/gift-voucher/recipient.ts`).
+- **Testbericht:** sends one real message on an explicit click (with a confirm).
+- Per field an env variable (`RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO`,
+  `GIFT_VOUCHER_RECIPIENT`) wins over the admin value; the page says so.
+- Audit actions `email.settings.update` (metadata: names of the changed fields),
+  `email.key.set`, `email.key.clear` (no metadata) and `email.test` (masked address,
+  `sent`, a reason code). No value, key, ciphertext or hint is ever audited or logged.
 
 `getSiteSettings()` always returns every key with schema defaults filled in, so
 it never throws and never returns `undefined` fields.

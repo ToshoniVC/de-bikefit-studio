@@ -1,7 +1,13 @@
-import { hkdfSync } from 'node:crypto';
+import { createCipheriv, hkdfSync, randomBytes } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { DEV_SESSION_PEPPER, derivedSecret, sessionSecret } from './secrets';
+import {
+  DEV_SESSION_PEPPER,
+  derivedSecret,
+  openSecret,
+  sealSecret,
+  sessionSecret,
+} from './secrets';
 
 const SECRET = 'unit-test-session-secret-0123456789';
 
@@ -69,5 +75,40 @@ describe('derivedSecret', () => {
     expect(() => derivedSecret('google-token')).toThrow(
       'CMS_SESSION_SECRET must be set in production.',
     );
+  });
+});
+
+describe('sealSecret / openSecret', () => {
+  const key = randomBytes(32);
+
+  it('round-trips and never contains the plain text', () => {
+    const sealed = sealSecret('re_unit_test_value_123456', key);
+    expect(sealed).toMatch(/^v1\.[\w-]+\.[\w-]+\.[\w-]+$/);
+    expect(sealed).not.toContain('re_unit_test_value_123456');
+    expect(openSecret(sealed, key)).toBe('re_unit_test_value_123456');
+    // A fresh IV every time.
+    expect(sealSecret('same', key)).not.toBe(sealSecret('same', key));
+  });
+
+  it('returns null for a wrong key, tampering or junk', () => {
+    const sealed = sealSecret('value', key);
+    expect(openSecret(sealed, randomBytes(32))).toBeNull();
+    const [v, iv, tag, data] = sealed.split('.');
+    const flipped = Buffer.from(data, 'base64url');
+    flipped[0] ^= 1;
+    expect(openSecret([v, iv, tag, flipped.toString('base64url')].join('.'), key)).toBeNull();
+    expect(openSecret('v2.a.b.c', key)).toBeNull();
+    expect(openSecret('', key)).toBeNull();
+    expect(openSecret(null, key)).toBeNull();
+  });
+
+  it('reads the envelope google.ts has always written (format unchanged)', () => {
+    const iv = randomBytes(12);
+    const cipher = createCipheriv('aes-256-gcm', key, iv);
+    const data = Buffer.concat([cipher.update('refresh-token', 'utf8'), cipher.final()]);
+    const legacy = ['v1', iv, cipher.getAuthTag(), data]
+      .map((part) => (typeof part === 'string' ? part : part.toString('base64url')))
+      .join('.');
+    expect(openSecret(legacy, key)).toBe('refresh-token');
   });
 });

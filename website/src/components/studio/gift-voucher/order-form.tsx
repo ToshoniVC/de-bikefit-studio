@@ -163,8 +163,11 @@ export function GiftVoucherForm({
   return (
     <div className="studio-booking studio-voucher" ref={rootRef}>
       {formTitle ? <Heading className="studio-booking__enquiry-title">{formTitle}</Heading> : null}
+      {/* POST: a submit before hydration (or without JavaScript) must never put
+          the visitor's name, e-mail and message in the URL and the access logs. */}
       <form
         className="studio-booking__form"
+        method="post"
         noValidate
         aria-busy={pending}
         onSubmit={(event) => {

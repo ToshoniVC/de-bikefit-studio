@@ -198,6 +198,17 @@ Before the domain is verified you can only test with
 `EMAIL_FROM="De Bikefit Studio <onboarding@resend.dev>"`, and Resend then
 delivers **only to the Resend account's own address**.
 
+7. Enter the values, either:
+   - **in the admin (no deploy needed):** `/admin/email` (**Beheer → E-mail**, admins only).
+     Paste the key in *API-sleutel* → **Sleutel opslaan** (stored encrypted; afterwards only
+     its last four characters are shown), fill *Afzender*, *Antwoordadres* and *Ontvanger
+     cadeaubonbestellingen* → **Opslaan**, then **Testbericht versturen** and check the
+     inbox. Needs migration `0004` on that database and `CMS_SESSION_SECRET` set (it is on
+     staging and production); or
+   - **in Vercel** as `RESEND_API_KEY` / `EMAIL_FROM` / `EMAIL_REPLY_TO` (§7), then redeploy.
+     A Vercel value wins over the admin value for that field; `/admin/email` shows which one
+     is used.
+
 ## 7. 1Password and Vercel
 
 ### 7.1 What goes where
@@ -215,9 +226,9 @@ the secret ones as **Sensitive**. All names come from `.env.example`.
 | GA4 measurement id `G-…` (§5.1.3) | `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | no | Production (Staging only to test the banner) |
 | GA4 property id (§5.1.6) | `GA4_PROPERTY_ID` (or the admin setting) | no | Staging + Production |
 | Service-account key JSON (§5.2.2) | `GA4_SERVICE_ACCOUNT_JSON` | **yes** | Staging + Production |
-| Resend API key (§6.5) | `RESEND_API_KEY` | **yes** | per environment |
-| Sender (§6.6) | `EMAIL_FROM` | no | Staging + Production |
-| Reply-to (§6.6) | `EMAIL_REPLY_TO` | no | Staging + Production |
+| Resend API key (§6.5) | `RESEND_API_KEY` (or `/admin/email`, §6.7) | **yes** | per environment |
+| Sender (§6.6) | `EMAIL_FROM` (or `/admin/email`) | no | Staging + Production |
+| Reply-to (§6.6) | `EMAIL_REPLY_TO` (or `/admin/email`) | no | Staging + Production |
 | Public origin | `NEXT_PUBLIC_SITE_URL` (already set) | no | must equal the origin in the redirect URI |
 
 `GA4_SERVICE_ACCOUNT_JSON` accepts the raw JSON or its base64. Base64 avoids
@@ -382,9 +393,13 @@ the footer link **Cookies**).
 
 ### Mail does not arrive
 
-- No `RESEND_API_KEY` → mails are only logged (Vercel → Logs, search `email`). Gift voucher
-  orders then fail visibly ("niet verstuurd"), see § 12.
-- *domain is not verified* → finish §6.4; `EMAIL_FROM` must use that domain.
+- Open `/admin/email`: the Status card says what is missing and where each value comes from.
+- No key (neither `RESEND_API_KEY` nor one stored in the admin) → mails are only logged
+  (Vercel → Logs, search `email`). Gift voucher orders then fail visibly ("niet verstuurd"),
+  see § 12.
+- "kan niet meer ontsleuteld worden" → `CMS_SESSION_SECRET` was rotated; paste the key again.
+- *domain is not verified* → finish §6.4; the sender must use that domain.
+- **Testbericht versturen** in `/admin/email` shows Resend's refusal reason (keys redacted).
 - Check the spam folder and Resend → *Emails* for bounces.
 
 ## 11. GDPR en bewaartermijnen
@@ -586,23 +601,24 @@ legal identity's 0473 95 26 33; nothing is sent):
 
 | Setting | Where | Notes |
 | --- | --- | --- |
-| `RESEND_API_KEY` | Vercel env (sensitive), per environment; source 1Password | § 6 |
-| `EMAIL_FROM` | Vercel env | an address on a domain **verified in Resend**, e.g. `De Bikefit Studio <bestellingen@debikefitstudio.be>`; never the visitor's address |
-| Recipient | `/admin` → **Instellingen** → **Bestellingen** → *Ontvanger cadeaubonbestellingen* (`orders.giftVoucherRecipient`), or env `GIFT_VOUCHER_RECIPIENT` (Vercel, wins over the setting) | one plain address of an inbox that **really receives mail**. Deliberately separate from the public Contact → E-mail in the footer, with no fallback to it: a provider accepts mail to a dead domain and it bounces later, so the visitor would see "verstuurd" for an order nobody gets. Empty or invalid = not sent |
-| `EMAIL_REPLY_TO` | not used for vouchers | the visitor's address is the Reply-To |
+| API key | `/admin/email` → *API-sleutel* (stored encrypted), or Vercel env `RESEND_API_KEY` (sensitive, wins); source 1Password | § 6 |
+| Sender | `/admin/email` → *Afzender*, or env `EMAIL_FROM` (wins) | an address on a domain **verified in Resend**, e.g. `De Bikefit Studio <bestellingen@debikefitstudio.be>`; never the visitor's address |
+| Recipient | `/admin/email` → *Ontvanger cadeaubonbestellingen*, or env `GIFT_VOUCHER_RECIPIENT` (wins) | one plain address of an inbox that **really receives mail**. Deliberately separate from the public Contact → E-mail in the footer, with no fallback to it: a provider accepts mail to a dead domain and it bounces later, so the visitor would see "verstuurd" for an order nobody gets. Empty or invalid = not sent |
+| Reply-To | not used for vouchers | the visitor's address is the Reply-To |
 
-The Bestellingen form shows a checklist of these three (API key present yes/no, never its
-value; the sender; the effective recipient and where it comes from). Only admins can change it.
+`/admin/email` (**Beheer → E-mail**, admins only) shows the status of all of these (the key
+only as its source and last four characters, never the value) and can send a test message.
 
 **Turning it on, in this order** (each step alone changes nothing for visitors until all three
 are done; never submit a test order unless a mail to the studio is intended):
 
-1. Toshoni names the working order inbox. Set it in Bestellingen (or have Arend set
-   `GIFT_VOUCHER_RECIPIENT` on the environment).
+1. Toshoni names the working order inbox. An admin sets it in `/admin/email`.
 2. Resend account with a sender domain **verified in Resend** (DKIM/SPF DNS records: needs an
    explicit DNS go).
-3. Arend sets `RESEND_API_KEY` (sensitive, from 1Password) and `EMAIL_FROM` (an address on that
-   domain) for the environment and redeploys. Check Bestellingen: three times *Klaar*/*Aanwezig*.
+3. An admin pastes the API key (also kept in 1Password) and the sender in `/admin/email`, or
+   Arend sets `RESEND_API_KEY` / `EMAIL_FROM` in Vercel and redeploys. Check the Status card:
+   *Aanwezig* / *Klaar* for key, sender and recipient.
+4. **Testbericht versturen** to the order inbox and check that it arrives.
 
 **Honest states.** The site says "verstuurd" only when Resend **accepted** the message (HTTP
 2xx). A missing key or sender, an empty recipient, a refusal, a timeout or an exception is
@@ -618,8 +634,10 @@ without a second mail. The form disables "Bestel nu" while a request is in fligh
 **Privacy.** No order is stored on the site; the order exists only in the studio's mailbox.
 Server logs carry no visitor data (`[cadeaubon] aanvraag niet verstuurd (not_configured)`; the
 mail helper logs the subject, which holds only amount and reference, and the masked studio
-address). Note: `next dev` prints server-action arguments to the local terminal (development
-only).
+address). Server-action argument logging in `next dev` is switched off
+(`logging.serverFunctions: false`), so neither visitor data nor a key typed into
+`/admin/email` reaches a local terminal. The form posts with `method="post"`, so a submit before
+the page has loaded its JavaScript never puts the visitor's data in a URL.
 
 **Not decided, not stated** (register C-04): validity, form of the voucher, delivery, minimum or
 maximum amount. The form accepts € 1 to € 5.000 as a technical bound.

@@ -11,8 +11,8 @@
  * 2. The order service end to end on the database (no network: `fetch` is
  *    replaced): no `RESEND_API_KEY` or no `EMAIL_FROM` or a provider refusal
  *    is "not sent" and leaves no sent marker; only an accepted request is a
- *    success, sent from `EMAIL_FROM` to the order inbox
- *    (`orders.giftVoucherRecipient`) with the visitor as Reply-To; a repeat is
+ *    success, sent from `EMAIL_FROM` to the order inbox (/admin/email →
+ *    *Ontvanger cadeaubonbestellingen*) with the visitor as Reply-To; a repeat is
  *    not mailed twice; the rate limit holds; the rows never hold the plain
  *    e-mail address and never count as booking attempts. The public
  *    `contact.email` alone is never used as the recipient; env
@@ -203,10 +203,18 @@ export async function cadeaubonSection(ctx: {
 
   // --- 2. order requests through the real service (fetch replaced) -----------------
   const { requestGiftVoucher } = await import('@/lib/gift-voucher/service');
+  const emailRepo = await import('@/lib/email/repo');
   const ORDER_INBOX = 'bestellingen-inbox@example.test';
+  // Only the inbox is stored in the admin here; key and sender come from env,
+  // the path every existing deployment uses.
   const setOrderInbox = (address: string) =>
     asEditor(async () => {
-      await repo.updateSiteSetting(locale, 'orders', { giftVoucherRecipient: address });
+      const saved = await emailRepo.saveEmailServiceConfig({
+        from: '',
+        replyTo: '',
+        giftVoucherRecipient: address,
+      });
+      if (!saved.ok) throw new Error(saved.message);
     });
   await asEditor(async () => {
     const current = (await getSiteSettings(locale)).contact;

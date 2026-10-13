@@ -5,7 +5,8 @@ import { EMAIL_RE } from './order';
  * public contact address in the footer (`contact.email`):
  *
  *  1. env `GIFT_VOUCHER_RECIPIENT` (set by DevOps per environment) wins;
- *  2. else `/admin` → Instellingen → Bestellingen (`orders.giftVoucherRecipient`);
+ *  2. else `/admin/email` → *Ontvanger cadeaubonbestellingen* (the e-mail
+ *     service settings, `src/lib/email/config.ts`);
  *  3. else nobody: the order is "niet verstuurd".
  *
  * There is no fallback to `contact.email`. The public address may not receive
@@ -28,16 +29,6 @@ export type GiftVoucherRecipient = {
   source: GiftVoucherRecipientSource;
   /** A value was set but is not a single valid e-mail address. */
   invalid: boolean;
-};
-
-export type GiftVoucherDeliveryStatus = {
-  /** `RESEND_API_KEY` is present (the value itself never leaves the server). */
-  apiKey: boolean;
-  /** `EMAIL_FROM`, not a secret; empty when unset. */
-  sender: string;
-  recipient: GiftVoucherRecipient;
-  /** All three are in place; delivery still depends on the provider and the inbox. */
-  ready: boolean;
 };
 
 /** A single plain address (`naam@domein.be`), no display name, no list. */

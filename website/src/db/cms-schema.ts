@@ -345,6 +345,26 @@ export const cmsAuditLog = pgTable(
   ],
 );
 
+/**
+ * Server-only configuration of an outside service, one row per service
+ * (`key`; today only `'email'`, see `src/lib/email/settings.ts`). Deliberately
+ * NOT a site setting: the public readers never select this table.
+ *
+ *  - `config`: non-secret values (addresses), validated by zod in code;
+ *  - `secret_ciphertext`: the credential, AES-256-GCM sealed with a key
+ *    derived from `CMS_SESSION_SECRET` (`src/lib/secrets.ts`); never plain;
+ *  - `secret_hint`: its last four characters, for the masked admin display.
+ */
+export const cmsIntegrationSettings = pgTable('cms_integration_settings', {
+  key: text('key').primaryKey(),
+  config: jsonb('config').$type<Record<string, unknown>>().default({}).notNull(),
+  secretCiphertext: text('secret_ciphertext'),
+  secretHint: text('secret_hint'),
+  secretUpdatedAt: timestamp('secret_updated_at', { withTimezone: true }),
+  updatedBy: text('updated_by').references(() => cmsUsers.id, { onDelete: 'set null' }),
+  updatedAt: updatedAt(),
+});
+
 // ---------------------------------------------------------------------------
 // Booking (drizzle/0003_booking.sql) — see docs/booking-architecture.md
 //

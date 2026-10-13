@@ -100,10 +100,10 @@ its variables are missing. Names and purpose only; values never appear here.
 | `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ("Web application") for per-provider Calendar sync. | no | optional (both or neither) |
 | `GOOGLE_OAUTH_CLIENT_SECRET` | Secret of that client. Without the pair the OAuth routes answer 503 and availability ignores Google. | yes | optional |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | base64 of 32 bytes; AES-256-GCM key for stored Google tokens. **Optional:** empty → key derived from `CMS_SESSION_SECRET` (HKDF-SHA256). Rotating either value forces every provider to reconnect Google. One per environment. | yes | optional |
-| `RESEND_API_KEY` | Resend API key for booking e-mails and gift voucher orders. Without it booking mails are logged (recipients masked) and skipped, and every gift voucher order shows "niet verstuurd". | yes | optional |
-| `EMAIL_FROM` | Sender on a domain verified in Resend. Also required for gift voucher orders. | no | with Resend |
-| `EMAIL_REPLY_TO` | Reply-To for customer mails (not used for gift voucher orders: their Reply-To is the visitor). | no | optional |
-| `GIFT_VOUCHER_RECIPIENT` | Inbox for gift voucher orders (one plain address). Overrides `/admin` → Instellingen → Bestellingen. Never falls back to the public contact e-mail; unset in both places, or invalid, means every order shows "niet verstuurd". | no | optional |
+| `RESEND_API_KEY` | Resend API key for booking e-mails and gift voucher orders. **Optional:** an admin can instead store the key in `/admin/email` (sealed with AES-256-GCM, key derived from `CMS_SESSION_SECRET`); when set here it wins. With no key anywhere, booking mails are logged (recipients masked) and skipped, and every gift voucher order shows "niet verstuurd". | yes | optional |
+| `EMAIL_FROM` | Sender on a domain verified in Resend. Also required for gift voucher orders. Overrides the sender in `/admin/email`. | no | optional |
+| `EMAIL_REPLY_TO` | Reply-To for customer mails (not used for gift voucher orders: their Reply-To is the visitor). Overrides `/admin/email`. | no | optional |
+| `GIFT_VOUCHER_RECIPIENT` | Inbox for gift voucher orders (one plain address). Overrides `/admin/email` → *Ontvanger cadeaubonbestellingen*. Never falls back to the public contact e-mail; unset in both places, or invalid, means every order shows "niet verstuurd". | no | optional |
 | `CMS_PGLITE_DIR` | Local PGlite directory (default `.pglite`). | no | local only |
 | `CMS_PGLITE_AUTO_MIGRATE` | `"false"` stops PGlite auto-migrating on first use. | no | local only |
 | `NEXT_PUBLIC_APP_URL` | Webshop origin; second fallback for the canonical origin. | no | legacy webshop |

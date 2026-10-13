@@ -5,18 +5,18 @@ import { getCmsDb, type CmsDatabase } from '@/db/cms';
 import { cmsBookingRateLimit, DEFAULT_LOCALE } from '@/db/cms-schema';
 import { getSiteSettings } from '@/lib/cms/content';
 import { sendEmail } from '@/lib/email/send';
-import { env, features } from '@/lib/env';
+import { loadEmailSettings } from '@/lib/email/settings';
 import { deliverGiftVoucherOrder, type GiftVoucherResult, type GiftVoucherStore } from './delivery';
-import { resolveGiftVoucherRecipient, type GiftVoucherDeliveryStatus } from './recipient';
 
 /**
  * The real wiring behind "Bestel nu" (`actions.ts` → here → `delivery.ts`):
  *
- *  - recipient: env `GIFT_VOUCHER_RECIPIENT`, else Instellingen → Bestellingen
- *    (`orders.giftVoucherRecipient`); deliberately NOT the public
+ *  - recipient: env `GIFT_VOUCHER_RECIPIENT`, else `/admin/email` →
+ *    *Ontvanger cadeaubonbestellingen*; deliberately NOT the public
  *    `contact.email` (see `recipient.ts`); empty = nothing is sent;
- *  - sender: `EMAIL_FROM` through Resend (`src/lib/email/send.ts`), never the
- *    visitor's address; the visitor's address is only the Reply-To;
+ *  - sender: the configured sender (`EMAIL_FROM` or `/admin/email`) through
+ *    Resend (`src/lib/email/send.ts`), never the visitor's address; the
+ *    visitor's address is only the Reply-To;
  *  - rate limit and duplicate protection: rows in `cms_booking_rate_limit`
  *    with keys namespaced `cadeaubon:` / `cadeaubon-sent:`, so they never
  *    match a booking attempt (bookings key on the plain e-mail and IP). The
@@ -84,31 +84,14 @@ export async function requestGiftVoucher(
   context: { ipAddress: string | null; locale?: string },
 ): Promise<GiftVoucherResult> {
   const settings = await getSiteSettings(context.locale ?? DEFAULT_LOCALE);
-  const recipient = resolveGiftVoucherRecipient({
-    env: env.GIFT_VOUCHER_RECIPIENT,
-    setting: settings.orders.giftVoucherRecipient,
-  });
+  const db = await getCmsDb();
+  const email = await loadEmailSettings(db);
   return deliverGiftVoucherOrder(raw, {
-    store: giftVoucherStore(await getCmsDb()),
-    send: (mail) => sendEmail(mail),
-    recipient: recipient.address,
+    store: giftVoucherStore(db),
+    send: (mail) => sendEmail(mail, email),
+    recipient: email.recipient.address,
     siteName: settings.site.name || 'De Bikefit Studio',
     ipAddress: context.ipAddress,
     log: (message) => console.warn(message),
   });
-}
-
-/**
- * What the admin settings page shows about voucher sending. Only presence of
- * the API key, never its value; the sender and recipient are addresses, not
- * secrets.
- */
-export function giftVoucherDeliveryStatus(settingValue: string): GiftVoucherDeliveryStatus {
-  const apiKey = features.email;
-  const sender = env.EMAIL_FROM ?? '';
-  const recipient = resolveGiftVoucherRecipient({
-    env: env.GIFT_VOUCHER_RECIPIENT,
-    setting: settingValue,
-  });
-  return { apiKey, sender, recipient, ready: apiKey && Boolean(sender && recipient.address) };
 }

@@ -190,9 +190,9 @@ export const aanbodBlockRegistry = {
   giftVoucher: {
     label: 'Cadeaubon (bestelformulier)',
     description:
-      'Bestelformulier voor een cadeaubon: bedrag naar keuze, persoonlijke boodschap en contactgegevens. “Bestel nu” mailt de aanvraag naar de ontvanger uit Instellingen → Bestellingen; factuur en betaallink maak je zelf op. Hoort op /aanbod/cadeaubon.',
+      'Bestelformulier voor een cadeaubon: bedrag naar keuze, persoonlijke boodschap en contactgegevens. “Bestel nu” mailt de aanvraag naar de ontvanger uit Beheer → E-mail; factuur en betaallink maak je zelf op. Hoort op /aanbod/cadeaubon.',
     editorHint:
-      'Zonder werkende e-mailverzending (RESEND_API_KEY en EMAIL_FROM) of zonder ontvanger in Instellingen → Bestellingen meldt het formulier dat de bestelling niet verstuurd is. Vermeld geen geldigheid of voorwaarden die nog niet beslist zijn.',
+      'Zonder werkende e-mailverzending of zonder ontvanger (Beheer → E-mail) meldt het formulier dat de bestelling niet verstuurd is. Vermeld geen geldigheid of voorwaarden die nog niet beslist zijn.',
     schema: giftVoucherSchema,
     defaultData: {
       sortOrder: 0,

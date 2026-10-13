@@ -61,8 +61,8 @@ come from 1Password.
 | `NEXT_PUBLIC_SITE_URL` | `https://de-bikefit-studio-git-staging-toshoni.vercel.app` | Canonicals, sitemap, OG, e-mail links, OAuth redirect URI. |
 | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | the shared web client | Staging redirect URI must be registered on the client (`booking-runbook.md` §4). |
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32`, staging's own | Optional (falls back to a key derived from `CMS_SESSION_SECRET`); treat as permanent. |
-| `RESEND_API_KEY` | staging key | Without it mails are logged and skipped. |
-| `EMAIL_FROM`, `EMAIL_REPLY_TO` | sender on the verified domain, reply-to | |
+| `RESEND_API_KEY` | staging key | Optional: an admin can store it in `/admin/email` instead (§13); env wins. Without a key anywhere mails are logged and skipped. |
+| `EMAIL_FROM`, `EMAIL_REPLY_TO` | sender on the verified domain, reply-to | Optional, same as above. |
 | `GA4_PROPERTY_ID`, `GA4_SERVICE_ACCOUNT_JSON` | property id, service-account key | Admin analytics panel. Optional. |
 | `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | **empty**, unless testing the cookie banner | Build-time; the tag also needs *Analytics ingeschakeld* in the admin. |
 
@@ -488,7 +488,7 @@ What it adds, and where:
 
 Nothing else: no settings, menus, redirects, booking tables, migrations or env vars. Home and
 `/bikefit` keep their own groups. Independent of §11 (different fields); run it after §11.
-The order recipient is **not** set by any patch: it is `/admin` → Instellingen → Bestellingen
+The order recipient is **not** set by any patch: it is `/admin/email` (§13)
 or env `GIFT_VOUCHER_RECIPIENT` (see `booking-runbook.md` § Cadeaubon), and stays empty until
 a working inbox is chosen, so orders show "niet verstuurd". **Never a full `cms:seed` or
 `--refresh-slug` for this.**
@@ -523,10 +523,41 @@ a working inbox is chosen, so orders show "niet verstuurd". **Never a full `cms:
    "Bedrag in euro", "Persoonlijke boodschap", "Voornaam en naam", "E-mail", "Telefoon" and the
    button "Bestel nu". `/afspraak?dienst=cadeaubon` shows the normal widget, not an enquiry.
    **Do not submit the form against a configured mail provider** unless an order mail to the
-   studio is intended; without `RESEND_API_KEY` a submit shows "Je bestelling is niet verstuurd"
-   and sends nothing (that is the expected staging state today).
+   studio is intended; without an API key (env or `/admin/email`) a submit shows "Je
+   bestelling is niet verstuurd" and sends nothing (that is the expected staging state today).
 
 **Rollback:** `npm run cms:patch-cadeaubon -- --restore <backup.json> --expect-host '<host>'`
 unpublishes `/aanbod/cadeaubon` (row kept; a later apply re-publishes it) and puts `/aanbod`
 back. Then, if needed, the code. Mail delivery itself is configured separately:
 `docs/booking-runbook.md` § 12.
+
+## 13. E-mail service in the admin (`/admin/email`, migration 0004, 13 Oct 2026)
+
+Admins can set up the e-mail service themselves: **Beheer → E-mail** (`/admin/email`,
+permission `email.manage`). API key (write-only, stored AES-256-GCM sealed in
+`cms_integration_settings`, key derived from `CMS_SESSION_SECRET`), sender, reply-to, gift
+voucher order inbox, a status card and a test-mail button. Env variables keep working and win
+per field. Details: `cms-architecture.md` (site settings section) and `booking-runbook.md` §6.7.
+
+**Release steps (staging):**
+
+1. Deploy the code (release gate, READY). Safe before the migration: a missing table counts as
+   "nothing stored"; `/admin/email` then shows a red notice and refuses to save.
+2. **Migrate** (additive, idempotent; creates only `cms_integration_settings`):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run db:migrate
+   ```
+
+   Expect `→ driver: neon-http (<host>)` and `✓ migrations applied to Neon`. Re-running is a
+   no-op.
+3. **Verify** (admin login, nothing sent): `/admin/email` loads without the red notice; Status
+   reads "Niet ingesteld" with *Te doen* for API key, sender and recipient; the nav shows
+   "E-mail" for admins only. Optional: save an invalid sender (`abc`) and see it refused.
+   Do **not** paste a real key or press *Testbericht versturen* unless sending is intended.
+4. `CMS_SESSION_SECRET` must stay as it is: rotating it makes a stored key unreadable (the page
+   then says so; nothing is sent until the key is pasted again).
+
+**Rollback:** code back to the previous SHA; the table can stay (older code ignores it). If a key
+was stored and must go: **Opgeslagen sleutel verwijderen** in `/admin/email` first.
+

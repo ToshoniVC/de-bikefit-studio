@@ -9,6 +9,15 @@ const nextConfig: NextConfig = {
    */
   serverExternalPackages: ['@electric-sql/pglite'],
 
+  /**
+   * `next dev` prints every server-action call with its arguments by default.
+   * Those arguments include visitors' names and e-mail addresses (booking,
+   * Cadeaubon) and the e-mail API key typed into /admin/email, so they are
+   * kept out of the terminal (CLAUDE.md §4, logging). Production never logs
+   * them either way.
+   */
+  logging: { serverFunctions: false },
+
   experimental: {
     serverActions: {
       /**
