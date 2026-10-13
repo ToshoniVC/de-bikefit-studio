@@ -22,8 +22,10 @@
  *   restore  puts the backed-up rows back; pages and redirects the rollout
  *            created are unpublished / disabled, never deleted
  *
- * The caller installs the request-context stubs and an admin session, then
- * passes the dynamically imported modules in as {@link RolloutDeps}.
+ * The caller installs the request-context stubs and, for apply/restore only,
+ * an admin session, then passes the dynamically imported modules in as
+ * {@link RolloutDeps} (planning needs just `PlanDeps`). The CLI's mode
+ * dispatch and the read-only dry run live in `aanbod-rollout-run.mts`.
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';

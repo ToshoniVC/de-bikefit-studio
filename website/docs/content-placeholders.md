@@ -31,10 +31,10 @@ datum).
 | D | Duur | 7 | 7 | 0 | 0 | 0 |
 | E | Inhoud, extra's, pakketten | 8 | 1 | 7 | 0 | 0 |
 | T | Team | 13 | 10 | 2 | 1 | 0 |
-| B | AI-beelden | 3 | 3 | 0 | 0 | 0 |
+| B | AI-beelden en lege beeldvakken | 5 | 5 | 0 | 0 | 0 |
 | K | Online boeken per dienst | 6 | 5 | 1 | 0 | 0 |
-| G | Bestaande hiaten in aangeraakte inhoud | 7 | 4 | 2 | 1 | 0 |
-| | **Totaal** | **51** | **37** | **12** | **2** | **0** |
+| G | Bestaande hiaten in aangeraakte inhoud | 7 | 4 | 1 | 1 | 1 |
+| | **Totaal** | **53** | **39** | **11** | **2** | **1** |
 
 ## 1. Prijzen (P)
 
@@ -129,11 +129,14 @@ die tweede regel zodra de echte bio er staat.
 | T-12 | Goran Van de Walle — Afbeelding | leeg → initialen "GV" | echte portretfoto, met akkoord | open |
 | T-13 | Algemene claim: `/aanbod` → blok *Hero* → **Ondertitel** ("uitsluitend met ervaren, gediplomeerde professionals"); `/ons-team` → *Hero* → **Ondertitel** en home → blok *Oproep* → **Tekst** ("de nodige diploma's") | aangeleverd door Toshoni | blijft algemeen; geen individuele diploma's noemen zonder bron | bevestigd |
 
-## 5. Beelden, AI-gegenereerd en tijdelijk (B)
+## 5. Beelden: AI-gegenereerd, tijdelijk of leeg (B)
 
 Drie gegenereerde sfeerbeelden van fictieve, algemene personen (herkomst en prompts:
 [`editorial-images.md`](./editorial-images.md), manifest `src/lib/studio/editorial-images.json`).
-Ze zijn **nooit** een portret van Rutger, Robin of Goran.
+Ze zijn **nooit** een portret van Rutger, Robin of Goran. Daarnaast laat de rollout twee
+beeldvakken op `/bikefit` bewust leeg (B-04, B-05): daar toont de site het decoratieve vlak met
+verloop en ring, zonder foto. De compacte paginakoppen (*Hero*, variant paginakop) tonen nooit
+een beeld en staan hier daarom niet.
 
 Vervangen kan op twee manieren:
 
@@ -148,6 +151,8 @@ Vervangen kan op twee manieren:
 | B-01 | `flemish-cyclists` → `public/images/editorial/flemish-cyclists-v1.webp` | home → *Hero* ("Meer plezier."); `/bikefit` → *Beeld + tekst* "Waarom is een bikefit belangrijk?"; `/aanbod/lactaattest` → *Dienst (aanbod)* | echte foto van fietsers, beeldrechten en toestemming geregeld | open |
 | B-02 | `bikefit-studio` → `public/images/editorial/bikefit-studio-v1.webp` | home → *Beeld + tekst* "Jij blijft het vertrekpunt"; `/bikefit` → *Beeld + tekst* "Meten om beter te kijken"; *Dienst (aanbod)* op `/aanbod/bikefit-nieuwe-fiets`, `/aanbod/bikefit-huidige-fiets`, `/aanbod/voetanalyse`, `/aanbod/zadelanalyse`, `/aanbod/afstellen-schoenplaatjes` | echte foto van een bikefit in de studio | open |
 | B-03 | `junior-coaching` → `public/images/editorial/junior-coaching-v1.webp` | home → *Beeld + tekst* "Voor elke fietser"; `/voor-wie` → *Beeld + tekst* "Jonge fietsers groeien"; `/aanbod/coaching` → *Dienst (aanbod)* | echte foto, schriftelijke toestemming van ouders bij minderjarigen | open |
+| B-04 | geen (leeg) | `/bikefit` → *Beeld + tekst* "Kan een bikefit ook bij mij thuis?" (donker, beeld links) | echte foto van een fit op locatie, of bewust leeg laten; hangt af van K-04 en G-07 | open |
+| B-05 | geen (leeg) | `/bikefit` → *Beeld + tekst* "Kinderen groeien. De pasvorm groeit niet mee." (beeld rechts) | echte foto van een jonge fietser, schriftelijke toestemming van ouders; of B-03 hergebruiken | open |
 
 ## 6. Online boeken per dienst (K)
 
@@ -173,6 +178,6 @@ blok *Dienst (aanbod)* → veld **Online boeken via dienst(en)** (slug uit `/adm
 | G-02 | Adres van de studio: **Instellingen** → Contact → **Adresregels** en **Postcode**; blok *Contact* → **Adresregels** op home, `/contact` en `/afspraak`; `/admin` → **Locaties** → "De Bikefit Studio, Ninove" → **Adresregels** | enkel "Ninove", geen straat en postcode; JSON-LD laat het adres weg | adres van de studio (optioneel ook **Kaart-embed URL** in blok *Contact*) | open |
 | G-03 | `/afspraak` (niet in deze rollout) | toont nog "Vier manieren om te boeken" (Volwassenenfit, Jeugdfit, Gezinspakket, Fit aan huis) | afstemmen op het nieuwe aanbod na K-02 – K-04 | open |
 | G-04 | `/veelgestelde-vragen` (niet in deze rollout) | antwoorden noemen jeugdfit en 60/90 minuten | nakijken na D-01 – D-07 | open |
-| G-05 | Korte verbindingszinnen: inleidingen van de groepen Bikefit/Begeleiding in blok *Aanbod (overzicht)* (home, `/aanbod`, `/bikefit`); sectietitels op home ("Wat we voor je doen"), `/voor-wie` ("Waar je ook staat") en `/bikefit` ("Meten om beter te kijken", "Onze bikefitdiensten") | neutraal geschreven door de implementatie, zonder nieuwe claims | redactie door Winston | te bevestigen |
+| G-05 | Korte verbindingszinnen: inleidingen van de groepen Bikefit/Begeleiding in blok *Aanbod (overzicht)* (home, `/aanbod`, `/bikefit`); sectietitels op home ("Wat we voor je doen"), `/voor-wie` ("Waar je ook staat") en `/bikefit` ("Meten om beter te kijken", "Onze bikefitdiensten") | neutraal geschreven door de implementatie, zonder nieuwe claims | nagekeken en aanvaard door Winston (review 13 okt 2026), geen wijziging nodig | afgerond 2026-10-13 |
 | G-06 | "nieuwste 3D-bewegingsanalyse": `/bikefit` en home → *Beeld + tekst* → **Alinea's**; `/aanbod/bikefit-huidige-fiets` → **Inhoud** | tekst aangeleverd door Toshoni; geen merk of toestel genoemd | merk of toestel enkel noemen met bron | bevestigd |
 | G-07 | "bij jou thuis / op locatie": home → *Hero* → **Ondertitel**; `/aanbod` → *Hero* → **Ondertitel**; `/bikefit` → *Beeld + tekst* "Kan een bikefit ook bij mij thuis?" | tekst aangeleverd (hero, aanbod) of uit het prototype (`/bikefit`); belooft fits aan huis | na K-04 nakijken: wordt Fit aan huis uitgezet, dan deze zinnen aanpassen | te bevestigen |

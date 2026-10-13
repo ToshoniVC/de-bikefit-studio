@@ -22,16 +22,21 @@ export type CmsRepo = typeof import('@/lib/cms/repo');
 type CmsAuth = typeof import('@/lib/cms/auth');
 type CmsDatabase = import('@/db/cms').CmsDatabase;
 
-export type RolloutDeps = {
+/** What planning needs: reads only — no repo, no session, no actor. */
+export type PlanDeps = {
   db: CmsDatabase;
   orm: DrizzleOrm;
   schema: CmsSchema;
   blocks: BlocksModule;
+  locale: string;
+  log: (symbol: string, message: string) => void;
+};
+
+/** What apply/restore need on top: the write API and the acting admin. */
+export type RolloutDeps = PlanDeps & {
   repo: CmsRepo;
   auth: Pick<CmsAuth, 'recordAudit'>;
   actor: { id: string; email: string };
-  locale: string;
-  log: (symbol: string, message: string) => void;
 };
 
 // ---------------------------------------------------------------------------
@@ -102,7 +107,7 @@ export function pagePath(slug: string): string {
 
 /** `(type, data)` pairs after registry validation, for an order-stable comparison. */
 function normalizedBlocks(
-  deps: RolloutDeps,
+  deps: PlanDeps,
   input: ReadonlyArray<{ id?: string; type: string; data: unknown }>,
 ): string | null {
   const result = deps.blocks.validateBlocks(input);
@@ -119,7 +124,7 @@ export function seoOf(spec: SeedPage) {
   };
 }
 
-export async function guardCounts(deps: RolloutDeps): Promise<GuardCounts> {
+export async function guardCounts(deps: PlanDeps): Promise<GuardCounts> {
   const { db, schema } = deps;
   const [bookings, services, providerServices, providers] = await Promise.all([
     db.select({ id: schema.cmsBookings.id }).from(schema.cmsBookings),
@@ -147,7 +152,7 @@ export async function guardCounts(deps: RolloutDeps): Promise<GuardCounts> {
   };
 }
 
-async function planPages(deps: RolloutDeps): Promise<PagePlan[]> {
+async function planPages(deps: PlanDeps): Promise<PagePlan[]> {
   const { db, orm, schema, locale } = deps;
   const { and, asc, eq } = orm;
   const allPages = await db
@@ -225,7 +230,7 @@ async function planPages(deps: RolloutDeps): Promise<PagePlan[]> {
   return plans;
 }
 
-async function planMenus(deps: RolloutDeps): Promise<MenuPlan[]> {
+async function planMenus(deps: PlanDeps): Promise<MenuPlan[]> {
   const { db, orm, schema, locale, blocks } = deps;
   const { and, eq } = orm;
   const targets = [
@@ -247,7 +252,7 @@ async function planMenus(deps: RolloutDeps): Promise<MenuPlan[]> {
   return plans;
 }
 
-async function planRetire(deps: RolloutDeps): Promise<RetirePlan> {
+async function planRetire(deps: PlanDeps): Promise<RetirePlan> {
   const { db, orm, schema, locale } = deps;
   const { and, eq } = orm;
   const [row] = await db
@@ -263,7 +268,7 @@ async function planRetire(deps: RolloutDeps): Promise<RetirePlan> {
   };
 }
 
-async function planRedirects(deps: RolloutDeps): Promise<RedirectPlan[]> {
+async function planRedirects(deps: PlanDeps): Promise<RedirectPlan[]> {
   const { db, orm, schema } = deps;
   const plans: RedirectPlan[] = [];
   for (const redirect of AANBOD_REDIRECTS) {
@@ -297,7 +302,7 @@ async function planRedirects(deps: RolloutDeps): Promise<RedirectPlan[]> {
 }
 
 /** Read-only: which offer can be booked online right now, and through what. */
-async function catalogueReport(deps: RolloutDeps): Promise<CatalogueRow[]> {
+async function catalogueReport(deps: PlanDeps): Promise<CatalogueRow[]> {
   const { db, orm, schema, locale } = deps;
   const { and, eq } = orm;
   const services = await db
@@ -340,7 +345,7 @@ async function catalogueReport(deps: RolloutDeps): Promise<CatalogueRow[]> {
   });
 }
 
-export async function planAanbodRollout(deps: RolloutDeps): Promise<RolloutPlan> {
+export async function planAanbodRollout(deps: PlanDeps): Promise<RolloutPlan> {
   return {
     locale: deps.locale,
     pages: await planPages(deps),
@@ -387,7 +392,7 @@ export function planBlockers(
   return blockers;
 }
 
-export function printPlan(plan: RolloutPlan, log: RolloutDeps['log']): void {
+export function printPlan(plan: RolloutPlan, log: PlanDeps['log']): void {
   log('→', `locale ${plan.locale}`);
   for (const page of plan.pages) {
     const symbol = page.action === 'create' ? '+' : page.action === 'update' ? '~' : '=';

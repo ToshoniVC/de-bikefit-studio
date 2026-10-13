@@ -5,7 +5,9 @@
  *
  * 1. builds a legacy site (home, /bikefit, /over-ons, old main menu) through
  *    the repo, plus an unpublished draft edit on /bikefit;
- * 2. plan = read-only; apply refuses the draft edit, then applies with
+ * 2. the CLI dry run (`runAanbodRollout`) leaves sessions, audit log, content
+ *    and bookings byte-identical and cannot write (read-only db); plan =
+ *    read-only; apply refuses the draft edit, then applies with
  *    `allowDraftOverwrite`; the booking tables are byte-for-byte the same;
  * 3. the published result: home starts with the offer, seven offer pages,
  *    the catalogue reader, menus, /over-ons unpublished + 301;
@@ -24,6 +26,7 @@ import {
   restoreAanbodRollout,
   type RolloutDeps,
 } from '../lib/aanbod-rollout.mjs';
+import { readOnlyDb, runAanbodRollout } from '../lib/aanbod-rollout-run.mjs';
 
 type Check = (label: string, condition: boolean, detail?: string) => void;
 
@@ -99,7 +102,81 @@ export async function aanbodSection(ctx: {
     `${guardsBefore.bookings} bookings, ${guardsBefore.services} services`,
   );
 
-  // --- 2. plan is read-only; apply guards drafts ----------------------------------
+  // --- 2. dry run and plan are read-only; apply guards drafts ---------------------
+  // The CLI's own dry-run path (`runAanbodRollout`), not just the planner: no
+  // session row, no audit entry, no content change, the cookie jar untouched.
+  async function fingerprint() {
+    const tables = [
+      schema.cmsSessions,
+      schema.cmsAuditLog,
+      schema.cmsPages,
+      schema.cmsBlocks,
+      schema.cmsNavigation,
+      schema.cmsRedirects,
+    ] as const;
+    const rows = await Promise.all(tables.map((table) => db.select().from(table)));
+    return JSON.stringify([
+      rows.map((list) => list.map((row) => JSON.stringify(row)).sort()),
+      await guardCounts(deps),
+    ]);
+  }
+  const beforeDryRun = await fingerprint();
+  const cookieBefore = cookieJar.get('cms_session');
+  // Records every write call, so a write that is undone again (create + revoke
+  // a session) still counts.
+  const writeCalls: string[] = [];
+  const watchedDb = new Proxy(db, {
+    get(target, property, receiver) {
+      const writes = ['insert', 'update', 'delete', 'execute', 'transaction', 'batch'];
+      if (typeof property === 'string' && writes.includes(property)) writeCalls.push(property);
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  const dryRunLog: string[] = [];
+  await runAanbodRollout(
+    { apply: false, restore: null, backupDir: ctx.backupDir, allowDraftOverwrite: false },
+    {
+      db: watchedDb,
+      driver: 'pglite',
+      cookieJar,
+      log: (symbol, message) => dryRunLog.push(`${symbol} ${message}`),
+    },
+  );
+  check(
+    'dry run (CLI path): no write call reaches the database',
+    writeCalls.length === 0,
+    writeCalls.join(', '),
+  );
+  check(
+    'dry run (CLI path): sessions, audit log, pages, blocks, menus, redirects, bookings unchanged',
+    (await fingerprint()) === beforeDryRun,
+  );
+  check(
+    'dry run (CLI path): no session cookie set or cleared',
+    cookieJar.get('cms_session') === cookieBefore,
+  );
+  check(
+    'dry run (CLI path): prints the plan and asks for --apply',
+    dryRunLog.some((line) => line.includes('page /aanbod — create')) &&
+      dryRunLog.some((line) => line.includes('dry run: blocked')),
+    dryRunLog.at(-1),
+  );
+  let writeBlocked = false;
+  try {
+    await readOnlyDb(db).insert(schema.cmsSessions).values({
+      userId: admin.id,
+      tokenHash: 'selftest-read-only-guard',
+      expiresAt: new Date(),
+    });
+  } catch (error) {
+    writeBlocked = error instanceof Error && error.message.includes('read-only');
+  }
+  check(
+    'dry run: the read-only database refuses writes',
+    writeBlocked && (await fingerprint()) === beforeDryRun,
+  );
+
   const auditBefore = (await db.select({ id: schema.cmsAuditLog.id }).from(schema.cmsAuditLog))
     .length;
   const plan = await planAanbodRollout(deps);

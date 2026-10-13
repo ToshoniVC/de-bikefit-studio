@@ -321,8 +321,10 @@ Order (the old build cannot render the new block types, so code goes first):
 2. **Deploy** the feature/staging push; wait for the staging build to be READY. The new code
    renders the old content unchanged (verified locally; `/aanbod` and `/ons-team` answer 404
    until step 5).
-3. **Dry run** — writes nothing; prints every page/menu/redirect action, the reasons, any
-   blockers (`!`) and the offer ↔ booking report:
+3. **Dry run** — writes nothing: no admin session, no audit entry, and the planner runs on a
+   database handle that throws on any write (`scripts/lib/aanbod-rollout-run.mts`; self-test
+   section 15 proves it). Prints `would act as <admin>`, every page/menu/redirect action, the
+   reasons, any blockers (`!`) and the offer ↔ booking report:
 
    ```bash
    DATABASE_URL='<staging pooled url>' npm run cms:rollout-aanbod

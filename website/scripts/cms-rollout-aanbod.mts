@@ -18,8 +18,10 @@
  *   --allow-draft-overwrite  replace pages that have unpublished draft edits
  *                            (their drafts are in the backup either way)
  *
- * Writes go through `src/lib/cms/repo.ts` with a real, short-lived admin
- * session (same mechanism as `cms:seed`, see `scripts/lib/request-context.mts`).
+ * The dry run is read-only: no session, no audit entry, no write method
+ * reachable (`scripts/lib/aanbod-rollout-run.mts`). `--apply`/`--restore`
+ * write through `src/lib/cms/repo.ts` with a real, short-lived admin session
+ * (same mechanism as `cms:seed`, see `scripts/lib/request-context.mts`).
  * It needs an existing active admin and never creates one. Booking data,
  * settings, users and every other page are left alone; the logic and its
  * guarantees are in `scripts/lib/aanbod-rollout.mts`. Runbook:
@@ -27,16 +29,7 @@
  */
 import { config } from 'dotenv';
 import { cookieJar, installRequestContextStubs } from './lib/request-context.mjs';
-import {
-  applyAanbodRollout,
-  planAanbodRollout,
-  planBlockers,
-  planHasChanges,
-  printPlan,
-  readBackup,
-  restoreAanbodRollout,
-  type RolloutDeps,
-} from './lib/aanbod-rollout.mjs';
+import { runAanbodRollout } from './lib/aanbod-rollout-run.mjs';
 
 config({ path: '.env.local' });
 installRequestContextStubs();
@@ -130,79 +123,7 @@ async function main() {
     }
   }
 
-  const db = await getCmsDb();
-  const orm = await import('drizzle-orm');
-  const schema = await import('@/db/cms-schema');
-  const blocks = await import('@/lib/cms/blocks');
-  const { createSession, revokeSession } = await import('@/lib/cms/session');
-
-  const [actor] = await db
-    .select({ id: schema.cmsUsers.id, email: schema.cmsUsers.email })
-    .from(schema.cmsUsers)
-    .where(orm.and(orm.eq(schema.cmsUsers.role, 'admin'), orm.eq(schema.cmsUsers.isActive, true)))
-    .orderBy(orm.asc(schema.cmsUsers.createdAt))
-    .limit(1);
-  if (!actor) throw new Error('no active admin in this database; run cms:bootstrap first');
-  log('=', `acting as ${actor.email}`);
-
-  const session = await createSession(db, actor.id, { userAgent: 'cms-rollout-aanbod' });
-  cookieJar.set('cms_session', session.token);
-
-  try {
-    const deps: RolloutDeps = {
-      db,
-      orm,
-      schema,
-      blocks,
-      repo: await import('@/lib/cms/repo'),
-      auth: await import('@/lib/cms/auth'),
-      actor,
-      locale: schema.DEFAULT_LOCALE,
-      log,
-    };
-
-    if (options.restore) {
-      const backup = await readBackup(options.restore);
-      await restoreAanbodRollout(deps, backup);
-      log('✓', 'restore complete');
-      return;
-    }
-
-    const plan = await planAanbodRollout(deps);
-    printPlan(plan, log);
-    const blockers = planBlockers(plan, options);
-    for (const blocker of blockers) log('!', blocker);
-
-    if (!options.apply) {
-      console.log('');
-      log(
-        planHasChanges(plan) ? '→' : '=',
-        planHasChanges(plan)
-          ? `dry run: ${blockers.length > 0 ? 'blocked — fix the items marked ! first' : 'run again with --apply to write'}`
-          : 'dry run: nothing to do',
-      );
-      return;
-    }
-
-    console.log('');
-    const result = await applyAanbodRollout(deps, {
-      backupDir: options.backupDir,
-      driver,
-      allowDraftOverwrite: options.allowDraftOverwrite,
-    });
-    log(
-      '✓',
-      result.changed
-        ? `rollout complete; backup: ${result.backupPath}`
-        : 'rollout complete; nothing changed',
-    );
-    console.log(
-      '  Deployed sites pick this up within 5 minutes (cache fallback); see docs/staging-runbook.md §9.',
-    );
-  } finally {
-    await revokeSession(db, session.token);
-    cookieJar.clear();
-  }
+  await runAanbodRollout(options, { db: await getCmsDb(), driver, cookieJar, log });
 }
 
 main()

@@ -24,7 +24,8 @@
  *      ICS in UTC with UID; templates; AES-GCM round trip / tamper / wrong key
  *  14. booking flow on PGlite (provider without Google): repo scopes, public
  *      create / re-check / rate limit / cancel by token
- *  15. aanbod rollout + service preselection: plan is read-only, draft guard,
+ *  15. aanbod rollout + service preselection: the CLI dry run and the plan
+ *      write nothing (no session, no audit, read-only db), draft guard,
  *      apply/backup, booking tables untouched, catalogue, menus, /over-ons
  *      301, `?dienst=` resolution, idempotent re-apply, restore
  *      (`scripts/selftest/aanbod.mts`)

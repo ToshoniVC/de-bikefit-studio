@@ -112,6 +112,26 @@ describe('content placeholder register', () => {
     }
   });
 
+  it('lists every image slot the rollout leaves empty', () => {
+    for (const page of AANBOD_PAGES) {
+      const where = page.slug === '' ? 'home' : `\`/${page.slug}\``;
+      for (const block of page.blocks) {
+        const data = block.data as {
+          title?: string;
+          variant?: string;
+          image?: { mediaId?: string | null; url?: string | null };
+        };
+        if (!('image' in data) && !['hero', 'imageText', 'offer'].includes(block.type)) continue;
+        // The compact subpage header never shows an image.
+        if (block.type === 'hero' && data.variant === 'pageHead') continue;
+        if (data.image?.mediaId || data.image?.url) continue;
+        const entry = rowMentioning('B', `"${data.title}"`);
+        expect(entry.cells[2], `${entry.id} on ${where}`).toContain(where);
+        expect(entry.cells[1]).toContain('leeg');
+      }
+    }
+  });
+
   it('lists bio, role, qualifications and portrait for every team member', () => {
     for (const member of TEAM_MEMBERS) {
       for (const field of ['Bio', 'Rol', 'Kwalificaties', 'Afbeelding']) {

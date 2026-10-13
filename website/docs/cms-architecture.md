@@ -29,7 +29,7 @@ File ownership during parallel work comes from the work-block file (see
 | --- | --- |
 | Data | `src/db/cms-schema.ts` (all `cms_*` tables, CMS + booking), `src/db/cms.ts` (driver), `drizzle/**`, `drizzle.config.ts` |
 | CMS core | `src/lib/cms/{auth,session,password,permissions,blocks,block-primitives,blocks-aanbod,content,offers-content,repo,repo-admin}.ts` |
-| Offer ("Aanbod") | `src/lib/offers/{catalogue,defaults}.ts` (plain), `src/lib/studio/seed-content/**` (seed + rollout content), `src/lib/studio/editorial-images.{ts,json}`, `scripts/cms-rollout-aanbod.mts`, `scripts/lib/aanbod-rollout{,-plan}.mts` — see §14 |
+| Offer ("Aanbod") | `src/lib/offers/{catalogue,defaults}.ts` (plain), `src/lib/studio/seed-content/**` (seed + rollout content), `src/lib/studio/editorial-images.{ts,json}`, `scripts/cms-rollout-aanbod.mts`, `scripts/lib/aanbod-rollout{,-plan,-run}.mts` — see §14 |
 | Admin | `src/app/admin/**`, `src/components/admin/**`, `src/lib/cms/actions/**` (server actions + `sanitize.ts`), `src/app/api/cms/media/**` |
 | Public site | `src/app/(studio)/**`, `src/components/studio/**`, `src/lib/studio/**`, `src/app/sitemap.ts`, `src/app/robots.ts` |
 | Booking | `src/lib/booking/**`, `src/lib/email/**`, `src/app/api/google/oauth/**` — see `booking-architecture.md` |
@@ -964,7 +964,9 @@ provenance in [`editorial-images.md`](./editorial-images.md). Team members never
 get a generated image: the `team` block draws initials.
 
 **Staging rollout.** The real site is database-backed, so a deploy alone
-changes nothing. `npm run cms:rollout-aanbod` (dry run by default) applies
+changes nothing. `npm run cms:rollout-aanbod` (dry run by default; the dry run is strictly
+read-only: no session row, no audit entry, writes refused by a read-only db
+handle) applies
 exactly these pages, both menus, the `/over-ons` retirement and its redirect to
 an existing database — backup first, through the repo, booking tables verified
 untouched, idempotent, reversible with `--restore`. Procedure:
