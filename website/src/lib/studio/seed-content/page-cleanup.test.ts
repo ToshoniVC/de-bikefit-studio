@@ -3,6 +3,7 @@ import { sanitizeRichTextHtml } from '@/lib/cms/actions/sanitize';
 import { validateBlocks } from '@/lib/cms/blocks';
 import { AANBOD_PAGES, FOOTER_MENU, MAIN_MENU } from './aanbod';
 import { AFSPRAAK_PAGE, OTHER_QUESTION_HTML } from './appointment';
+import { CADEAUBON_AANBOD_SPEC, cadeaubonAanbodBlocks } from './cadeaubon';
 import before from './page-cleanup.fixture.json';
 import {
   cleanupBlocks,
@@ -64,7 +65,12 @@ describe('page cleanup patch (review 13 Oct 2026)', () => {
       const result = cleanupBlocks(spec, stored(old.blocks));
       expect(result.conflicts).toEqual([]);
       expect(result.changes.length).toBeGreaterThan(0);
-      expect(result.next).toEqual(stored(targetPage(spec.slug).blocks));
+      // The gift voucher patch (same day, `cadeaubon.ts`) runs after this one on /aanbod.
+      const next =
+        spec.slug === CADEAUBON_AANBOD_SPEC.slug
+          ? cadeaubonAanbodBlocks(result.next).next
+          : result.next;
+      expect(next).toEqual(stored(targetPage(spec.slug).blocks));
       expect(pageCleanupProblems(spec.slug, stored(old.blocks)).length).toBeGreaterThan(0);
       expect(pageCleanupProblems(spec.slug, result.next)).toEqual([]);
 

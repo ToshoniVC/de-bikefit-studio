@@ -119,8 +119,19 @@ function labelOf(link: unknown): string {
     : '';
 }
 
+/** JSON with sorted object keys: Postgres `jsonb` does not keep key order. */
+function canonical(value: unknown): string {
+  return JSON.stringify(value, (_key, entry: unknown) =>
+    entry && typeof entry === 'object' && !Array.isArray(entry)
+      ? Object.fromEntries(
+          Object.entries(entry as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1)),
+        )
+      : entry,
+  );
+}
+
 function same(a: unknown, b: unknown): boolean {
-  return JSON.stringify(a) === JSON.stringify(b);
+  return canonical(a) === canonical(b);
 }
 
 function show(value: unknown): string {

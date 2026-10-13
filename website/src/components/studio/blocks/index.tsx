@@ -6,6 +6,7 @@ import { BookingBlock } from './booking';
 import { ContactBlock } from './contact';
 import { CtaBlock } from './cta';
 import { FaqBlock } from './faq';
+import { GiftVoucherBlock } from './gift-voucher';
 import { HeroBlock } from './hero';
 import { ImageTextBlock } from './image-text';
 import { OfferBlock } from './offer';
@@ -109,6 +110,8 @@ function StudioBlock({
       return <OfferBlock data={block.data} {...common} />;
     case 'offerCatalogue':
       return <OfferCatalogueBlock data={block.data} {...common} />;
+    case 'giftVoucher':
+      return <GiftVoucherBlock data={block.data} {...common} />;
     case 'team':
       return <TeamBlock data={block.data} {...common} />;
     default: {

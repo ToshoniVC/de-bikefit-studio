@@ -53,7 +53,7 @@ export type BookingEmailData = {
   adminUrl?: string | null;
 };
 
-const PALETTE = {
+export const PALETTE = {
   bg: '#fdfbf7',
   surface: '#f7f1e8',
   border: '#e8dccc',
@@ -63,7 +63,7 @@ const PALETTE = {
   onAccent: '#edd5b9',
 };
 
-type Row = [label: string, value: string | null | undefined];
+export type Row = [label: string, value: string | null | undefined];
 
 function whenLabel(data: BookingEmailData): string {
   return `${formatDateLong(data.startsAt, data.timezone)}, ${formatTimeRange(data.startsAt, data.endsAt, data.timezone)}`;
@@ -76,14 +76,14 @@ function whereLines(data: BookingEmailData): string[] {
   return [data.locationLabel, ...data.locationAddressLines].filter(Boolean);
 }
 
-function rowsText(rows: Row[]): string {
+export function rowsText(rows: Row[]): string {
   return rows
     .filter(([, value]) => value)
     .map(([label, value]) => `${label}: ${value}`)
     .join('\n');
 }
 
-function rowsHtml(rows: Row[]): string {
+export function rowsHtml(rows: Row[]): string {
   const cells = rows
     .filter(([, value]) => value)
     .map(
@@ -95,7 +95,7 @@ function rowsHtml(rows: Row[]): string {
   return `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:16px 0;font-size:15px;line-height:1.5">${cells}</table>`;
 }
 
-function paragraph(text: string): string {
+export function paragraph(text: string): string {
   return `<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:${PALETTE.fg}">${escapeHtml(text)}</p>`;
 }
 
@@ -108,7 +108,12 @@ function button(href: string, label: string): string {
 }
 
 /** `footerHtml` (already-escaped markup) replaces the plain site name in the bottom band. */
-function layout(siteName: string, heading: string, inner: string, footerHtml?: string): string {
+export function layout(
+  siteName: string,
+  heading: string,
+  inner: string,
+  footerHtml?: string,
+): string {
   return [
     '<!doctype html><html lang="nl"><head><meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width,initial-scale=1">',

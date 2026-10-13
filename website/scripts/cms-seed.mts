@@ -77,6 +77,7 @@ import {
   MAIN_MENU,
 } from '@/lib/studio/seed-content/aanbod';
 import { AFSPRAAK_PAGE, CONTACT_REDIRECT } from '@/lib/studio/seed-content/appointment';
+import { CADEAUBON_PAGE } from '@/lib/studio/seed-content/cadeaubon';
 import {
   CALLOUT_BLOCK,
   CONTACT_EMAIL,
@@ -270,6 +271,8 @@ const TERMS_HTML = `<p><em>Versie van 24 september 2026</em></p>
 const PAGES: SeedPage[] = [
   // ------------------------- /, /aanbod, /aanbod/*, /voor-wie, /bikefit, /ons-team
   ...AANBOD_PAGES,
+  // ------------------------------------------------- /aanbod/cadeaubon ---
+  CADEAUBON_PAGE,
 
   // ----------------------------------------------- /veelgestelde-vragen ---
   {

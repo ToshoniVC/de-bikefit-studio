@@ -23,7 +23,12 @@ import {
   type PlanDeps,
 } from './aanbod-rollout.mjs';
 
-type DraftBlock = { id: string; type: string; data: Record<string, unknown>; sortOrder: number };
+export type DraftBlock = {
+  id: string;
+  type: string;
+  data: Record<string, unknown>;
+  sortOrder: number;
+};
 
 export type CleanupPagePlan = {
   slug: string;
@@ -53,7 +58,11 @@ export type PageCleanupPlan = {
   guards: GuardCounts;
 };
 
-function normalized(deps: PlanDeps, input: { type: string; data: unknown }[]): string | null {
+/** Validated (defaults applied) and serialised, to compare draft and live; null = invalid. */
+export function normalized(
+  deps: PlanDeps,
+  input: { type: string; data: unknown }[],
+): string | null {
   const result = deps.blocks.validateBlocks(input);
   return result.ok ? stable(result.blocks.map((block) => [block.type, block.data])) : null;
 }
@@ -68,7 +77,7 @@ export async function pageRow(deps: PlanDeps, slug: string) {
   return row ?? null;
 }
 
-async function draftBlocks(deps: PlanDeps, pageId: string): Promise<DraftBlock[]> {
+export async function draftBlocks(deps: PlanDeps, pageId: string): Promise<DraftBlock[]> {
   const { asc, eq } = deps.orm;
   const rows = await deps.db
     .select()

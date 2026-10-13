@@ -382,7 +382,8 @@ the footer link **Cookies**).
 
 ### Mail does not arrive
 
-- No `RESEND_API_KEY` → mails are only logged (Vercel → Logs, search `email`).
+- No `RESEND_API_KEY` → mails are only logged (Vercel → Logs, search `email`). Gift voucher
+  orders then fail visibly ("niet verstuurd"), see § 12.
 - *domain is not verified* → finish §6.4; `EMAIL_FROM` must use that domain.
 - Check the spam folder and Resend → *Emails* for bounces.
 
@@ -566,3 +567,45 @@ These are not code; they make the texts true.
       division (derived from the registered office; check the Staatsblad), the
       50 % late-cancellation fee, the exception to the withdrawal right and
       the Google Calendar point above.
+
+## 12. Cadeaubon — order requests by e-mail
+
+`/aanbod/cadeaubon` (block *Cadeaubon (bestelformulier)*) lets a visitor order a gift voucher:
+amount of their choice in euro, an optional personal message (plain text, max. 500 characters),
+name, e-mail and optionally phone. **Bestel nu** sends one e-mail **to the studio**; nothing is
+paid, invoiced or issued on the site and the visitor gets no automatic mail.
+
+**What the studio does with the mail** ("Cadeaubon-aanvraag: € 75,50 (CB-1A2B3C4D)"): make the
+invoice and a payment link by hand and send them to the visitor's address (replying to the
+mail goes straight to the visitor: it is the Reply-To). The mail lists the amount, the message,
+the contact details and the reference.
+
+**What has to be set for it to work** (until then every order says "Je bestelling is niet
+verstuurd", keeps the form filled in and shows the phone number; nothing is sent):
+
+| Setting | Where | Notes |
+| --- | --- | --- |
+| `RESEND_API_KEY` | Vercel env (sensitive), per environment; source 1Password | § 6 |
+| `EMAIL_FROM` | Vercel env | an address on a domain **verified in Resend**, e.g. `De Bikefit Studio <bestellingen@debikefitstudio.be>`; never the visitor's address |
+| Recipient | `/admin` → **Instellingen** → Contact → **E-mail** (`contact.email`) | the studio inbox; must really receive mail. Empty = not sent |
+| `EMAIL_REPLY_TO` | not used for vouchers | the visitor's address is the Reply-To |
+
+**Honest states.** The site says "verstuurd" only when Resend **accepted** the message (HTTP
+2xx). A missing key or sender, an empty recipient, a refusal, a timeout or an exception is
+"niet verstuurd". Acceptance is not proof of delivery to the inbox: check Resend → *Emails*
+for bounces (an inbox on a domain without MX bounces).
+
+**Abuse and duplicates.** Server-side validation (zod + Dutch messages), a honeypot, Next's
+Origin check on the server action, 5 requests per 15 minutes per e-mail address or IP (rows in
+`cms_booking_rate_limit` with `cadeaubon:` keys, e-mail stored as a truncated SHA-256, pruned
+after a day), and a per-form request id: a repeat of a form that was already sent is confirmed
+without a second mail. The form disables "Bestel nu" while a request is in flight.
+
+**Privacy.** No order is stored on the site; the order exists only in the studio's mailbox.
+Server logs carry no visitor data (`[cadeaubon] aanvraag niet verstuurd (not_configured)`; the
+mail helper logs the subject, which holds only amount and reference, and the masked studio
+address). Note: `next dev` prints server-action arguments to the local terminal (development
+only).
+
+**Not decided, not stated** (register C-04): validity, form of the voucher, delivery, minimum or
+maximum amount. The form accepts € 1 to € 5.000 as a technical bound.

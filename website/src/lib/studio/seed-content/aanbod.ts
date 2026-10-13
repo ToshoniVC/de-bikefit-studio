@@ -46,6 +46,9 @@ import {
  *     /ons-team, no second heading above the audiences or the profiles, and
  *     "jeugd" for the young riders. `cms:patch-page-cleanup` applies exactly
  *     that to an existing database (see `page-cleanup.ts`).
+ *   Toshoni's gift voucher request of the same day: the "Overige" group on
+ *     /aanbod. The voucher page itself is `cadeaubon.ts`; `cms:patch-cadeaubon`
+ *     adds both to an existing database.
  */
 
 const CALLOUT: SeedBlock = {
@@ -59,7 +62,7 @@ const CALLOUT: SeedBlock = {
   },
 };
 
-const OFFER_GROUPS = [
+export const OFFER_GROUPS = [
   {
     category: 'bikefit',
     title: OFFER_CATEGORY_LABELS.bikefit,
@@ -71,6 +74,16 @@ const OFFER_GROUPS = [
     lede: 'Inzicht en opvolging die met je meegroeit.',
   },
 ];
+
+/**
+ * "Overige" with the gift voucher (Toshoni, 13 Oct 2026), after the existing
+ * groups — on /aanbod only; home and /bikefit keep their own selection.
+ */
+export const OTHER_OFFER_GROUP = {
+  category: 'overige',
+  title: OFFER_CATEGORY_LABELS.overige,
+  lede: '',
+};
 
 // --------------------------------------------------------------- pages ----
 
@@ -186,7 +199,7 @@ const AANBOD: SeedPage = {
         eyebrow: '',
         title: '',
         lede: '',
-        groups: OFFER_GROUPS,
+        groups: [...OFFER_GROUPS, OTHER_OFFER_GROUP],
         showPrices: true,
         cta: null,
       },

@@ -393,6 +393,11 @@ Sent by `notifications.ts` through `sendEmail()` (Resend REST API,
 `{ sent: false, reason: 'not_configured' }`. A failing mail never fails a
 booking.
 
+The gift voucher order form (`src/lib/gift-voucher/`, `booking-runbook.md` §12) uses the same
+`sendEmail()` with the opposite rule: there the mail *is* the order, so a skipped or failed send
+is reported to the visitor as "niet verstuurd" and only a provider-accepted send counts as
+success. It mails the studio (`contact.email`) with the visitor as Reply-To, never the visitor.
+
 | Event | Customer (+ guardian e-mail if different) | Provider (`cms_providers.email` or login e-mail) |
 | --- | --- | --- |
 | Booked | "Je afspraak is bevestigd" + `afspraak.ics` (`METHOD:PUBLISH`, UTC times, `UID <bookingId>@<site host>`, 24 h reminder) + cancel link `${siteUrl()}/afspraak/annuleren/<token>` + deadline | "Nieuwe afspraak" with all details, reply-to = customer |

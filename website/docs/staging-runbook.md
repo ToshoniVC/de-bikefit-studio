@@ -476,3 +476,55 @@ restores the five pages (re-publishing `/contact`) and both menus, disables the 
 redirect and sets `contact.email` back (other contact fields untouched). Then, if needed, the
 code: redeploy `staging@9c655fe`.
 
+
+## 12. Gift voucher patch ("Cadeaubon", 13 Oct 2026)
+
+What it adds, and where:
+
+| Where | Code (deploy) | Content (`cms:patch-cadeaubon`) |
+| --- | --- | --- |
+| `/aanbod/cadeaubon` | block `giftVoucher` (order form + server action, `src/lib/gift-voucher/`) | page created with one `giftVoucher` block and published |
+| `/aanbod` | category `overige` ("Overige"); a `giftVoucher` page becomes a card "Bedrag naar keuze" | catalogue groups: "Overige" appended after Bikefit and Begeleiding (exact-value guard) |
+
+Nothing else: no settings, menus, redirects, booking tables, migrations or env vars. Home and
+`/bikefit` keep their own groups. Independent of §11 (different fields), but run it after §11
+so the order recipient (`contact.email`) is set. **Never a full `cms:seed` or `--refresh-slug`
+for this.**
+
+1. Deploy the code first (release gate, staging READY). Old content renders unchanged on the
+   new code.
+2. **Dry run** (read-only; self-test section 18):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:patch-cadeaubon
+   ```
+
+   Expected: `+ page /aanbod/cadeaubon — create and publish`,
+   `~ page /aanbod — 1 change(s), then publish` with `offerCatalogue.groups: "…meegroeit.\"}]…" →
+   "…meegroeit.\"},{\"category\":\"overige\",\"title\":\"Overige\",\"lede\":\"\"}]…"`, the guard
+   counts, then `dry run: run again with --apply to write`. **Stop and report on any `!` line.**
+3. **Apply** (the tool writes its own backup before the first write):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:patch-cadeaubon -- --apply \
+     --expect-host '<host part of the staging DATABASE_URL>' --backup-dir <dir>
+   ```
+
+   Backup `cadeaubon-patch-<timestamp>.json` (the `/aanbod` row and blocks; the new page is
+   recorded as created). Order: voucher page (create, block, publish), then `/aanbod` (groups,
+   publish). It verifies both published snapshots, checks the booking tables, audits
+   `patch.cadeaubon.apply` and always revokes its session. A second dry run prints
+   `dry run: nothing to do`.
+4. **Verify** after the 5-minute cache window (GETs only, load twice): `/aanbod` lists
+   "Overige" last with a "Cadeaubon" card ("Bedrag naar keuze") linking to `/aanbod/cadeaubon`;
+   that page has one `<h1>` "Cadeaubon", the breadcrumb Home / Aanbod / Cadeaubon, the labels
+   "Bedrag in euro", "Persoonlijke boodschap", "Voornaam en naam", "E-mail", "Telefoon" and the
+   button "Bestel nu". `/afspraak?dienst=cadeaubon` shows the normal widget, not an enquiry.
+   **Do not submit the form against a configured mail provider** unless an order mail to the
+   studio is intended; without `RESEND_API_KEY` a submit shows "Je bestelling is niet verstuurd"
+   and sends nothing (that is the expected staging state today).
+
+**Rollback:** `npm run cms:patch-cadeaubon -- --restore <backup.json> --expect-host '<host>'`
+unpublishes `/aanbod/cadeaubon` (row kept; a later apply re-publishes it) and puts `/aanbod`
+back. Then, if needed, the code. Mail delivery itself is configured separately:
+`docs/booking-runbook.md` § 12.

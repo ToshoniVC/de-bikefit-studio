@@ -38,6 +38,11 @@
  *      editor-changed fields, applies exactly the review (pages, /contact
  *      301 + unpublish, menus, e-mail), verified, idempotent, restore
  *      (`scripts/selftest/page-cleanup.mts`)
+ *  18. gift voucher: `cms:patch-cadeaubon` (dry run writes nothing, draft
+ *      guard, page + "Overige" published and verified, idempotent, restore)
+ *      and the order service on the database with `fetch` replaced (missing
+ *      key/sender or a refusal is "not sent", only an accepted request is a
+ *      success, no double mail, rate limit) (`scripts/selftest/cadeaubon.mts`)
  *
  * Counts failures and exits non-zero at the end when any check failed.
  *
@@ -445,6 +450,16 @@ async function main() {
 
   const { pageCleanupSection } = await import('./selftest/page-cleanup.mjs');
   await pageCleanupSection({
+    db,
+    admin: user,
+    check,
+    section,
+    cookieJar,
+    backupDir: resolve(process.cwd(), DATA_DIR, 'rollout-backups'),
+  });
+
+  const { cadeaubonSection } = await import('./selftest/cadeaubon.mjs');
+  await cadeaubonSection({
     db,
     admin: user,
     check,

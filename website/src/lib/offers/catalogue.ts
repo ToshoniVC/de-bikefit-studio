@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { formatPrice } from '@/lib/booking/format';
-import type { CmsImageRef } from '@/lib/cms/block-primitives';
+import { emptyImage, type CmsImageRef } from '@/lib/cms/block-primitives';
 
 /**
  * The public offer ("Aanbod") and how it meets the booking catalogue.
@@ -24,13 +24,18 @@ import type { CmsImageRef } from '@/lib/cms/block-primitives';
  * renames, creates or re-subscribes a booking service.
  */
 
-export const OFFER_CATEGORIES = ['bikefit', 'begeleiding'] as const;
+/** Overview order; `overige` (13 Oct 2026) holds the gift voucher, after the services. */
+export const OFFER_CATEGORIES = ['bikefit', 'begeleiding', 'overige'] as const;
 export type OfferCategory = (typeof OFFER_CATEGORIES)[number];
 
 export const OFFER_CATEGORY_LABELS: Record<OfferCategory, string> = {
   bikefit: 'Bikefit',
   begeleiding: 'Begeleiding',
+  overige: 'Overige',
 };
+
+/** Card price line of the gift voucher: the visitor chooses the amount. */
+export const GIFT_VOUCHER_PRICE_LABEL = 'Bedrag naar keuze';
 
 /** Offer pages live at `cms_pages.slug = 'aanbod/<offer slug>'`. */
 export const OFFER_PAGE_PREFIX = 'aanbod';
@@ -133,6 +138,8 @@ export type OfferBlockData = {
 };
 
 export type CatalogueOffer = {
+  /** `service`: an `offer` block (bookable or enquiry); `giftVoucher`: the order form, never booked. */
+  kind: 'service' | 'giftVoucher';
   slug: string;
   path: string;
   category: OfferCategory;
@@ -146,9 +153,19 @@ export type CatalogueOffer = {
   image: CmsImageRef;
 };
 
+/** The fields of a `giftVoucher` block the catalogue needs. */
+export type GiftVoucherBlockData = {
+  sortOrder: number;
+  title: string;
+  summary: string;
+  intro: string;
+};
+
 /**
  * One catalogue entry from a published page, or `null` when the page is not an
- * offer page (wrong path, or no `offer` block). The first `offer` block wins.
+ * offer page (wrong path, or no `offer` / `giftVoucher` block). The first
+ * `offer` block wins; a page with only a `giftVoucher` block becomes a card
+ * under Overige with "Bedrag naar keuze".
  */
 export function offerFromPage(page: {
   slug: string;
@@ -157,9 +174,27 @@ export function offerFromPage(page: {
   const slug = offerSlugFromPageSlug(page.slug);
   if (!slug) return null;
   const block = page.blocks.find((entry) => entry.type === 'offer');
-  if (!block) return null;
+  if (!block) {
+    const voucher = page.blocks.find((entry) => entry.type === 'giftVoucher');
+    if (!voucher) return null;
+    const data = voucher.data as GiftVoucherBlockData;
+    return {
+      kind: 'giftVoucher',
+      slug,
+      path: offerPagePath(slug),
+      category: 'overige',
+      sortOrder: data.sortOrder,
+      title: data.title,
+      summary: data.summary.trim() || data.intro.trim(),
+      priceLabel: GIFT_VOUCHER_PRICE_LABEL,
+      durationLabel: '',
+      bookingServiceSlugs: [],
+      image: { ...emptyImage },
+    };
+  }
   const data = block.data as OfferBlockData;
   return {
+    kind: 'service',
     slug,
     path: offerPagePath(slug),
     category: data.category,
@@ -173,7 +208,7 @@ export function offerFromPage(page: {
   };
 }
 
-/** Category order first (Bikefit, Begeleiding), then `sortOrder`, then title. */
+/** Category order first (Bikefit, Begeleiding, Overige), then `sortOrder`, then title. */
 export function sortOffers(offers: readonly CatalogueOffer[]): CatalogueOffer[] {
   return [...offers].sort(
     (a, b) =>
@@ -225,13 +260,18 @@ export type BookingSelection =
  */
 export function resolveBookingSelection(input: {
   requested: string | null;
-  offers: ReadonlyArray<Pick<CatalogueOffer, 'slug' | 'title' | 'path' | 'bookingServiceSlugs'>>;
+  offers: ReadonlyArray<
+    Pick<CatalogueOffer, 'slug' | 'title' | 'path' | 'bookingServiceSlugs'> & {
+      kind?: CatalogueOffer['kind'];
+    }
+  >;
   services: readonly BookableService[];
 }): BookingSelection {
   const { requested, offers, services } = input;
   if (!requested) return { kind: 'none' };
 
-  const offer = offers.find((entry) => entry.slug === requested);
+  // The gift voucher is ordered on its own page, never through the booking page.
+  const offer = offers.find((entry) => entry.slug === requested && entry.kind !== 'giftVoucher');
   if (offer) {
     const serviceIds: string[] = [];
     for (const slug of offer.bookingServiceSlugs) {

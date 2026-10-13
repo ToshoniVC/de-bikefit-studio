@@ -34,7 +34,8 @@ datum).
 | B | AI-beelden en lege beeldvakken | 5 | 5 | 0 | 0 | 0 |
 | K | Online boeken per dienst | 6 | 5 | 1 | 0 | 0 |
 | G | Bestaande hiaten in aangeraakte inhoud | 7 | 2 | 1 | 2 | 2 |
-| | **Totaal** | **53** | **37** | **11** | **3** | **2** |
+| C | Cadeaubon (bestelformulier) | 4 | 3 | 1 | 0 | 0 |
+| | **Totaal** | **57** | **40** | **12** | **3** | **2** |
 
 ## 1. Prijzen (P)
 
@@ -181,3 +182,20 @@ blok *Dienst (aanbod)* → veld **Online boeken via dienst(en)** (slug uit `/adm
 | G-05 | Korte verbindingszinnen: inleidingen van de groepen Bikefit/Begeleiding in blok *Aanbod (overzicht)* (home, `/aanbod`, `/bikefit`); sectietitels op home ("Wat we voor je doen"), `/voor-wie` ("Waar je ook staat", op vraag van Toshoni verwijderd op 13 okt 2026) en `/bikefit` ("Meten om beter te kijken", "Onze bikefitdiensten") | neutraal geschreven door de implementatie, zonder nieuwe claims | nagekeken en aanvaard door Winston (review 13 okt 2026), geen wijziging nodig | afgerond 2026-10-13 |
 | G-06 | "nieuwste 3D-bewegingsanalyse": `/bikefit` en home → *Beeld + tekst* → **Alinea's**; `/aanbod/bikefit-huidige-fiets` → **Inhoud** | tekst aangeleverd door Toshoni; geen merk of toestel genoemd | merk of toestel enkel noemen met bron | bevestigd |
 | G-07 | "bij jou thuis / op locatie": home → *Hero* → **Ondertitel**; `/aanbod` → *Hero* → **Ondertitel**; `/bikefit` → *Beeld + tekst* "Kan een bikefit ook bij mij thuis?" | tekst aangeleverd (hero, aanbod) of uit het prototype (`/bikefit`); belooft fits aan huis | na K-04 nakijken: wordt Fit aan huis uitgezet, dan deze zinnen aanpassen | te bevestigen |
+
+## 8. Cadeaubon (C)
+
+Sinds 13 oktober 2026 (vraag van Toshoni): `/aanbod` → groep **Overige** → kaart *Cadeaubon* →
+`/aanbod/cadeaubon`, met een bestelformulier (bedrag naar keuze, persoonlijke boodschap,
+contactgegevens). **Bestel nu** mailt de aanvraag naar de studio; factuur en betaallink maakt de
+studio zelf op. Er is geen betaling, factuur, boncode of automatische mail naar de klant. Zolang
+C-01 of C-02 open is, krijgt elke bezoeker "Je bestelling is niet verstuurd" met het
+telefoonnummer, en blijft alles wat hij invulde staan. Uitleg en instellingen:
+`docs/booking-runbook.md` § Cadeaubon.
+
+| ID | Waar (exacte plaats) | Nu | Nodig | Status |
+| --- | --- | --- | --- | --- |
+| C-01 | E-mailverzending (Resend): omgevingsvariabelen `RESEND_API_KEY` en `EMAIL_FROM` in Vercel (Arend) | niet ingesteld op staging en productie (preflight Arend, 13 okt 2026): elke bestelling meldt "niet verstuurd" | Resend-account, een afzenderdomein dat in Resend geverifieerd is (DNS), dan beide variabelen; `EMAIL_FROM` is nooit het adres van de bezoeker | open |
+| C-02 | Ontvanger van de bestellingen: `/admin` → **Instellingen** → Contact → **E-mail** (dezelfde waarde als G-01) | `info@debikefitstudio.be`; het domein `debikefitstudio.be` gaf op 13 okt 2026 geen MX (NXDOMAIN), dus mail zou niet aankomen | een werkende mailbox voor dat adres, of een ander adres in die instelling | open |
+| C-03 | `/aanbod/cadeaubon` (*Cadeaubon*) → blok *Cadeaubon (bestelformulier)* → **Inleiding**, **Korte omschrijving**, **Titel boven het formulier** | neutraal geschreven door de implementatie: bedrag en boodschap naar keuze, factuur en betaallink na de bestelling | nakijken door Toshoni | te bevestigen |
+| C-04 | Voorwaarden van de bon: geldigheid, vorm (digitaal of op papier), levering, minimum- en maximumbedrag | nergens vermeld; het formulier aanvaardt technisch € 1 tot € 5.000 (daarboven: "bel ons best even") | beslissing van de studio; daarna in de **Inleiding** en zo nodig in de algemene voorwaarden | open |

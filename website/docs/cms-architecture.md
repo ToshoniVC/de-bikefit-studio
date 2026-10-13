@@ -339,11 +339,11 @@ database. A forged cookie gets past middleware and is rejected by the layout.
 
 ## 5. Block registry
 
-`src/lib/cms/blocks.ts`. Fifteen block types: eleven derived from the real
+`src/lib/cms/blocks.ts`. Sixteen block types: eleven derived from the real
 prototype (`prototype/index.html`, `prototype/bikefit.html`) and copy decks
 (`content/index.html`, `content/about.html`, `content/booking.html`),
-`booking` for the online booking widget, and `offer`, `offerCatalogue` and
-`team` for the 13 Oct 2026 redesign (defined in `blocks-aanbod.ts` and spread
+`booking` for the online booking widget, and `offer`, `offerCatalogue`,
+`giftVoucher` and `team` for the 13 Oct 2026 redesign (defined in `blocks-aanbod.ts` and spread
 into the registry; shared field schemas such as `imageRefSchema` live in
 `block-primitives.ts` and are re-exported from `blocks.ts`).
 
@@ -371,7 +371,8 @@ defaultDataFor('hero')          // deep clone of the above
 | `contact` | Contact | phone, city, "Op afspraak" — no street address or e-mail is known |
 | `testimonial` | Ervaringen | 4 reviews from the copy deck, all marked placeholder |
 | `offer` | Dienst (aanbod) | one service on `/aanbod/<slug>`: title, intro, the booking button "Boek een afspraak voor deze dienst" (→ `/afspraak?dienst=<slug>#boeken`), Doel, Inhoud, Duur, Kostprijs, Mogelijke extra's. `category` (`bikefit`\|`begeleiding`), `sortOrder`, `summary` (overview card), `priceCents`/`priceLabel` (seeded as the visible, editable placeholder "Prijs op aanvraag"; a free-text label wins over cents, except that the placeholder never hides a confirmed `priceCents`; empty both = "Prijs op aanvraag"), `duration` (default "Duur in overleg"), `bookingServiceSlugs` (see §14). The page path is the offer's identity. The editor shows a hint pointing at `content-placeholders.md`. |
-| `offerCatalogue` | Aanbod (overzicht) | grouped overview (Bikefit, Begeleiding); owns only its title and per-group title/lede — the cards are read from the published offer pages at render time (`listPublishedOffers`), so nothing is duplicated |
+| `offerCatalogue` | Aanbod (overzicht) | grouped overview (Bikefit, Begeleiding, Overige); owns only its title and per-group title/lede — the cards are read from the published offer pages at render time (`listPublishedOffers`), so nothing is duplicated |
+| `giftVoucher` | Cadeaubon (bestelformulier) | the gift voucher page `/aanbod/cadeaubon`: page head (owns the `<h1>`) + the order form (amount of choice, personal message, contact details, button "Bestel nu"). Owns only copy (`eyebrow`, `title`, `intro`, `summary` for the card, `formTitle`, `sentTitle`, `sentText`, `sortOrder`); fields, rules and sending are code in `src/lib/gift-voucher/` (server action → `sendEmail` to `contact.email`; success only when Resend accepted it). Its page becomes a card in category `overige` ("Bedrag naar keuze") and is never a booking target. Ops: `booking-runbook.md` §12 |
 | `team` | Team | profiles: name, role, bio paragraphs (verified text only), image; without an image the initials are drawn. `internalNote` is never rendered and names the person's open register rows; interim profiles end with "Een uitgebreid profiel volgt binnenkort." |
 | `booking` | Afspraak boeken | the booking widget on `/afspraak` (service → provider → day → slot → details → confirmation). Carries copy and a filter only: `serviceIds` (empty = every active service), `showProviderChoice` (AND-ed with the `booking.showProviderChoice` setting), `successTitle`, `successText` (empty → `booking.confirmationText`). Services, providers and live availability are read at render time through `@/lib/booking/content`, so nothing in the block goes stale. |
 
