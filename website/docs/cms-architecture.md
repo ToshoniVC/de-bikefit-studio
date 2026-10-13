@@ -998,7 +998,9 @@ card shows its price line only when "Prijzen tonen" is on *and* the page is
 `/aanbod` or an offer page (`showsOfferPrices`, `src/lib/offers/catalogue.ts`).
 The home page and `/bikefit` therefore never show prices, also for content
 published before the rule (no data patch needed); their seeds set the switch
-off. The offer page itself always shows Kostprijs. Booking, checkout and the
+off. A filled-in `pricing` block (placeholder off) follows the same rule: it
+renders only on `/aanbod` and offer pages and is left out entirely elsewhere.
+The offer page itself always shows Kostprijs. Booking, checkout and the
 admin are not affected. The site header is the logo, menu and "Afspraak maken"
 only: the prototype's utility bar (city, phone, hours) is gone; the footer
 keeps those contact details.

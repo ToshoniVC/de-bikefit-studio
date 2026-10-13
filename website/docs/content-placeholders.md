@@ -52,7 +52,8 @@ Plaats: CMS → de dienstpagina → blok *Dienst (aanbod)* → veld **Prijslabel
 - De prijs verschijnt op de dienstpagina (bovenaan en bij **Kostprijs**) en op de kaarten van
   het overzicht `/aanbod`. Die kaarten lezen de dienstpagina zelf; er is geen tweede plek om aan te
   passen. De overzichten op de home en op `/bikefit` tonen nooit een prijs (beslissing Toshoni,
-  13 okt 2026), ook niet als **Prijzen tonen** daar aan staat.
+  13 okt 2026), ook niet als **Prijzen tonen** daar aan staat. Een ingevuld blok *Prijzen*
+  verschijnt evenmin buiten `/aanbod` en de dienstpagina's; op andere pagina's blijft het weg.
 
 | ID | Pagina (titel in CMS) | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
