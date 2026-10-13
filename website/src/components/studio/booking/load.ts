@@ -37,6 +37,7 @@ function toLocation(location: PublicLocation | null): BookingLocationOption | nu
 function toService(service: PublicService): BookingServiceOption {
   return {
     id: service.id,
+    slug: service.slug,
     name: service.name,
     description: service.description,
     durationMinutes: service.durationMinutes,

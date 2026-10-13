@@ -518,3 +518,54 @@ look-up / too late / cancel / already cancelled, provider cancel, no revival.
 - No overlap check **between providers** (one studio, two fitters at the same
   time is allowed), and no travel time for Fit aan huis.
 - No reminder e-mails yet. There is no cron job; they need a scheduled job later.
+
+---
+
+## 14. Offer ↔ booking catalogue and service preselection (13 Oct 2026)
+
+The public site now speaks in **offers** (`/aanbod/<slug>`, `cms-architecture.md` §14); booking
+still speaks in **services** (`cms_services`). The two are linked explicitly, never by renaming.
+
+**What did not change.** No migration. No `cms_services` row was created, renamed, re-priced or
+deactivated; no `cms_provider_services` row was added; existing bookings keep their service id
+and name. The staging rollout verifies this (`guardCounts()`: booking count, service ids/slugs/
+durations/active flags hashed, provider and provider-service counts — before and after).
+
+**The link.** Each `offer` block has `bookingServiceSlugs` (editable, one `cms_services.slug`
+per line). The decisions for the five existing services, with reasons, are in
+`BOOKING_RECONCILIATION` (`src/lib/offers/defaults.ts`) and tested in
+`src/lib/offers/catalogue.test.ts`:
+
+| Booking service | Decision | Offer |
+| --- | --- | --- |
+| `volwassenenfit` (90 min) | linked | Bikefit – huidige fiets |
+| `jeugdfit` (60 min, guardian) | linked | Bikefit – huidige fiets |
+| `gezinspakket` | kept, not in the offer | — |
+| `fit-aan-huis` | kept, not in the offer | — |
+| `inspanningstest` | kept, **not** equated with Lactaattest | — |
+
+"Kept" services stay active and bookable from `/afspraak` without a preselection until Toshoni
+decides otherwise (Admin → Diensten; deactivating is soft). Open decisions:
+`content-placeholders.md` §6.
+
+**Preselection.** The offer page's button goes to `/afspraak?dienst=<offer slug>#boeken`. The
+catch-all route validates `dienst` (`parseServiceParam`: a lower-case slug, ≤ 80 chars, else
+ignored) and the `booking` block resolves it on the server with `resolveBookingSelection()`:
+
+| `?dienst=` | Result |
+| --- | --- |
+| absent / malformed | the normal widget |
+| an offer linked to ≥ 1 bookable service | the widget **narrowed** to those services in the offer's order (preselected when exactly one), with "Je boekt voor <offer>" above the steps |
+| an offer with no bookable service (none linked, inactive, or nobody offers it) | **no widget**: a contact prompt naming the offer (phone; e-mail with the offer in the subject once *Instellingen → Contact → e-mail* is set; links back to the offer and the full offer). Never another service, never invented availability |
+| a booking-service slug (`?dienst=jeugdfit`) | the widget with that service preselected |
+| an unknown slug | the normal widget with "We vonden de gekozen dienst niet terug." |
+
+An offer slug wins over a service slug with the same name. "Opnieuw" after a booking returns to
+the same preselection. The widget's other rules (provider choice, availability, guardian,
+address) are unchanged.
+
+**Making another offer bookable** (once its duration and the people who offer it are
+confirmed): create the service in Admin → Diensten with the real duration (and price, if it
+should show in the widget); the provider subscribes to it themself (or an admin does so on
+their confirmed behalf); then put the service's slug in the offer block's *Online boeken via
+dienst(en)* field and publish the offer page. No deploy, no migration.

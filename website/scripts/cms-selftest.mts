@@ -24,6 +24,10 @@
  *      ICS in UTC with UID; templates; AES-GCM round trip / tamper / wrong key
  *  14. booking flow on PGlite (provider without Google): repo scopes, public
  *      create / re-check / rate limit / cancel by token
+ *  15. aanbod rollout + service preselection: plan is read-only, draft guard,
+ *      apply/backup, booking tables untouched, catalogue, menus, /over-ons
+ *      301, `?dienst=` resolution, idempotent re-apply, restore
+ *      (`scripts/selftest/aanbod.mts`)
  *
  * Counts failures and exits non-zero at the end when any check failed.
  *
@@ -408,6 +412,16 @@ async function main() {
   );
 
   await bookingSections(db, user);
+
+  const { aanbodSection } = await import('./selftest/aanbod.mjs');
+  await aanbodSection({
+    db,
+    admin: user,
+    check,
+    section,
+    cookieJar,
+    backupDir: resolve(process.cwd(), DATA_DIR, 'rollout-backups'),
+  });
 }
 
 // ===========================================================================

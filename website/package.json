@@ -22,8 +22,10 @@
     "cms:bootstrap": "tsx scripts/cms-bootstrap.mts",
     "cms:seed": "tsx scripts/cms-seed.mts",
     "cms:seed-booking": "tsx scripts/cms-seed-booking.mts",
+    "cms:rollout-aanbod": "tsx scripts/cms-rollout-aanbod.mts",
     "cms:selftest": "tsx scripts/cms-selftest.mts",
-    "cms:retention": "tsx scripts/cms-retention.mts"
+    "cms:retention": "tsx scripts/cms-retention.mts",
+    "images:import": "tsx scripts/import-editorial-image.mts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

@@ -35,6 +35,7 @@ import { MonthCalendar } from './month-calendar';
 import { ProviderPicker, type ProviderChoice } from './provider-picker';
 import { ServicePicker } from './service-picker';
 import { SlotList, slotKey } from './slot-list';
+import { StepItem, type BookingStep as Step, type StepState } from './step-item';
 import type {
   AvailabilityActionResult,
   BookActionResult,
@@ -55,13 +56,14 @@ import type {
  * fetched per (service, provider, month) through `availabilityAction` and kept
  * in a small in-memory cache for the lifetime of the page.
  *
+ * `initialServiceId` preselects a service (from `/afspraak?dienst=…`, resolved
+ * on the server); `context` names the offer the visitor came from.
+ *
  * Accessibility: every choice is a real `<button>` with `aria-pressed`; each
  * step heading takes focus when that step opens (only after the visitor has
  * interacted, so a page load never jumps); status lines are `role="status"`
  * and errors `role="alert"`.
  */
-
-type Step = 'service' | 'provider' | 'when' | 'details' | 'done';
 
 type MonthState = { status: 'ready'; slots: BookingSlot[] } | { status: 'error'; message: string };
 
@@ -89,15 +91,28 @@ function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T
   return next;
 }
 
-export function BookingWidget({ services, providers, rules, copy, todayYmd }: BookingWidgetProps) {
+export function BookingWidget({
+  services,
+  providers,
+  rules,
+  copy,
+  todayYmd,
+  initialServiceId = null,
+  context = null,
+  notice: introNotice = '',
+}: BookingWidgetProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const interacted = useRef(false);
   /** Where the widget lived before the confirmation URL replaced it. */
   const returnPath = useRef<string | null>(null);
 
-  const [serviceId, setServiceId] = useState<string | null>(
-    services.length === 1 ? services[0].id : null,
-  );
+  const startServiceId =
+    initialServiceId && services.some((item) => item.id === initialServiceId)
+      ? initialServiceId
+      : services.length === 1
+        ? services[0].id
+        : null;
+  const [serviceId, setServiceId] = useState<string | null>(startServiceId);
   const [providerChoice, setProviderChoice] = useState<ProviderChoice | undefined>(undefined);
   const [month, setMonth] = useState<Ym>(monthOf(todayYmd));
   const [months, setMonths] = useState<Record<string, MonthState>>({});
@@ -304,7 +319,7 @@ export function BookingWidget({ services, providers, rules, copy, todayYmd }: Bo
     }
     setConfirmed(null);
     setMonths({});
-    setServiceId(services.length === 1 ? services[0].id : null);
+    setServiceId(startServiceId);
     setProviderChoice(undefined);
     resetWhen();
     setValues((previous) => ({ ...previous, notes: '', bikeType: '', bikeModel: '' }));
@@ -439,6 +454,17 @@ export function BookingWidget({ services, providers, rules, copy, todayYmd }: Bo
 
   return (
     <div className="studio-booking" ref={rootRef}>
+      {context ? (
+        <p className="studio-booking__context">
+          Je boekt voor <strong>{context.label}</strong>.{' '}
+          <a href={context.href}>Meer over deze dienst</a>
+        </p>
+      ) : null}
+      {introNotice ? (
+        <p className="studio-booking__context" role="status">
+          {introNotice}
+        </p>
+      ) : null}
       <ol className="studio-booking__steps">
         <StepItem
           id="service"
@@ -580,55 +606,5 @@ export function BookingWidget({ services, providers, rules, copy, todayYmd }: Bo
         </StepItem>
       </ol>
     </div>
-  );
-}
-
-type StepState = 'done' | 'active' | 'upcoming';
-
-function StepItem({
-  id,
-  number,
-  title,
-  state,
-  summary,
-  onEdit,
-  children,
-}: {
-  id: Step;
-  number: number;
-  title: string;
-  state: StepState;
-  summary: string;
-  onEdit?: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <li className="studio-booking__step" data-state={state}>
-      <div className="studio-booking__step-head">
-        <span className="studio-booking__step-num" aria-hidden="true">
-          {String(number).padStart(2, '0')}
-        </span>
-        <div className="studio-booking__step-heading">
-          <h3 className="studio-booking__step-title" tabIndex={-1} data-step-heading={id}>
-            <span className="sr-only">Stap {number}: </span>
-            {title}
-          </h3>
-          {state === 'done' && summary ? (
-            <p className="studio-booking__step-summary">{summary}</p>
-          ) : null}
-        </div>
-        {state === 'done' && onEdit ? (
-          <button
-            type="button"
-            className="studio-booking__edit"
-            onClick={onEdit}
-            aria-label={`${title} — wijzigen`}
-          >
-            Wijzigen
-          </button>
-        ) : null}
-      </div>
-      {state === 'active' ? <div className="studio-booking__step-body">{children}</div> : null}
-    </li>
   );
 }

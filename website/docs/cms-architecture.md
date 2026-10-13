@@ -28,12 +28,13 @@ File ownership during parallel work comes from the work-block file (see
 | Area | Paths |
 | --- | --- |
 | Data | `src/db/cms-schema.ts` (all `cms_*` tables, CMS + booking), `src/db/cms.ts` (driver), `drizzle/**`, `drizzle.config.ts` |
-| CMS core | `src/lib/cms/{auth,session,password,permissions,blocks,content,repo,repo-admin}.ts` |
+| CMS core | `src/lib/cms/{auth,session,password,permissions,blocks,block-primitives,blocks-aanbod,content,offers-content,repo,repo-admin}.ts` |
+| Offer ("Aanbod") | `src/lib/offers/{catalogue,defaults}.ts` (plain), `src/lib/studio/seed-content/**` (seed + rollout content), `src/lib/studio/editorial-images.{ts,json}`, `scripts/cms-rollout-aanbod.mts`, `scripts/lib/aanbod-rollout{,-plan}.mts` — see §14 |
 | Admin | `src/app/admin/**`, `src/components/admin/**`, `src/lib/cms/actions/**` (server actions + `sanitize.ts`), `src/app/api/cms/media/**` |
 | Public site | `src/app/(studio)/**`, `src/components/studio/**`, `src/lib/studio/**`, `src/app/sitemap.ts`, `src/app/robots.ts` |
 | Booking | `src/lib/booking/**`, `src/lib/email/**`, `src/app/api/google/oauth/**` — see `booking-architecture.md` |
 | Analytics | `src/lib/analytics/{consent,ga4-tag,ga4}.ts(x)`, `src/components/studio/{analytics,consent-banner}.tsx`, `src/components/admin/analytics-panel.tsx` |
-| Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-selftest,cms-retention}.mts` |
+| Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-rollout-aanbod,cms-selftest,cms-retention,import-editorial-image}.mts`, shared helpers in `scripts/lib/`, self-test section 15 in `scripts/selftest/` |
 | Shared | `src/middleware.ts`, `src/lib/env.ts`, `.env.example`, `next.config.ts`, `package.json`, `src/app/layout.tsx` |
 
 ---
@@ -338,10 +339,13 @@ database. A forged cookie gets past middleware and is rejected by the layout.
 
 ## 5. Block registry
 
-`src/lib/cms/blocks.ts`. Twelve block types: eleven derived from the real
+`src/lib/cms/blocks.ts`. Fifteen block types: eleven derived from the real
 prototype (`prototype/index.html`, `prototype/bikefit.html`) and copy decks
-(`content/index.html`, `content/about.html`, `content/booking.html`), plus
-`booking` for the online booking widget.
+(`content/index.html`, `content/about.html`, `content/booking.html`),
+`booking` for the online booking widget, and `offer`, `offerCatalogue` and
+`team` for the 13 Oct 2026 redesign (defined in `blocks-aanbod.ts` and spread
+into the registry; shared field schemas such as `imageRefSchema` live in
+`block-primitives.ts` and are re-exported from `blocks.ts`).
 
 ```ts
 import { blockRegistry, BLOCK_TYPES, defaultDataFor, validateBlock, validateBlocks } from '@/lib/cms/blocks';
@@ -366,6 +370,9 @@ defaultDataFor('hero')          // deep clone of the above
 | `pricing` | Prijzen | **no amounts exist anywhere in the source material** — see below |
 | `contact` | Contact | phone, city, "Op afspraak" — no street address or e-mail is known |
 | `testimonial` | Ervaringen | 4 reviews from the copy deck, all marked placeholder |
+| `offer` | Dienst (aanbod) | one service on `/aanbod/<slug>`: title, intro, the booking button "Boek een afspraak voor deze dienst" (→ `/afspraak?dienst=<slug>#boeken`), Doel, Inhoud, Duur, Kostprijs, Mogelijke extra's. `category` (`bikefit`\|`begeleiding`), `sortOrder`, `summary` (overview card), `priceCents`/`priceLabel` (empty = "Prijs op aanvraag"), `duration` (default "Duur in overleg"), `bookingServiceSlugs` (see §14). The page path is the offer's identity. |
+| `offerCatalogue` | Aanbod (overzicht) | grouped overview (Bikefit, Begeleiding); owns only its title and per-group title/lede — the cards are read from the published offer pages at render time (`listPublishedOffers`), so nothing is duplicated |
+| `team` | Team | profiles: name, role, bio paragraphs (verified text only), image; without an image the initials are drawn. `internalNote` is never rendered |
 | `booking` | Afspraak boeken | the booking widget on `/afspraak` (service → provider → day → slot → details → confirmation). Carries copy and a filter only: `serviceIds` (empty = every active service), `showProviderChoice` (AND-ed with the `booking.showProviderChoice` setting), `successTitle`, `successText` (empty → `booking.confirmationText`). Services, providers and live availability are read at render time through `@/lib/booking/content`, so nothing in the block goes stale. |
 
 Most blocks share `variant: 'default' | 'gray' | 'dark'`, matching the
@@ -498,6 +505,8 @@ getSiteSettings(locale?: string): Promise<SiteSettings>
 findRedirect(path: string): Promise<{ toPath: string; statusCode: number } | null>
 getMedia(id: string): Promise<CmsMediaItem | null>
 getMediaBytes(id: string): Promise<{ data: Buffer; mimeType: string; filename: string } | null>
+// src/lib/cms/offers-content.ts — composed from the two cached page readers above
+listPublishedOffers(locale): Promise<CatalogueOffer[]>   // every published `aanbod/*` page with an `offer` block, sorted
 mediaUrl(media): string   // '/api/cms/media/<id>' for db-stored, the CDN URL for blob
 mediaAlt(media, locale): string
 ```
@@ -691,7 +700,7 @@ Checks (all six are the Definition of Done in `CLAUDE.md` §2):
 ```bash
 npm run typecheck && npm run lint && npm run format:check
 npm test               # vitest unit tests
-npm run cms:selftest   # 14 sections: migrations … full booking flow, on a throwaway PGlite
+npm run cms:selftest   # 15 sections: migrations … full booking flow, aanbod rollout, on a throwaway PGlite
 npm run build
 ```
 
@@ -757,7 +766,7 @@ Added with the Dutch public site. Nothing in `src/lib/cms/*` changed.
 | URL | File | Notes |
 | --- | --- | --- |
 | `/` | `src/app/(studio)/page.tsx` | Dutch home page, slug `''` |
-| `/<anything>` | `src/app/(studio)/[...slug]/page.tsx` | published page → redirect → 404, in that order. Includes the seeded `/afspraak` (booking block), `/privacy` and `/algemene-voorwaarden` |
+| `/<anything>` | `src/app/(studio)/[...slug]/page.tsx` | published page → redirect → 404, in that order. Includes the seeded `/afspraak` (booking block), `/privacy` and `/algemene-voorwaarden`, and nested slugs such as `/aanbod/voetanalyse` (`cms_pages.slug = 'aanbod/voetanalyse'`; the breadcrumb shows published ancestors). Reads `?dienst=` (validated by `parseServiceParam`) for the booking block only |
 | `/afspraak/bevestigd` | `src/app/(studio)/afspraak/bevestigd/page.tsx` | booking confirmation; `?ref=` is an HMAC-signed summary without personal data; `noindex` |
 | `/afspraak/annuleren/[token]` | `src/app/(studio)/afspraak/annuleren/[token]/page.tsx` | customer cancellation by e-mailed token; `noindex` |
 | `/og` | `src/app/(studio)/og/route.tsx` | generated 1200×630 share card |
@@ -817,20 +826,27 @@ e-mail, VAT number, price or rating is ever emitted.
 
 A `services` block counts as bookable when at least one of its cards has a
 `duration` — that is what separates "Vier manieren om te boeken" from "Vier
-dingen, één positie" without adding a field.
+dingen, één positie" without adding a field. An offer page emits one
+`Service` node (`offerServiceJsonLd`) with `serviceType` = the category; an
+`Offer` with a price only once `priceCents` holds a confirmed amount.
 
 `pricing` and `testimonial` blocks with `isPlaceholder: true` render nothing and
 appear in no structured data.
 
 ### 12.6 Seeding
 
-`npm run cms:seed` creates, fills and **publishes** the eight Dutch pages
-(`/`, `/bikefit`, `/over-ons`, `/veelgestelde-vragen`, `/contact`, `/afspraak`,
-`/privacy`, `/algemene-voorwaarden`) through `repo.ts`, so the snapshots, audit
-entries and permission checks are the real ones. It does that by giving the
-write API the request context it expects: `module.registerHooks()` stubs for
-`server-only`, `next/headers` and `next/cache`, plus a genuine `cms_sessions`
-row for an existing admin (revoked again on exit).
+`npm run cms:seed` creates, fills and **publishes** the seventeen Dutch pages
+(`/`, `/aanbod`, seven `/aanbod/<slug>`, `/voor-wie`, `/bikefit`, `/ons-team`,
+`/veelgestelde-vragen`, `/contact`, `/afspraak`, `/privacy`,
+`/algemene-voorwaarden`), both menus and the redirects `/bikefit.html →
+/bikefit` and `/over-ons → /ons-team`, through `repo.ts`, so the snapshots,
+audit entries and permission checks are the real ones. It does that by giving
+the write API the request context it expects (`scripts/lib/request-context.mts`):
+`module.registerHooks()` stubs for `server-only`, `next/headers` and
+`next/cache`, plus a genuine `cms_sessions` row for an existing admin (revoked
+again on exit). The redesign's pages and menus are defined once in
+`src/lib/studio/seed-content/aanbod.ts`; **existing databases get them through
+`npm run cms:rollout-aanbod`, never a full `cms:seed`** (§14).
 
 - `--only-missing` leaves every page and menu that already exists alone.
 - `--refresh-slug <slug>` (also `--refresh-slug=<slug>`; `/` or `home` for the
@@ -888,6 +904,10 @@ Content-Security-Policy yet (see §13). How to verify after a deploy:
 
 ## 13. Known gaps and open questions
 
+Every temporary or unconfirmed piece of public content (prices, durations,
+extras, team bios and photos, AI images, booking links) is tracked in
+[`content-placeholders.md`](./content-placeholders.md).
+
 - **Booking** is built: schema, availability, admin screens, the public widget
   on `/afspraak`, Google Calendar sync and e-mail. It is documented in
   [`booking-architecture.md`](./booking-architecture.md) (design) and
@@ -908,3 +928,47 @@ Content-Security-Policy yet (see §13). How to verify after a deploy:
   headers); the GA4 tag and Next's inline scripts would need nonces.
 - Session rows are only pruned opportunistically. If volume ever matters, add a
   scheduled `pruneExpiredSessions()` call.
+
+---
+
+## 14. Offer ("Aanbod"), audiences and team — 13 Oct 2026
+
+**Pages.** `/aanbod` (intro + `offerCatalogue`), one page per offer at
+`/aanbod/<slug>` (a single `offer` block, which also owns the page's `<h1>`),
+`/voor-wie`, `/ons-team` (replaces `/over-ons`, which is unpublished — row and
+snapshot kept — and redirected 301), plus a new home page whose first section
+after the hero is the grouped offer, and `/bikefit` with the 3D-analysis
+section and the Bikefit offers instead of the old "Vier manieren om te
+boeken". Main menu: Aanbod, Voor wie, Bikefit, Ons team, Contact (the logo is
+the way home; the header CTA stays "Afspraak maken"). FAQ, booking and the
+legal pages are in the footer.
+
+**One source per offer.** Title, summary, price and duration live on the offer
+page's `offer` block. Overviews derive their cards from the published pages
+(`listPublishedOffers`, tags `cms` + `cms:pages`), so publishing an offer page
+updates the home page, `/aanbod` and `/bikefit` at once. Category order is
+fixed (Bikefit, Begeleiding); inside a category `sortOrder`, then title.
+
+**Booking link.** Every offer page links to `/afspraak?dienst=<offer slug>#boeken`.
+The booking block resolves it on the server (`resolveBookingSelection`,
+`src/lib/offers/catalogue.ts`); the reconciliation with the booking catalogue is
+in `booking-architecture.md` §14.
+
+**Images.** Three temporary AI images (generic people) in
+`public/images/editorial/`, written into blocks via `editorialImage()`;
+provenance in [`editorial-images.md`](./editorial-images.md). Team members never
+get a generated image: the `team` block draws initials.
+
+**Staging rollout.** The real site is database-backed, so a deploy alone
+changes nothing. `npm run cms:rollout-aanbod` (dry run by default) applies
+exactly these pages, both menus, the `/over-ons` retirement and its redirect to
+an existing database — backup first, through the repo, booking tables verified
+untouched, idempotent, reversible with `--restore`. Procedure:
+[`staging-runbook.md`](./staging-runbook.md) §9. No migration is needed: the
+new block types are zod-validated `text` in `cms_blocks`, as every block type.
+
+**Compatibility.** The new code renders old content unchanged (the old blocks
+are all still valid). Old code reading a page that uses `offer`,
+`offerCatalogue` or `team` treats it as unpublished (404) — so deploy the code
+before running the rollout.
+

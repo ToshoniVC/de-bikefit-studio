@@ -12,6 +12,8 @@ export type BookingLocationKind = 'studio' | 'customer';
 
 export type BookingServiceOption = {
   id: string;
+  /** `cms_services.slug` — what `?dienst=` and an offer's `bookingServiceSlugs` match. */
+  slug: string;
   name: string;
   description: string;
   durationMinutes: number;
@@ -56,6 +58,13 @@ export type BookingWidgetCopy = {
   phoneHref: string;
 };
 
+/** The offer a visitor came from (`/afspraak?dienst=<offer>`), shown above the steps. */
+export type BookingWidgetContext = {
+  label: string;
+  /** The offer page, e.g. `/aanbod/bikefit-huidige-fiets`. */
+  href: string;
+};
+
 export type BookingWidgetProps = {
   services: BookingServiceOption[];
   providers: BookingProviderOption[];
@@ -63,6 +72,11 @@ export type BookingWidgetProps = {
   copy: BookingWidgetCopy;
   /** Today in the booking time zone, computed on the server (`YYYY-MM-DD`). */
   todayYmd: string;
+  /** Preselected service (must be one of `services`); also what "opnieuw" returns to. */
+  initialServiceId?: string | null;
+  context?: BookingWidgetContext | null;
+  /** A short notice above the steps, e.g. when `?dienst=` named nothing we know. */
+  notice?: string;
 };
 
 export type BookingSlot = {

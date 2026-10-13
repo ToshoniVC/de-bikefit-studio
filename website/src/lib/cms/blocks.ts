@@ -1,4 +1,13 @@
 import { z } from 'zod';
+import {
+  emptyImage,
+  eyebrow,
+  imageRefSchema,
+  lede,
+  optionalLinkSchema,
+  sectionVariantSchema,
+} from './block-primitives';
+import { aanbodBlockRegistry } from './blocks-aanbod';
 
 /**
  * Content-block registry.
@@ -21,45 +30,17 @@ import { z } from 'zod';
  */
 
 // ---------------------------------------------------------------------------
-// Shared primitives
+// Shared primitives live in `block-primitives.ts` and are re-exported here
 // ---------------------------------------------------------------------------
 
-/** Matches the prototype's section backgrounds: white, `--gray`, `--dark`. */
-export const sectionVariantSchema = z.enum(['default', 'gray', 'dark']).default('default');
-export type SectionVariant = z.infer<typeof sectionVariantSchema>;
-
-/**
- * Links may be internal paths (`/bikefit`), anchors (`#contact`), `tel:` URIs
- * (the prototype's main CTA dials 0473 95 26 33) or absolute URLs — so this is
- * a non-empty string, not a URL.
- */
-export const linkSchema = z.object({
-  label: z.string().min(1),
-  href: z.string().min(1),
-  external: z.boolean().default(false),
-});
-export type CmsLink = z.infer<typeof linkSchema>;
-
-const optionalLinkSchema = linkSchema.nullable().default(null);
-
-/**
- * Image reference. `mediaId` points at `cms_media`; `url` is only used for
- * assets that live outside the media library (e.g. `/logo.svg` in /public).
- * `alt` is the per-block override; it falls back to `cms_media.alt[locale]`.
- */
-export const imageRefSchema = z.object({
-  mediaId: z.string().nullable().default(null),
-  url: z.string().nullable().default(null),
-  alt: z.string().default(''),
-  /** Purely decorative images are hidden from assistive technology. */
-  decorative: z.boolean().default(false),
-});
-export type CmsImageRef = z.infer<typeof imageRefSchema>;
-
-const emptyImage: CmsImageRef = { mediaId: null, url: null, alt: '', decorative: false };
-
-const eyebrow = z.string().default('');
-const lede = z.string().default('');
+export {
+  imageRefSchema,
+  linkSchema,
+  sectionVariantSchema,
+  type CmsImageRef,
+  type CmsLink,
+  type SectionVariant,
+} from './block-primitives';
 
 // ---------------------------------------------------------------------------
 // Block schemas
@@ -698,6 +679,9 @@ export const blockRegistry = {
       successText: '',
     },
   },
+
+  // `offer`, `offerCatalogue`, `team` — see `blocks-aanbod.ts`.
+  ...aanbodBlockRegistry,
 } as const satisfies Record<string, BlockDefinition>;
 
 export type BlockType = keyof typeof blockRegistry;

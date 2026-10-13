@@ -39,6 +39,8 @@ yarn-error.log*
 /.pglite/
 # throwaway PGlite databases (cms:selftest, CMS_PGLITE_DIR experiments)
 /.pglite-selftest/
+# backups written by `npm run cms:rollout-aanbod -- --apply` (page/menu content, no secrets)
+/.rollout-backups/
 /.pglite-*/
 
 # test output

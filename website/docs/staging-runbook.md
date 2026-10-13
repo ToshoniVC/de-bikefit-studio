@@ -9,7 +9,8 @@ inline at the moment it is needed and lives only in 1Password and Vercel.
 Previews and staging go automatically once the release gate is green; production, the
 production database and DNS only after an explicit go from Toshoni (`../DEPLOYMENT.md` §2).
 Arend records every deployment in its infrastructure log, outside this repository. A person
-with Vercel and Neon access can follow the same steps.
+with Vercel and Neon access can follow the same steps. The offer redesign of 13 Oct 2026 has its
+own rollout procedure in §9.
 
 Environments, the Hobby-plan staging setup and the full env var contract:
 [`../DEPLOYMENT.md`](../DEPLOYMENT.md). Google, GA4 and Resend setup, GDPR and retention:
@@ -299,3 +300,77 @@ production step (database, env vars, DNS, deploy) needs an explicit go; Arend ex
       Console.
 - [ ] **End-to-end check** on production as in `booking-runbook.md` §9 (free/busy, event,
       mail, cancel, consent before GA4, dashboard).
+
+---
+
+## 9. Rolling out the offer redesign (Aanbod, 13 Oct 2026)
+
+Brings an existing staging database to the redesign: `/`, `/aanbod`, seven `/aanbod/<slug>`,
+`/voor-wie`, `/bikefit`, `/ons-team`, the `main` and `footer` menus, `/over-ons` unpublished
+(row and snapshot kept) with a 301 to `/ons-team`. Nothing else: no settings (contact, SEO,
+analytics), no legal pages, no `/afspraak`, `/contact` or `/veelgestelde-vragen`, no users, and
+**no booking data** — the five service ids, providers, subscriptions and bookings are verified
+unchanged before and after.
+
+**New migrations: none.** The new block types are validated in code (`cms_blocks.type` is
+`text`). **Do not run a full `cms:seed`** on staging: it would overwrite every seeded page.
+
+Order (the old build cannot render the new block types, so code goes first):
+
+1. **Release gate** on the exact SHA (six steps).
+2. **Deploy** the feature/staging push; wait for the staging build to be READY. The new code
+   renders the old content unchanged (verified locally; `/aanbod` and `/ons-team` answer 404
+   until step 5).
+3. **Dry run** — writes nothing; prints every page/menu/redirect action, the reasons, any
+   blockers (`!`) and the offer ↔ booking report:
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:rollout-aanbod
+   ```
+
+   Expect: `~` for `/` and `/bikefit`, `+` for the ten new pages, `~ menu main/footer`,
+   `~ page /over-ons — unpublish`, `+ redirect /over-ons → /ons-team`, "Bikefit – huidige
+   fiets — online booking", the six others "enquiry", and the booking counts. A line with `!`
+   (unpublished draft edits on an overwritten page, a translation-group clash, or an existing
+   `/over-ons` redirect to somewhere else) blocks the apply: resolve it, or for drafts pass
+   `--allow-draft-overwrite` once you have checked them (the backup keeps them either way).
+4. **Neon snapshot** — create a branch from `Staging` (e.g. `staging-pre-aanbod-2026-10-13`).
+5. **Apply**:
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:rollout-aanbod -- --apply \
+     --expect-host '<host part of the staging DATABASE_URL>'
+   ```
+
+   `--expect-host` must equal the host the script prints on its first line (`→ driver:
+   neon-http (<host>)`); any other host is refused, so the command cannot hit another branch
+   by accident. It writes a JSON backup of every row it will overwrite to
+   `website/.rollout-backups/aanbod-rollout-<timestamp>.json` **before** the first write (keep
+   it with the deploy log; it holds page and menu content, no personal data or secrets), then
+   publishes the pages one by one, replaces both menus, creates the redirect, unpublishes
+   `/over-ons`, and checks the booking tables. Audit log: `rollout.aanbod.overwrite` per
+   overwritten page (old draft and live block list + backup name), the repo's own
+   `block.delete` / `page.publish` / `navigation.update` / `redirect.create` /
+   `page.unpublish` entries, and `rollout.aanbod.apply`. Running it again prints "nothing to
+   do".
+6. **Cache.** The script writes outside the app, so the app's tag cache is not busted: pages,
+   menus and redirects switch over within **5 minutes** (the readers' fallback revalidation),
+   and the first request after that may still serve the old version once. Wait 5 minutes,
+   load each page twice, then verify. (A redeploy does not reliably clear Vercel's data cache.)
+7. **Verify** on the stable alias: `site-health`, plus `/aanbod` (two groups, seven cards,
+   "Prijs op aanvraag"), the seven `/aanbod/<slug>` pages, `/voor-wie`, `/bikefit`,
+   `/ons-team`, `/over-ons` → 308 to `/ons-team`, the main menu (no Home), and
+   `/afspraak?dienst=bikefit-huidige-fiets` (widget with Volwassenenfit/Jeugdfit, "Je boekt
+   voor …") and `/afspraak?dienst=lactaattest` (contact prompt, no widget). Do not create
+   bookings to test.
+
+**Rollback.** Content: `npm run cms:rollout-aanbod -- --restore <backup.json> --expect-host
+'<host>'` puts back the overwritten pages (fields, live snapshot and draft blocks), both menus,
+re-publishes `/over-ons`, and unpublishes/disables what the rollout created (nothing is
+deleted). Or restore the Neon snapshot branch from step 4. Code: redeploy the previous
+staging deployment — but restore the content **first**, because old code cannot render the new
+block types.
+
+**Images.** The three temporary images ship in the build (`public/images/editorial/`); nothing
+to upload. Replacing one later: `docs/editorial-images.md`.
+

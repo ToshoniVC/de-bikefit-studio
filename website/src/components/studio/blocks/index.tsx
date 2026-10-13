@@ -8,12 +8,16 @@ import { CtaBlock } from './cta';
 import { FaqBlock } from './faq';
 import { HeroBlock } from './hero';
 import { ImageTextBlock } from './image-text';
+import { OfferBlock } from './offer';
+import { OfferCatalogueBlock } from './offer-catalogue';
 import { PricingBlock } from './pricing';
 import { ProcessBlock } from './process';
 import { RichTextBlock } from './rich-text';
 import type { HeadingLevel } from './section';
 import { ServicesBlock } from './services';
+import { TeamBlock } from './team';
 import { TestimonialBlock } from './testimonial';
+import type { BlockPageContext } from './types';
 
 /**
  * Maps `published_snapshot.blocks` onto components — the only place the public
@@ -21,8 +25,9 @@ import { TestimonialBlock } from './testimonial';
  *
  * Three invariants it enforces for the whole page:
  *
- *  1. **One `<h1>`.** The first hero owns it; if a page somehow has no hero,
- *     the first visible section does. Every other section heading is an `<h2>`.
+ *  1. **One `<h1>`.** The first hero owns it; if a page has no hero (an offer
+ *     page is a single `offer` block), the first visible section does. Every
+ *     other section heading is an `<h2>`.
  *  2. **Placeholders never reach a visitor.** `visibleBlocks()` drops the
  *     `pricing` and `testimonial` blocks while `isPlaceholder` is set.
  *  3. **Stable anchors.** `sectionAnchors()` gives each section a readable
@@ -34,9 +39,11 @@ import { TestimonialBlock } from './testimonial';
 export function BlockRenderer({
   blocks,
   locale,
+  page,
 }: {
   blocks: readonly BlockInstance[];
   locale: StudioLocale;
+  page: BlockPageContext;
 }) {
   const anchors = sectionAnchors(blocks);
   const visible = visibleBlocks(blocks);
@@ -51,6 +58,7 @@ export function BlockRenderer({
           anchor={anchors.get(block.id)}
           headingLevel={block.id === headingOwner ? 1 : 2}
           locale={locale}
+          page={page}
         />
       ))}
     </>
@@ -62,13 +70,15 @@ function StudioBlock({
   anchor,
   headingLevel,
   locale,
+  page,
 }: {
   block: BlockInstance;
   anchor?: string;
   headingLevel: HeadingLevel;
   locale: StudioLocale;
+  page: BlockPageContext;
 }) {
-  const common = { anchor, headingLevel, locale };
+  const common = { anchor, headingLevel, locale, page };
 
   switch (block.type) {
     case 'hero':
@@ -95,6 +105,12 @@ function StudioBlock({
       return <TestimonialBlock data={block.data} {...common} />;
     case 'booking':
       return <BookingBlock data={block.data} {...common} />;
+    case 'offer':
+      return <OfferBlock data={block.data} {...common} />;
+    case 'offerCatalogue':
+      return <OfferCatalogueBlock data={block.data} {...common} />;
+    case 'team':
+      return <TeamBlock data={block.data} {...common} />;
     default: {
       // Exhaustiveness guard: a new registry type lands here as a type error.
       const exhaustive: never = block;

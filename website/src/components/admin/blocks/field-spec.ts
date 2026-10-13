@@ -96,6 +96,25 @@ const LABELS: Record<string, string> = {
   quoteAttribution: 'Citaat — wie',
   rotating: 'Roterend tonen',
   secondaryCta: 'Secundaire knop',
+  // `offer`, `offerCatalogue`, `team` blocks
+  bookingServiceSlugs:
+    'Online boeken via dienst(en) — slug uit Afspraken → Diensten, één per regel; leeg = aanvraag via telefoon of e-mail',
+  bio: 'Bio (alinea’s, enkel gecontroleerde tekst)',
+  category: 'Categorie',
+  contents: 'Inhoud (één punt per regel)',
+  ctaLabel: 'Tekst van de boekknop',
+  extras: 'Mogelijke extra’s (één per regel)',
+  extrasNote: 'Uitleg bij de extra’s',
+  goal: 'Doel',
+  groups: 'Groepen',
+  internalNote: 'Interne notitie (niet publiek)',
+  intro: 'Inleiding',
+  members: 'Teamleden',
+  name: 'Naam',
+  role: 'Rol',
+  showPrices: 'Prijzen tonen',
+  sortOrder: 'Volgorde binnen de categorie',
+  summary: 'Korte omschrijving (overzicht; leeg = inleiding)',
   // `booking` block
   serviceIds: 'Diensten (één dienst-ID per regel; leeg = alle actieve diensten)',
   showProviderChoice: 'Keuze van aanbieder tonen',
@@ -112,14 +131,19 @@ const LABELS: Record<string, string> = {
 
 const MULTILINE = new Set([
   'answer',
+  'bio',
   'body',
   'description',
+  'goal',
+  'internalNote',
+  'intro',
   'lede',
   'mission',
   'paragraphs',
   'quote',
   'subtitle',
   'successText',
+  'summary',
   'text',
 ]);
 

@@ -1,6 +1,8 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
+/* Offer, catalogue and team components (split out; this file is over the size limit). */
+@import './studio-aanbod.css';
 
 @plugin "@tailwindcss/typography";
 

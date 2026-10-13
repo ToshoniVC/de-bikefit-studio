@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "note": "Editorial AI images (generated, fictional generic people; never a portrait of a team member) for the public site. Written by scripts/import-editorial-image.mts; provenance and prompts in docs/editorial-images.md, replacement tracked in docs/content-placeholders.md. `file` null = not delivered, the site shows the decorative panel.",
+  "images": {
+    "flemish-cyclists": {
+      "subject": "Drie fietsers op een Vlaamse landweg",
+      "file": "flemish-cyclists-v1.webp",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 222902,
+      "alt": "Drie fietsers met helm rijden samen over een smalle landweg tussen de Vlaamse velden, met een kerktoren in de verte",
+      "generated": true,
+      "source": "exec-19e6a7fc-cb76-49f1-adaf-a78e3690a102.png",
+      "sourceSha256": "2098c252295b40c8aa0e5f261e713fc2ce193b654928b58dfeb1f3144c6054a8",
+      "prompt": "Use case: photorealistic-natural. Asset type: premium Belgian bike fitting and cycling coaching website hero, landscape 3:2. Create one polished authentic editorial photograph of three amateur adult cyclists of different ages and genders on a quiet narrow countryside lane in the Flemish Ardennes, seen in a natural three-quarter side view, gently cycling together at conversational pace, rolling green fields and low hedges, subtle Belgian rural character. Ordinary fit people, not pro racing heroes, all wearing correctly fastened cycling helmets and understated burgundy, taupe and off-white unbranded cycling clothing. Warm soft morning light, tactile natural colors, inviting and human, subtle film grain, not commercial stock grins. Wide composition with space around the cyclists and a quiet low-detail left side for website text. Realistic road bicycles with coherent frames, two wheels each, correct limbs, hands on handlebars and feet on pedals. No text, no logos, no watermarks, no actual identifiable professional athletes.",
+      "importedAt": "2026-10-13T09:58:54.491Z"
+    },
+    "bikefit-studio": {
+      "subject": "Een bikefitsessie in de studio",
+      "file": "bikefit-studio-v1.webp",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 143822,
+      "alt": "Een fietster rijdt op een fiets op een trainer in de studio terwijl een bikefitter naast haar haar houding bekijkt",
+      "generated": true,
+      "source": "exec-0d6dfdd3-e4ef-455b-a384-728609ac8466.png",
+      "sourceSha256": "0d985490397bcaa2378f5476c8995816430d66ed2603ea42b0f91e6d47dfe6e2",
+      "prompt": "Use case: photorealistic-natural. Asset type: landscape 3:2 editorial image for Belgian bike fitting website. A calm bike fitting session in a modest contemporary Belgian studio with warm off-white walls, wood and a few muted burgundy details. An adult woman in understated dark burgundy cycling clothes pedals on a realistically mounted road bicycle fixed safely to an indoor trainer; a casually dressed bike fitter stands beside her attentively observing her riding position, with a simple laptop at the side and small unobtrusive motion-tracking cameras in the room. Both are generic fictional people, not portraits of named staff. Focus on supportive personal attention, rider comfortable and engaged, candid interaction, no exaggerated smiles. Natural window light, warm skin, photojournalistic premium realism, authentic equipment with mechanically coherent wheels, pedals, trainer and hands. Frame includes bike, rider and fitter, horizontal roomy composition. No readable screen content, no medical clinic, no text, no logos, no watermark, no promises of specific branded equipment.",
+      "importedAt": "2026-10-13T09:58:55.636Z"
+    },
+    "junior-coaching": {
+      "subject": "Een coach met een jonge fietser, buiten",
+      "file": "junior-coaching-v1.webp",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 180614,
+      "alt": "Een jonge fietser met helm luistert naar een coach langs een landweg, met een ouder en fiets op de achtergrond",
+      "generated": true,
+      "source": "exec-bd023676-2285-4bf8-82bd-3f2feb75670c.png",
+      "sourceSha256": "dcd5fb3fe785a77ef229ac065bad3177ab08953fff94b659b48f850fc98def26",
+      "prompt": "Use case: photorealistic-natural. Asset type: landscape 3:2 editorial image for a warm Belgian cycling coaching website, junior support and approachable guidance. A teenage cyclist, about 15 years old, wearing a properly fastened cycling helmet and modest unbranded burgundy and black cycling kit, pauses beside a correctly proportioned road bicycle while an adult coach in neutral cream and olive casual sports clothing listens and explains something with an open hand. They stand beside a quiet Flemish countryside lane with hedgerows and soft rolling fields, a parent slightly behind with their own bicycle, warm supportive scene about confidence and learning, not competitive pressure. Natural candid interaction, no awkward stock-photo pose, genuine relaxed expressions. Warm late afternoon light, rich natural photographic texture, restrained colors harmonious with burgundy/cream website. Horizontal photograph with clear separation of bicycle frames and people, coherent anatomy and realistic hands. Generic fictional people, do not depict a named real coach. No text, logos, watermark or race sponsors.",
+      "importedAt": "2026-10-13T09:58:56.774Z"
+    }
+  }
+}

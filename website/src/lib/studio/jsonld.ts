@@ -1,4 +1,5 @@
 import type { BlockInstance, SiteSettings } from '@/lib/cms/blocks';
+import { OFFER_CATEGORY_LABELS } from '@/lib/offers/catalogue';
 import { isBookableServicesBlock, visibleBlocks } from './blocks';
 import { localeTag, type StudioLocale } from './locale';
 
@@ -210,6 +211,36 @@ export function servicesJsonLd(
         areaServed: settings.organization.areaServed,
       }),
     );
+}
+
+/**
+ * One `Service` node for an offer page (`offer` block): name, intro and the
+ * category as `serviceType`. A price is emitted only once `priceCents` holds a
+ * confirmed amount — "Prijs op aanvraag" is not a price.
+ */
+export function offerServiceJsonLd(
+  blocks: readonly BlockInstance[],
+  settings: SiteSettings,
+  origin: string,
+  canonical: string,
+): JsonLdNode | null {
+  const block = visibleBlocks(blocks).find((entry) => entry.type === 'offer');
+  if (!block || block.type !== 'offer') return null;
+  const { data } = block;
+  return compact({
+    '@type': 'Service',
+    '@id': `${canonical}#dienst`,
+    name: data.title,
+    description: data.intro || data.summary,
+    serviceType: OFFER_CATEGORY_LABELS[data.category],
+    url: canonical,
+    provider: { '@id': organizationId(origin) },
+    areaServed: settings.organization.areaServed,
+    offers:
+      data.priceCents == null
+        ? null
+        : { '@type': 'Offer', price: (data.priceCents / 100).toFixed(2), priceCurrency: 'EUR' },
+  });
 }
 
 /** Wraps nodes into the single `@graph` document a page emits. */

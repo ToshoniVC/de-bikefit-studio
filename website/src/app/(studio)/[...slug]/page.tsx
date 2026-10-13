@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import { StudioPageView } from '@/components/studio/page-view';
 import { findRedirect, getSiteSettings } from '@/lib/cms/content';
+import { parseServiceParam, SERVICE_PARAM } from '@/lib/offers/catalogue';
 import { defaultLocale, slugFromSegments } from '@/lib/studio/locale';
 import { buildPageMetadata, notFoundMetadata } from '@/lib/studio/seo';
 import { getStudioPage } from '@/lib/studio/site';
@@ -29,6 +30,7 @@ import { getStudioPage } from '@/lib/studio/site';
 export const dynamic = 'force-dynamic';
 
 type RouteParams = { slug?: string[] };
+type RouteSearchParams = Record<string, string | string[] | undefined>;
 
 export async function generateMetadata({
   params,
@@ -41,12 +43,23 @@ export async function generateMetadata({
   return buildPageMetadata(studio);
 }
 
-export default async function StudioCatchAllPage({ params }: { params: Promise<RouteParams> }) {
+export default async function StudioCatchAllPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<RouteParams>;
+  searchParams: Promise<RouteSearchParams>;
+}) {
   const { slug } = await params;
   const path = slugFromSegments(slug);
 
   const studio = await getStudioPage(defaultLocale, path);
-  if (studio) return <StudioPageView studio={studio} />;
+  if (studio) {
+    // `?dienst=<slug>` preselects a service in the booking block (/afspraak);
+    // anything that is not a well-formed slug is dropped here, at the boundary.
+    const requestedService = parseServiceParam((await searchParams)[SERVICE_PARAM]);
+    return <StudioPageView studio={studio} requestedService={requestedService} />;
+  }
 
   const match = await findRedirect(`/${path}`);
   if (match) {

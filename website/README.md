@@ -101,6 +101,8 @@ Run inside `website/`. Scripts that touch a database use PGlite unless `DATABASE
 | `npm run cms:bootstrap` | Idempotent: first admin, site settings, menus, locations, services (`CMS_BOOTSTRAP_PASSWORD` inline) |
 | `npm run cms:seed` | Idempotent Dutch content, published. `-- --only-missing` leaves existing pages/menus alone; `-- --refresh-slug <slug>` re-seeds and republishes one page |
 | `npm run cms:seed-booking` | Idempotent first provider, hours and service subscriptions (`PROVIDER_EMAIL` / `PROVIDER_NAME` for another) |
+| `npm run cms:rollout-aanbod` | Offer redesign onto an existing database: dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §9 |
+| `npm run images:import -- --slot <slot> --src <file>` | Compress a delivered editorial image into `public/images/editorial/` and record it (`docs/editorial-images.md`) |
 | `npm run cms:selftest` | Integration checks on a throwaway PGlite in `.pglite-selftest/` |
 | `npm run cms:retention` | GDPR retention purge, dry run; `-- --apply` deletes, `-- --json` for a report |
 
@@ -112,8 +114,8 @@ Three layers, all in CI ([`../CLAUDE.md`](../CLAUDE.md) §5):
    database, no network, no Next runtime. Every bug fix starts with a failing test.
 2. **Integration** — `npm run cms:selftest`. Migrations, schema, passwords, sessions,
    permissions, block registry, publish, the booking schema, the provider role,
-   `computeSlots()`, e-mail/ICS/token encryption and the full booking flow, on a throwaway
-   PGlite. Section list in the header of `scripts/cms-selftest.mts`.
+   `computeSlots()`, e-mail/ICS/token encryption, the full booking flow and the offer rollout
+   with service preselection, on a throwaway PGlite. Section list in the header of `scripts/cms-selftest.mts`.
 3. **Smoke** — after every preview and staging deployment the DevOps agent (Arend) runs
    `site-health` (status codes, `robots.txt`, `noindex`, key paths).
 
@@ -134,5 +136,7 @@ is never merged. Branch flow: `feat/<topic>` → `staging` → `main`.
 | [`docs/booking-architecture.md`](docs/booking-architecture.md) | Booking schema, availability, Google Calendar, e-mail |
 | [`docs/staging-runbook.md`](docs/staging-runbook.md) | Staging deploy procedure, rollback, production checklist |
 | [`docs/booking-runbook.md`](docs/booking-runbook.md) | Google Cloud, GA4, Resend setup; GDPR and retention (§11) |
+| [`docs/content-placeholders.md`](docs/content-placeholders.md) | Register (NL) of every temporary price, duration, bio, image and booking link |
+| [`docs/editorial-images.md`](docs/editorial-images.md) | Provenance and import of the temporary AI images |
 | [`AGENTS.md`](AGENTS.md) | Next.js 16 warning for agents |
 | `../prototype/design-system/` | Design-system source (`tokens.css`, `DESIGN-SYSTEM.md`) |

@@ -43,6 +43,11 @@ export type StudioPage = {
   canonical: string;
   /** Site-root-relative path of this page. */
   path: string;
+  /**
+   * Published ancestors of a nested page, outermost first — `/aanbod` for
+   * `/aanbod/voetanalyse`. Feeds the visible breadcrumb and its JSON-LD.
+   */
+  parents: { title: string; path: string }[];
 };
 
 /**
@@ -60,12 +65,23 @@ export async function getStudioPage(
   const path = localePath(locale, page.slug);
   const override = page.snapshot.seo.canonicalOverride?.trim();
 
+  const segments = page.slug.split('/').filter(Boolean);
+  const ancestors = await Promise.all(
+    segments
+      .slice(0, -1)
+      .map((_, index) => getPublishedPage(locale, segments.slice(0, index + 1).join('/'))),
+  );
+  const parents = ancestors.flatMap((parent) =>
+    parent ? [{ title: parent.title, path: localePath(locale, parent.slug) }] : [],
+  );
+
   return {
     locale,
     page,
     settings,
     path,
     canonical: override ? absoluteUrl(override) : absoluteUrl(path),
+    parents,
   };
 }
 

@@ -11,6 +11,9 @@ import type { StudioLocale } from '@/lib/studio/locale';
  * `/api/cms/media/<id>`, which already sets an immutable one-year
  * `Cache-Control`, so the images are served `unoptimized`: running them through
  * Next's optimiser a second time would buy nothing and would add a round trip.
+ * The exception is the versioned editorial images under `/images/`
+ * (`scripts/import-editorial-image.mts`): one compressed master each, sized
+ * per viewport by the optimiser.
  *
  * `fill` is used because `cms_media.width/height` are nullable — the aspect
  * ratio belongs to the surrounding box (`.studio-split__visual`,
@@ -38,13 +41,16 @@ export async function StudioImage({
   if (!src) return null;
 
   const alt = image.decorative ? '' : image.alt.trim() || media?.alt || '';
+  // Versioned editorial assets in /public/images go through Next's optimiser,
+  // which serves a responsive srcset in modern formats from one master file.
+  const optimize = !media && src.startsWith('/images/');
 
   return (
     <Image
       src={src}
       alt={alt}
       fill
-      unoptimized
+      unoptimized={!optimize}
       sizes={sizes}
       // Only the hero is above the fold; everything else loads lazily.
       priority={priority}
