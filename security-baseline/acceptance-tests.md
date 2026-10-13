@@ -359,41 +359,49 @@ Generic `describe`/`it`/`expect` style for Vitest or Jest (Implementation choice
 
 ```ts
 // session-token.ts: pure helper, no database, network or framework runtime
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from "node:crypto";
 
-export const createSessionToken = (): string => randomBytes(32).toString('base64url');
+export const createSessionToken = (): string =>
+  randomBytes(32).toString("base64url");
 export const hashToken = (token: string): string =>
-  createHash('sha256').update(token).digest('hex');
-export const sessionCookieOptions = (opts: { production: boolean; profile: 'P2' | 'P3' }) => ({
-  name: opts.production ? '__Host-session' : 'session',
+  createHash("sha256").update(token).digest("hex");
+export const sessionCookieOptions = (opts: {
+  production: boolean;
+  profile: "P2" | "P3";
+}) => ({
+  name: opts.production ? "__Host-session" : "session",
   httpOnly: true,
   secure: opts.production,
-  sameSite: opts.profile === 'P2' ? ('strict' as const) : ('lax' as const),
-  path: '/',
-  maxAge: opts.profile === 'P2' ? 12 * 60 * 60 : 24 * 60 * 60,
+  sameSite: opts.profile === "P2" ? ("strict" as const) : ("lax" as const),
+  path: "/",
+  maxAge: opts.profile === "P2" ? 12 * 60 * 60 : 24 * 60 * 60,
 });
 
 // session-token.test.ts (AT-14), a separate file in practice
-import { describe, expect, it } from 'vitest';
-import { createSessionToken, hashToken, sessionCookieOptions } from './session-token';
+import { describe, expect, it } from "vitest";
+import {
+  createSessionToken,
+  hashToken,
+  sessionCookieOptions,
+} from "./session-token";
 
-describe('session tokens', () => {
-  it('have at least 128 bits and are unique', () => {
+describe("session tokens", () => {
+  it("have at least 128 bits and are unique", () => {
     const a = createSessionToken();
-    expect(Buffer.from(a, 'base64url').length).toBeGreaterThanOrEqual(16);
+    expect(Buffer.from(a, "base64url").length).toBeGreaterThanOrEqual(16);
     expect(a).not.toBe(createSessionToken());
   });
-  it('are stored only as a SHA-256 digest', () => {
+  it("are stored only as a SHA-256 digest", () => {
     const token = createSessionToken();
     expect(hashToken(token)).toMatch(/^[0-9a-f]{64}$/);
     expect(hashToken(token)).not.toContain(token);
   });
-  it('use hardened cookie options in production', () => {
-    const o = sessionCookieOptions({ production: true, profile: 'P2' });
-    expect(o.name.startsWith('__Host-')).toBe(true);
-    expect(o).toMatchObject({ httpOnly: true, secure: true, path: '/' });
-    expect(['lax', 'strict']).toContain(o.sameSite);
-    expect(o).not.toHaveProperty('domain');
+  it("use hardened cookie options in production", () => {
+    const o = sessionCookieOptions({ production: true, profile: "P2" });
+    expect(o.name.startsWith("__Host-")).toBe(true);
+    expect(o).toMatchObject({ httpOnly: true, secure: true, path: "/" });
+    expect(["lax", "strict"]).toContain(o.sameSite);
+    expect(o).not.toHaveProperty("domain");
     expect(o.maxAge).toBeLessThanOrEqual(12 * 60 * 60);
   });
 });

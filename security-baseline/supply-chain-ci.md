@@ -56,11 +56,13 @@ node scripts/sca-gate.mjs audit.json security-exceptions.json
 ```js
 // scripts/sca-gate.mjs: block High/Critical runtime advisories that have a fix,
 // unless an unexpired exception (max. 30 days ahead) covers the package.
-import { readFileSync } from 'node:fs';
+import { readFileSync } from "node:fs";
 
 const [auditPath, exceptionsPath] = process.argv.slice(2);
-const audit = JSON.parse(readFileSync(auditPath, 'utf8'));
-const exceptions = exceptionsPath ? JSON.parse(readFileSync(exceptionsPath, 'utf8')) : [];
+const audit = JSON.parse(readFileSync(auditPath, "utf8"));
+const exceptions = exceptionsPath
+  ? JSON.parse(readFileSync(exceptionsPath, "utf8"))
+  : [];
 const today = new Date().toISOString().slice(0, 10);
 const limit = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10);
 
@@ -71,9 +73,12 @@ for (const e of exceptions) {
     failed = true;
   }
 }
-const waived = new Set(exceptions.filter((e) => e.expires >= today).map((e) => e.package));
+const waived = new Set(
+  exceptions.filter((e) => e.expires >= today).map((e) => e.package),
+);
 for (const v of Object.values(audit.vulnerabilities ?? {})) {
-  const blocking = ['high', 'critical'].includes(v.severity) && v.fixAvailable !== false;
+  const blocking =
+    ["high", "critical"].includes(v.severity) && v.fixAvailable !== false;
   if (blocking && !waived.has(v.name)) {
     console.error(`BLOCK ${v.severity} ${v.name} ${v.range}`);
     failed = true;
@@ -185,7 +190,7 @@ on:
   push:
     branches: [main, staging]
   schedule:
-    - cron: '17 5 * * *' # daily composition analysis
+    - cron: "17 5 * * *" # daily composition analysis
 permissions:
   contents: read
 jobs:

@@ -176,14 +176,16 @@ documentation of the framework version you run before copying this.
 
 ```ts
 // proxy.ts (Next.js 16+; earlier versions: middleware.ts). Implementation choice (replaceable).
-import { NextResponse, type NextRequest } from 'next/server';
+import { NextResponse, type NextRequest } from "next/server";
 
-const REPORT_URL = 'https://www.example.com/api/csp-report';
+const REPORT_URL = "https://www.example.com/api/csp-report";
 const ENFORCE = false; // phase 1 = Report-Only; switch after the exit criteria are met
 
 export function proxy(request: NextRequest) {
   // 16 random bytes = 128 bits, as CSP3 recommends.
-  const nonce = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('base64');
+  const nonce = Buffer.from(
+    crypto.getRandomValues(new Uint8Array(16)),
+  ).toString("base64");
   const csp = [
     "default-src 'self'",
     `script-src 'nonce-${nonce}' 'strict-dynamic'`,
@@ -196,27 +198,29 @@ export function proxy(request: NextRequest) {
     "frame-ancestors 'none'",
     "form-action 'self'",
     `report-uri ${REPORT_URL}`,
-    'report-to csp',
-  ].join('; ');
+    "report-to csp",
+  ].join("; ");
 
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set('x-nonce', nonce); // readable in server components via headers()
-  requestHeaders.set('Content-Security-Policy', csp); // Next.js reads the nonce from this header
+  requestHeaders.set("x-nonce", nonce); // readable in server components via headers()
+  requestHeaders.set("Content-Security-Policy", csp); // Next.js reads the nonce from this header
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
-  const name = ENFORCE ? 'Content-Security-Policy' : 'Content-Security-Policy-Report-Only';
+  const name = ENFORCE
+    ? "Content-Security-Policy"
+    : "Content-Security-Policy-Report-Only";
   response.headers.set(name, csp);
-  response.headers.set('Reporting-Endpoints', `csp="${REPORT_URL}"`);
+  response.headers.set("Reporting-Endpoints", `csp="${REPORT_URL}"`);
   return response;
 }
 
 export const config = {
   matcher: [
     {
-      source: '/((?!api|_next/static|_next/image|favicon.ico).*)',
+      source: "/((?!api|_next/static|_next/image|favicon.ico).*)",
       missing: [
-        { type: 'header', key: 'next-router-prefetch' },
-        { type: 'header', key: 'purpose', value: 'prefetch' },
+        { type: "header", key: "next-router-prefetch" },
+        { type: "header", key: "purpose", value: "prefetch" },
       ],
     },
   ],
