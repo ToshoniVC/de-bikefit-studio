@@ -4,11 +4,13 @@ Version: 1.0.0
 
 Date: 2026-10-13
 
-Status: baseline (normative text); no claim that any control is live in any project
+Status: **proposed template for Toshoni's review**; not yet an adopted release policy or a claim that any control is live
 
-A reusable, provider-independent security baseline for Toshoni's coding projects. It states what a
+A reusable, provider-independent security baseline proposal for Toshoni's coding projects. It states what a
 project MUST, SHOULD or MAY do, how each requirement is verified, and which external standard backs
-it. Whether a project meets it is recorded per project in a mapping, never in this text.
+it. Whether a project meets it is recorded per project in a mapping, never in this text. Project
+release gates in existing runbooks remain authoritative until this template is adopted for that
+project. The Bikefit security work uses its own staged validation and production approval gates.
 
 ## Purpose
 
@@ -92,18 +94,18 @@ version it was assessed against.
 
 ## File index
 
-| File                                       | Contents                                                                                                                   |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
-| [README.md](README.md)                     | Purpose, scope, conventions, versioning, changelog                                                                         |
-| [control-matrix.md](control-matrix.md)     | Profiles, profile selection, 64 controls, risk acceptance                                                                  |
-| [threat-model.md](threat-model.md)         | Fill-in threat-model worksheet with worked example rows                                                                    |
-| [identity-session.md](identity-session.md) | Local identity, passwords, MFA, recovery, throttling and session defaults                                                  |
-| [headers-csp.md](headers-csp.md)           | Security headers, CSP and its roll-out, cookies, security.txt                                                              |
-| [supply-chain-ci.md](supply-chain-ci.md)   | Dependencies, patch SLAs, CI/CD hardening, secret scanning, SBOM, provenance                                               |
-| [acceptance-tests.md](acceptance-tests.md) | AT-01 – AT-59 with runnable examples                                                                                       |
-| [adoption-guide.md](adoption-guide.md)     | Adoption steps, status legend, gates, mapping template                                                                     |
-| [references.md](references.md)             | Primary sources with versions and check results                                                                            |
-| `mappings/`                                | Project mappings, not part of the normative text; first adoption: [mappings/bikefit-studio.md](mappings/bikefit-studio.md) |
+| File                                       | Contents                                                                                                                                                      |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [README.md](README.md)                     | Purpose, scope, conventions, versioning, changelog                                                                                                            |
+| [control-matrix.md](control-matrix.md)     | Profiles, profile selection, 64 controls, risk acceptance                                                                                                     |
+| [threat-model.md](threat-model.md)         | Fill-in threat-model worksheet with worked example rows                                                                                                       |
+| [identity-session.md](identity-session.md) | Local identity, passwords, MFA, recovery, throttling and session defaults                                                                                     |
+| [headers-csp.md](headers-csp.md)           | Security headers, CSP and its roll-out, cookies, security.txt                                                                                                 |
+| [supply-chain-ci.md](supply-chain-ci.md)   | Dependencies, patch SLAs, CI/CD hardening, secret scanning, SBOM, provenance                                                                                  |
+| [acceptance-tests.md](acceptance-tests.md) | AT-01 – AT-59 with runnable examples                                                                                                                          |
+| [adoption-guide.md](adoption-guide.md)     | Adoption steps, status legend, gates, mapping template                                                                                                        |
+| [references.md](references.md)             | Primary sources with versions and check results                                                                                                               |
+| Project mappings                           | Created only after project-specific scope, owner and evidence have been reviewed; use the template in [adoption-guide.md](adoption-guide.md#mapping-template) |
 
 ## Changelog
 

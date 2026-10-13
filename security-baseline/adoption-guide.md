@@ -1,8 +1,9 @@
 # Adoption guide
 
-How a project adopts this baseline and keeps its status honest. The output is one mapping file per
-project: `security-baseline/mappings/<project>.md`, or the same file in the project's own
-repository. The first adoption is [mappings/bikefit-studio.md](mappings/bikefit-studio.md).
+How a project adopts this proposed baseline and keeps its status honest. The output is one mapping
+file per project: `security-baseline/mappings/<project>.md`, or the same file in the project's own
+repository. No project is marked adopted by this template alone. Toshoni reviews the project scope,
+control exceptions and proposed gates before they replace that project's existing release process.
 
 ## Rules for every mapping
 
@@ -58,6 +59,10 @@ acceptance test, and set the status from the evidence you hold.
 | Low      | A SHOULD gap, a documentation gap or hardening with small impact                                                                         |
 
 ### Gates
+
+These are **proposed adoption gates**. They are not retroactive blockers for remediation releases
+or substitutes for a project's existing staging/production approvals. For an existing deployment,
+the owner records a transition plan and an evidence-backed risk disposition before activating them.
 
 | Gate | When                                                                             | Passes when                                                                                                                                                                                                                                                                                    |
 | ---- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
