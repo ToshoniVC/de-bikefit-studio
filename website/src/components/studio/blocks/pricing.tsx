@@ -1,3 +1,4 @@
+import { showsOfferPrices } from '@/lib/offers/catalogue';
 import { StudioButtonLink, splitArrow } from '../link';
 import { StudioSection } from './section';
 import type { BlockProps } from './types';
@@ -11,9 +12,14 @@ import type { BlockProps } from './types';
  * section, not a heading, not a "vanaf" — until someone enters real prices and
  * clears the flag. `visibleBlocks()` filters it out before this component is
  * reached; the guard below is the second lock on the same door.
+ *
+ * Filled in, it still renders only on `/aanbod` and the offer pages
+ * (`showsOfferPrices`, Toshoni 13 Oct 2026): on the home page, `/bikefit` or
+ * any other page the whole block is left out, since a tariff table without
+ * its amounts has nothing left to say.
  */
-export function PricingBlock({ data, anchor, headingLevel }: BlockProps<'pricing'>) {
-  if (data.isPlaceholder) return null;
+export function PricingBlock({ data, anchor, headingLevel, page }: BlockProps<'pricing'>) {
+  if (data.isPlaceholder || !showsOfferPrices(page.slug)) return null;
 
   const formatter = new Intl.NumberFormat('nl-BE', {
     style: 'currency',

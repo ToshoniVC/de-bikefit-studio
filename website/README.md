@@ -49,7 +49,7 @@ website/
 │   │   ├── studio/          locale, SEO, JSON-LD, OG images, legal identity
 │   │   └── env.ts           zod-validated env vars + `features` flags
 │   └── middleware.ts        Clerk pass-through + /admin cookie redirect (no database)
-├── drizzle/                 SQL migrations 0000–0006 + meta snapshots
+├── drizzle/                 SQL migrations 0000–0007 + meta snapshots
 ├── scripts/                 migrate, bootstrap, seeds, self-test, retention, staging reset/anonymise
 └── docs/                    architecture and runbooks (below)
 ```

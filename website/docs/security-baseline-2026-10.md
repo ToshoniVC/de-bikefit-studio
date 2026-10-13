@@ -73,7 +73,7 @@ Shipped in the same branch, no new dependency (`node:crypto`, Web Crypto and Nex
   staging (`docs/admin-csp.md`). Public pages unchanged (no CSP).
 
 Design in `docs/cms-architecture.md` §4, rollout in `docs/staging-runbook.md` §15 (combined
-order with 0004 and 0005: §16). After the change `npm audit` is unchanged: **15 findings
+order with 0004, 0005 and 0007: §16). After the change `npm audit` is unchanged: **15 findings
 (0 critical / 9 high / 6 moderate)**, the same three accepted root causes (`braces`, `esbuild`
 via drizzle-kit, `postcss-selector-parser`); `npm audit --omit=dev` reports **0 findings**.
 The merge with `staging` (site content, `/admin/email`, gift voucher) added no dependency.

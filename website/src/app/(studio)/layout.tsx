@@ -7,7 +7,7 @@ import { defaultLocale } from '@/lib/studio/locale';
 import { absoluteUrl, getStudioChrome, resolveMedia } from '@/lib/studio/site';
 
 /**
- * Chrome for the Dutch public site: utility bar, header, footer, skip link and
+ * Chrome for the Dutch public site: header, footer, skip link and
  * the site-wide structured data.
  *
  * The landmarks are explicit and unique — `<header>`, `<nav aria-label>`,

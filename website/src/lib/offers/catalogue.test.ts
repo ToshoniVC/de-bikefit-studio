@@ -12,6 +12,7 @@ import {
   offersInCategory,
   parseServiceParam,
   resolveBookingSelection,
+  showsOfferPrices,
   sortOffers,
   type CatalogueOffer,
 } from './catalogue';
@@ -47,6 +48,17 @@ describe('offer paths', () => {
     expect(offerSlugFromPageSlug('bikefit')).toBeNull();
     expect(offerSlugFromPageSlug('aanbod/a/b')).toBeNull();
     expect(offerSlugFromPageSlug('aanbodx/voetanalyse')).toBeNull();
+  });
+
+  it('shows offer prices only on /aanbod and the offer pages under it', () => {
+    expect(showsOfferPrices('aanbod')).toBe(true);
+    expect(showsOfferPrices('/aanbod/')).toBe(true);
+    expect(showsOfferPrices('aanbod/voetanalyse')).toBe(true);
+    expect(showsOfferPrices('')).toBe(false);
+    expect(showsOfferPrices('bikefit')).toBe(false);
+    expect(showsOfferPrices('voor-wie')).toBe(false);
+    expect(showsOfferPrices('aanbodx')).toBe(false);
+    expect(showsOfferPrices('aanbod/a/b')).toBe(false);
   });
 
   it('links the booking button to /afspraak with the offer slug and the widget anchor', () => {

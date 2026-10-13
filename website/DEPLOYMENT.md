@@ -73,8 +73,9 @@ sign in as the bootstrap admin, set a permanent password and set up two-step ver
 `cms:seed` → `cms:seed-booking` (details in the staging runbook §3). The write scripts act as
 the oldest active admin with a permanent password and an authenticator, and refuse to run
 while no admin qualifies. Rolling admin MFA out on an existing database: staging runbook §14;
-together with the e-mail settings and the admin session limits (migrations 0004 → 0005 →
-0006, key before deploy, migrate before deploy): staging runbook §16.
+together with the e-mail settings, the admin session limits and the second-step rate limits
+(migrations 0004 → 0005 → 0006 → 0007, key before deploy, migrate before deploy): staging
+runbook §16.
 
 ## 4. Vercel (one project)
 

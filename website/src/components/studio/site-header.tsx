@@ -3,32 +3,19 @@ import { PRIMARY_CTA } from '@/lib/studio/site';
 import { StudioNavBar } from './nav-bar';
 
 /**
- * The utility bar + sticky header from `prototype/index.html`.
+ * The sticky header from `prototype/index.html`: logo, main menu and the
+ * "Afspraak maken" button.
  *
- * The utility bar carries the three facts a visitor most often wants on a
- * phone: where we are, the number to call, and the way to make an appointment.
- * All three come from `cms_site_settings.contact`, so an editor can change the
- * number without a deploy.
+ * The prototype's utility bar above it (city, phone, hours) was removed at
+ * Toshoni's request (13 Oct 2026); the footer still shows the phone number,
+ * place and hours from `cms_site_settings.contact`.
  */
 export function StudioSiteHeader({ chrome }: { chrome: StudioChrome }) {
   const { settings, mainNav } = chrome;
-  const { contact } = settings;
 
   return (
-    <>
-      <div className="studio-utility">
-        <div className="studio-utility__inner">
-          {contact.city ? <span>{contact.city}</span> : null}
-          {contact.phoneLabel && contact.phoneHref ? (
-            <a href={contact.phoneHref}>{contact.phoneLabel}</a>
-          ) : null}
-          {contact.hours ? <span>{contact.hours}</span> : null}
-        </div>
-      </div>
-
-      <header className="studio-header">
-        <StudioNavBar items={mainNav} cta={PRIMARY_CTA} siteName={settings.site.name} />
-      </header>
-    </>
+    <header className="studio-header">
+      <StudioNavBar items={mainNav} cta={PRIMARY_CTA} siteName={settings.site.name} />
+    </header>
   );
 }

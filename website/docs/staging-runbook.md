@@ -13,8 +13,8 @@ with Vercel and Neon access can follow the same steps. The changes of 13 Oct 202
 own rollout section: the offer redesign §9, the booking CTA patch §10, the page cleanup §11, the
 gift voucher §12, the e-mail service in the admin §13 (migration 0004), admin two-step
 verification §14 (migration 0005 and a new secret) and admin session limits, step-up and the
-admin CSP §15 (migration 0006). Rolling 0004–0006 out together, as the security release does:
-the combined order in §16.
+admin CSP §15 (migration 0006); 0007 (race-free second-step rate limits) has no section of its
+own. Rolling 0004–0007 out together, as the security release does: the combined order in §16.
 
 Environments, the Hobby-plan staging setup and the full env var contract:
 [`../DEPLOYMENT.md`](../DEPLOYMENT.md). Google, GA4 and Resend setup, GDPR and retention:
@@ -105,10 +105,11 @@ DATABASE_URL='<staging pooled url>' npm run db:migrate
 | `0004_integration_settings.sql` | `cms_integration_settings`, the e-mail service set up in `/admin/email` (§13). |
 | `0005_cms_admin_mfa.sql` | Four `cms_mfa_*` tables and `cms_sessions.mfa_verified_at` (§14). |
 | `0006_cms_session_limits.sql` | `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at` (§15). |
+| `0007_cms_mfa_rate_limits.sql` | `cms_mfa_rate_limits` and the unique index `cms_mfa_challenges_user_id_unique_idx` (§16). |
 
 All additive and guarded (no `DROP`, `TRUNCATE` or webshop `ALTER`); already-applied files
 are skipped. Expect `→ driver: neon-http (<host>)` and `✓ migrations applied to Neon`. The
-current build needs 0005 and 0006 before anyone signs in to `/admin` (§16).
+current build needs 0005, 0006 and 0007 before anyone signs in to `/admin` (§16).
 
 ### 3.2 Bootstrap
 
@@ -251,13 +252,13 @@ Faster on Vercel: **Promote** or redeploy an earlier deployment from the Deploym
 
 ### Database
 
-**Nothing needs undoing.** All migrations (0000–0006) are additive; the webshop tables and data
+**Nothing needs undoing.** All migrations (0000–0007) are additive; the webshop tables and data
 are identical before and after, and rolling back the code alone restores the previous
 behaviour. Older code ignores the booking tables, `cms_integration_settings`, the `cms_mfa_*`
 tables and the new `cms_sessions` columns; a page that uses the `booking` block reads as
 unpublished on code that predates it.
 
-The `cms_*` tables can stay in place. To remove them, drop the twenty-four `cms_*` tables plus
+The `cms_*` tables can stay in place. To remove them, drop the twenty-five `cms_*` tables plus
 the `cms_role` and `cms_page_status` enum types. For a clean slate, reset the Neon `Staging`
 branch from its parent (`DEPLOYMENT.md` §7, mind the anonymisation warning) and re-run §3.
 
@@ -292,7 +293,7 @@ production step (database, env vars, DNS, deploy) needs an explicit go; Arend ex
 
 **Database (Neon `production`)**
 
-- [ ] `db:migrate` (0000–0006, before the deploy that needs them, §16), then `cms:bootstrap`
+- [ ] `db:migrate` (0000–0007, before the deploy that needs them, §16), then `cms:bootstrap`
       (change the admin password and set up two-step verification immediately), `cms:seed`,
       `cms:seed-booking` — or, if production already has content,
       `cms:seed -- --refresh-slug` for **`afspraak`**, **`privacy`** and
@@ -622,8 +623,8 @@ combined order in §16. The steps below are the detail of that order.
    ```
 
    Expect `0005_cms_admin_mfa` to be applied and `✓ migrations applied to Neon`; the same run
-   applies `0004_integration_settings` if §13 has not run yet and `0006_cms_session_limits`
-   (§15), since the code ships them together. Check: `cms_mfa_factors`,
+   applies `0004_integration_settings` if §13 has not run yet, `0006_cms_session_limits`
+   (§15) and `0007_cms_mfa_rate_limits` (§16), since the code ships them together. Check: `cms_mfa_factors`,
    `cms_mfa_recovery_codes`, `cms_mfa_challenges`, `cms_mfa_attempts` exist and
    `cms_sessions.mfa_verified_at` is a nullable column.
 3. **Deploy** the code (release gate, READY). From that moment every existing **admin**
@@ -710,8 +711,8 @@ Steps:
    DATABASE_URL='<staging pooled url>' npm run db:migrate
    ```
 
-   Expect `0006_cms_session_limits` (and `0004_integration_settings` / `0005_cms_admin_mfa` if
-   §13 / §14 have not run yet) to be applied; after §14 step 2 this is a no-op. Check:
+   Expect `0006_cms_session_limits` (and `0004_integration_settings` / `0005_cms_admin_mfa` /
+   `0007_cms_mfa_rate_limits` if §13 / §14 have not run yet) to be applied; after §14 step 2 this is a no-op. Check:
    `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at` exist as nullable
    `timestamptz`. Nothing else changes.
 

@@ -3,6 +3,7 @@ import { listPublishedOffers } from '@/lib/cms/offers-content';
 import {
   OFFER_CATEGORY_LABELS,
   offersInCategory,
+  showsOfferPrices,
   type CatalogueOffer,
 } from '@/lib/offers/catalogue';
 import { StudioButtonLink, splitArrow } from '../link';
@@ -19,12 +20,17 @@ import type { BlockProps } from './types';
  *
  * Each card is one link (the title), stretched over the card with CSS, so the
  * whole card is clickable while the link's accessible name stays the title.
+ *
+ * The price line needs "Prijzen tonen" *and* a page under `/aanbod`
+ * (`showsOfferPrices`): the home page and `/bikefit` never show prices, also
+ * when older published content still has the switch on.
  */
 export async function OfferCatalogueBlock({
   data,
   anchor,
   headingLevel,
   locale,
+  page,
 }: BlockProps<'offerCatalogue'>) {
   let offers: CatalogueOffer[] = [];
   try {
@@ -43,6 +49,7 @@ export async function OfferCatalogueBlock({
   const GroupHeading = data.title && headingLevel === 2 ? 'h3' : 'h2';
   const CardHeading = GroupHeading === 'h2' ? 'h3' : 'h4';
   const idBase = anchor ?? 'aanbod';
+  const showPrices = data.showPrices && showsOfferPrices(page.slug);
 
   return (
     <StudioSection
@@ -80,7 +87,7 @@ export async function OfferCatalogueBlock({
                       <p className="studio-offer-card__body">{offer.summary}</p>
                     ) : null}
                     <p className="studio-offer-card__foot">
-                      {data.showPrices ? (
+                      {showPrices ? (
                         <span className="studio-offer-card__price">{offer.priceLabel}</span>
                       ) : null}
                       <span className="studio-offer-card__more" aria-hidden="true">

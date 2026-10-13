@@ -118,7 +118,8 @@ const HOME: SeedPage = {
         title: 'Wat we voor je doen',
         lede: 'Twee soorten hulp, één vertrekpunt: jij en je fiets.',
         groups: OFFER_GROUPS,
-        showPrices: true,
+        // Prices only on /aanbod and the offer pages (Toshoni, 13 Oct 2026).
+        showPrices: false,
         cta: { label: 'Bekijk het volledige aanbod', href: OFFER_INDEX_PATH, external: false },
       },
     },
@@ -441,7 +442,7 @@ const BIKEFIT: SeedPage = {
         title: 'Onze bikefitdiensten',
         lede: 'Kies de dienst die bij je vraag past. Twijfel je? Bel ons, dan kijken we samen.',
         groups: [OFFER_GROUPS[0]],
-        showPrices: true,
+        showPrices: false,
         cta: { label: 'Bekijk het volledige aanbod', href: OFFER_INDEX_PATH, external: false },
       },
     },

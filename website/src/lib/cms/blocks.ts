@@ -545,7 +545,7 @@ export const blockRegistry = {
   pricing: {
     label: 'Prijzen',
     description:
-      'Prijskaarten. Let op: er zijn nog geen bedragen vastgelegd — het blok blijft verborgen zolang “placeholder” aanstaat.',
+      'Prijskaarten. Let op: er zijn nog geen bedragen vastgelegd — het blok blijft verborgen zolang “placeholder” aanstaat, en verschijnt enkel op /aanbod en de dienstpagina’s.',
     schema: pricingSchema,
     defaultData: {
       variant: 'gray',

@@ -1155,9 +1155,9 @@ git checkout webshop-baseline-2026-09-23 -- website
 git clone .winston/repos/de-bikefit-studio/baselines/webshop-baseline-2026-09-23.bundle restored
 ```
 
-Database rollback: nothing needs undoing. All migrations (0000–0006) are
+Database rollback: nothing needs undoing. All migrations (0000–0007) are
 additive, so the webshop tables and data are byte-identical before and after.
-If you want the CMS gone from a database, drop the twenty-four `cms_*` tables
+If you want the CMS gone from a database, drop the twenty-five `cms_*` tables
 and the two `cms_*` enum types — no webshop object references them.
 
 ---
@@ -1404,6 +1404,18 @@ page's `offer` block. Overviews derive their cards from the published pages
 (`listPublishedOffers`, tags `cms` + `cms:pages`), so publishing an offer page
 updates the home page, `/aanbod` and `/bikefit` at once. Category order is
 fixed (Bikefit, Begeleiding); inside a category `sortOrder`, then title.
+
+**Prices only under `/aanbod` (13 Oct 2026, Toshoni).** An `offerCatalogue`
+card shows its price line only when "Prijzen tonen" is on *and* the page is
+`/aanbod` or an offer page (`showsOfferPrices`, `src/lib/offers/catalogue.ts`).
+The home page and `/bikefit` therefore never show prices, also for content
+published before the rule (no data patch needed); their seeds set the switch
+off. A filled-in `pricing` block (placeholder off) follows the same rule: it
+renders only on `/aanbod` and offer pages and is left out entirely elsewhere.
+The offer page itself always shows Kostprijs. Booking, checkout and the
+admin are not affected. The site header is the logo, menu and "Afspraak maken"
+only: the prototype's utility bar (city, phone, hours) is gone; the footer
+keeps those contact details.
 
 **Booking link.** Every offer page links to `/afspraak?dienst=<offer slug>#boeken`.
 The booking block resolves it on the server (`resolveBookingSelection`,

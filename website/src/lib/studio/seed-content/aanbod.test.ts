@@ -67,6 +67,7 @@ describe('aanbod rollout pages', () => {
       'begeleiding',
     ]);
     expect((first.data.cta as { href: string }).href).toBe('/aanbod');
+    expect(first.data.showPrices).toBe(false);
   });
 
   it('/aanbod shows both groups; the catalogue derives all seven offers from their pages', () => {
