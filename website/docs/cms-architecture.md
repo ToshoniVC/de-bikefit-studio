@@ -370,9 +370,9 @@ defaultDataFor('hero')          // deep clone of the above
 | `pricing` | Prijzen | **no amounts exist anywhere in the source material** — see below |
 | `contact` | Contact | phone, city, "Op afspraak" — no street address or e-mail is known |
 | `testimonial` | Ervaringen | 4 reviews from the copy deck, all marked placeholder |
-| `offer` | Dienst (aanbod) | one service on `/aanbod/<slug>`: title, intro, the booking button "Boek een afspraak voor deze dienst" (→ `/afspraak?dienst=<slug>#boeken`), Doel, Inhoud, Duur, Kostprijs, Mogelijke extra's. `category` (`bikefit`\|`begeleiding`), `sortOrder`, `summary` (overview card), `priceCents`/`priceLabel` (empty = "Prijs op aanvraag"), `duration` (default "Duur in overleg"), `bookingServiceSlugs` (see §14). The page path is the offer's identity. |
+| `offer` | Dienst (aanbod) | one service on `/aanbod/<slug>`: title, intro, the booking button "Boek een afspraak voor deze dienst" (→ `/afspraak?dienst=<slug>#boeken`), Doel, Inhoud, Duur, Kostprijs, Mogelijke extra's. `category` (`bikefit`\|`begeleiding`), `sortOrder`, `summary` (overview card), `priceCents`/`priceLabel` (seeded as the visible, editable placeholder "Prijs op aanvraag"; a free-text label wins over cents, except that the placeholder never hides a confirmed `priceCents`; empty both = "Prijs op aanvraag"), `duration` (default "Duur in overleg"), `bookingServiceSlugs` (see §14). The page path is the offer's identity. The editor shows a hint pointing at `content-placeholders.md`. |
 | `offerCatalogue` | Aanbod (overzicht) | grouped overview (Bikefit, Begeleiding); owns only its title and per-group title/lede — the cards are read from the published offer pages at render time (`listPublishedOffers`), so nothing is duplicated |
-| `team` | Team | profiles: name, role, bio paragraphs (verified text only), image; without an image the initials are drawn. `internalNote` is never rendered |
+| `team` | Team | profiles: name, role, bio paragraphs (verified text only), image; without an image the initials are drawn. `internalNote` is never rendered and names the person's open register rows; interim profiles end with "Een uitgebreid profiel volgt binnenkort." |
 | `booking` | Afspraak boeken | the booking widget on `/afspraak` (service → provider → day → slot → details → confirmation). Carries copy and a filter only: `serviceIds` (empty = every active service), `showProviderChoice` (AND-ed with the `booking.showProviderChoice` setting), `successTitle`, `successText` (empty → `booking.confirmationText`). Services, providers and live availability are read at render time through `@/lib/booking/content`, so nothing in the block goes stale. |
 
 Most blocks share `variant: 'default' | 'gray' | 'dark'`, matching the
@@ -905,8 +905,12 @@ Content-Security-Policy yet (see §13). How to verify after a deploy:
 ## 13. Known gaps and open questions
 
 Every temporary or unconfirmed piece of public content (prices, durations,
-extras, team bios and photos, AI images, booking links) is tracked in
-[`content-placeholders.md`](./content-placeholders.md).
+extras, team bios and photos, AI images, booking links, contact details) is
+tracked in [`content-placeholders.md`](./content-placeholders.md), one row per
+field with a unique ID. `src/lib/studio/seed-content/placeholders.test.ts`
+fails when an offer, team member or editorial image in the seed has no row
+there. Block types can carry an `editorHint` (registry) that the admin shows
+above the fields; `offer` and `team` use it to point editors at the register.
 
 - **Booking** is built: schema, availability, admin screens, the public widget
   on `/afspraak`, Google Calendar sync and e-mail. It is documented in

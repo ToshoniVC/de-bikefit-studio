@@ -1,128 +1,178 @@
 # Register tijdelijke inhoud — De Bikefit Studio
 
-Canonieke checklist van alle tijdelijke of onbevestigde inhoud op de publieke site, bijgehouden
+Canonieke checklist van **alle** tijdelijke of onbevestigde inhoud op de publieke site, bijgehouden
 sinds de herwerking van 13 oktober 2026 (Aanbod, Voor wie, Bikefit, Ons team). Toshoni vroeg om
-nu met tijdelijke inhoud te werken en alles bij te houden tot het definitief is.
+nu met tijdelijke inhoud te werken en alles bij te houden tot het definitief is. Elke rij heeft een
+vaste ID; IDs worden nooit hergebruikt of hernummerd.
 
-**Regels.** Vul nooit een feitelijk gat met een verzonnen detail (geen prijzen, duur, diploma's,
-jaartallen, prestaties of merken zonder bron). Pas een rij aan in hetzelfde werk als de inhoud;
-zet de status op *afgerond* met datum zodra de definitieve inhoud gepubliceerd is. Waar "CMS"
-staat, gebeurt de wijziging in `/admin` → Pagina's → de pagina → het blok → het veld, gevolgd door
-**Publiceren**. De seedtekst staat in `src/lib/offers/defaults.ts` en
-`src/lib/studio/seed-content/aanbod.ts`; pas die mee aan zodat een nieuwe omgeving dezelfde
-inhoud krijgt.
+**Regels.**
 
-Status: **open** = nog tijdelijk · **te bevestigen** = voorstel staat online, wacht op akkoord ·
-**bevestigd** = aangeleverd door Toshoni, mag blijven · **afgerond** = definitief.
+- Vul nooit een feitelijk gat met een verzonnen detail: geen prijzen, duur, diploma's, jaartallen,
+  prestaties of merken zonder bron.
+- Wijzig je de inhoud, pas dan in hetzelfde werk de rij aan. Zet de status op *afgerond* met datum
+  zodra de definitieve inhoud gepubliceerd is. Verwijder geen rijen.
+- "CMS" betekent: `/admin` → **Pagina's** → de pagina (titel zoals in de lijst) → het blok →
+  **Inhoud bewerken** → het veld → **Blok opslaan** → **Publiceren**. De blokken *Dienst (aanbod)*
+  en *Team* tonen bovenaan een korte hint die naar dit register verwijst.
+- De seedtekst staat in `src/lib/offers/defaults.ts` (diensten) en `src/lib/studio/seed-content/`
+  (pagina's, team). Pas die mee aan zodat een nieuwe omgeving dezelfde inhoud krijgt.
+  `src/lib/studio/seed-content/placeholders.test.ts` faalt als een dienst, teamlid of beeld uit de
+  seed hier geen rij heeft.
 
-## 1. Prijzen (7)
+**Status:** **open** = nog tijdelijk · **te bevestigen** = voorstel staat online, wacht op
+akkoord · **bevestigd** = aangeleverd door Toshoni, mag blijven · **afgerond** = definitief (met
+datum).
 
-Veld: blok *Dienst (aanbod)* → **Prijs in eurocent** (bedrag) of **Prijslabel** (vrije tekst,
-wint). Leeg = de site toont "Prijs op aanvraag", op de kaart in het aanbod én op de dienstpagina.
-Nooit € 0 invullen.
+## Overzicht
 
-| ID | Pagina | Nu | Nodig | Status |
+| Reeks | Onderwerp | Rijen | Open | Te bevestigen | Bevestigd | Afgerond |
+| --- | --- | --- | --- | --- | --- | --- |
+| P | Prijzen | 7 | 7 | 0 | 0 | 0 |
+| D | Duur | 7 | 7 | 0 | 0 | 0 |
+| E | Inhoud, extra's, pakketten | 8 | 1 | 7 | 0 | 0 |
+| T | Team | 13 | 10 | 2 | 1 | 0 |
+| B | AI-beelden | 3 | 3 | 0 | 0 | 0 |
+| K | Online boeken per dienst | 6 | 5 | 1 | 0 | 0 |
+| G | Bestaande hiaten in aangeraakte inhoud | 7 | 4 | 2 | 1 | 0 |
+| | **Totaal** | **51** | **37** | **12** | **2** | **0** |
+
+## 1. Prijzen (P)
+
+Plaats: CMS → de dienstpagina → blok *Dienst (aanbod)* → veld **Prijslabel** (vrije tekst) of
+**Prijs in eurocent** (bedrag, bv. `12000` = € 120,00).
+
+- Nu staat in **Prijslabel** de zichtbare, bewerkbare tekst "Prijs op aanvraag"; **Prijs in
+  eurocent** is leeg.
+- Zodra de prijs bevestigd is: vul **Prijs in eurocent** in (de tekst "Prijs op aanvraag" verbergt
+  een ingevuld bedrag nooit) of vervang **Prijslabel** door bv. "vanaf € 120". Een ander prijslabel
+  dan "Prijs op aanvraag" wint van het bedrag.
+- Nooit € 0 invullen. Pas met een bedrag in eurocent komt er een prijs in de gestructureerde data
+  (JSON-LD) van de pagina.
+- De prijs verschijnt op de dienstpagina (bovenaan en bij **Kostprijs**) en op de kaart in elk
+  aanbodoverzicht: home, `/aanbod`, en voor de vijf Bikefit-diensten ook `/bikefit`. Die kaarten
+  lezen de dienstpagina zelf; er is geen tweede plek om aan te passen.
+
+| ID | Pagina (titel in CMS) | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
-| P-01 | `/aanbod/bikefit-nieuwe-fiets` | Prijs op aanvraag | bevestigde prijs of bewust "op aanvraag" | open |
-| P-02 | `/aanbod/bikefit-huidige-fiets` | Prijs op aanvraag | idem | open |
-| P-03 | `/aanbod/voetanalyse` | Prijs op aanvraag | idem | open |
-| P-04 | `/aanbod/zadelanalyse` | Prijs op aanvraag | idem | open |
-| P-05 | `/aanbod/afstellen-schoenplaatjes` | Prijs op aanvraag | idem | open |
-| P-06 | `/aanbod/lactaattest` | Prijs op aanvraag | idem | open |
-| P-07 | `/aanbod/coaching` | Prijs op aanvraag | idem (traject of per sessie?) | open |
+| P-01 | `/aanbod/bikefit-nieuwe-fiets` (*Bikefit – aankoop nieuwe fiets*) | Prijs op aanvraag | bevestigde prijs, of bewust "op aanvraag" laten | open |
+| P-02 | `/aanbod/bikefit-huidige-fiets` (*Bikefit – huidige fiets*) | Prijs op aanvraag | idem; afstemmen met Volwassenenfit/Jeugdfit (K-01, K-06) | open |
+| P-03 | `/aanbod/voetanalyse` (*Voetanalyse*) | Prijs op aanvraag | idem | open |
+| P-04 | `/aanbod/zadelanalyse` (*Zadelanalyse*) | Prijs op aanvraag | idem | open |
+| P-05 | `/aanbod/afstellen-schoenplaatjes` (*Afstellen schoenplaatjes*) | Prijs op aanvraag | idem | open |
+| P-06 | `/aanbod/lactaattest` (*Lactaattest*) | Prijs op aanvraag | idem | open |
+| P-07 | `/aanbod/coaching` (*Coaching*) | Prijs op aanvraag | idem; per sessie, per maand of per traject? | open |
 
-Een prijs in het aanbod verandert **niets** aan de online boeking. Wie een prijs ook in de
-boekingswidget wil tonen, vult die apart in bij *Afspraken → Diensten* (prijs + "toon prijs").
+Een prijs in het aanbod verandert **niets** aan de online boeking (zie K-06).
 
-## 2. Duur (7)
+## 2. Duur (D)
 
-Veld: blok *Dienst (aanbod)* → **Duur** (vrije tekst).
+Plaats: CMS → de dienstpagina → blok *Dienst (aanbod)* → veld **Duur** (vrije tekst, bv. "ongeveer
+90 minuten"). Getoond bovenaan de dienstpagina en bij **Duur**. Een leeg veld toont ook "Duur in
+overleg".
 
-| ID | Pagina | Nu | Nodig | Status |
+| ID | Pagina (titel in CMS) | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
-| D-01 | `/aanbod/bikefit-nieuwe-fiets` | Duur in overleg | bevestigde duur | open |
-| D-02 | `/aanbod/bikefit-huidige-fiets` | Duur in overleg | bevestigde duur (zie K-01) | open |
-| D-03 | `/aanbod/voetanalyse` | Duur in overleg | bevestigde duur | open |
-| D-04 | `/aanbod/zadelanalyse` | Duur in overleg | bevestigde duur | open |
-| D-05 | `/aanbod/afstellen-schoenplaatjes` | Duur in overleg | bevestigde duur | open |
-| D-06 | `/aanbod/lactaattest` | Duur in overleg | bevestigde duur | open |
-| D-07 | `/aanbod/coaching` | Traject en opvolging in overleg | bevestigde opzet en opvolgritme | open |
+| D-01 | `/aanbod/bikefit-nieuwe-fiets` (*Bikefit – aankoop nieuwe fiets*) | Duur in overleg | bevestigde duur | open |
+| D-02 | `/aanbod/bikefit-huidige-fiets` (*Bikefit – huidige fiets*) | Duur in overleg | bevestigde duur; de boekbare diensten erachter plannen 90 min (Volwassenenfit) en 60 min (Jeugdfit), zie K-01 | open |
+| D-03 | `/aanbod/voetanalyse` (*Voetanalyse*) | Duur in overleg | bevestigde duur | open |
+| D-04 | `/aanbod/zadelanalyse` (*Zadelanalyse*) | Duur in overleg | bevestigde duur | open |
+| D-05 | `/aanbod/afstellen-schoenplaatjes` (*Afstellen schoenplaatjes*) | Duur in overleg | bevestigde duur | open |
+| D-06 | `/aanbod/lactaattest` (*Lactaattest*) | Duur in overleg | bevestigde duur | open |
+| D-07 | `/aanbod/coaching` (*Coaching*) | Traject en opvolging in overleg | bevestigde opzet en opvolgritme (geen vast ritme beloven zonder bevestiging) | open |
 
-De planningsduur van een **boekbare** dienst staat los hiervan in *Afspraken → Diensten*
-(Volwassenenfit 90 min, Jeugdfit 60 min — echte, bestaande waarden). Die worden niet gewijzigd
-door een duur op de aanbodpagina.
+De planningsduur van een **boekbare** dienst staat los hiervan in `/admin` → **Diensten** → veld
+**Duur (minuten)** (Volwassenenfit 90, Jeugdfit 60: echte, bestaande waarden). Een duur op de
+aanbodpagina wijzigt die niet, en omgekeerd.
 
-## 3. Inhoud en mogelijke extra's (7)
+## 3. Inhoud, mogelijke extra's en pakketten (E)
 
-Velden: **Doel**, **Inhoud**, **Mogelijke extra's**, **Uitleg bij de extra's**. De tekst is het
-voorstel uit de werkopdracht van 13 oktober ("Suggested service content"); de uitleg bij de extra's
-zegt overal dat omvang en prijs vooraf samen worden afgesproken.
+Plaats: CMS → de dienstpagina → blok *Dienst (aanbod)* → velden **Doel**, **Inhoud (één punt per
+regel)**, **Mogelijke extra's (één per regel)** en **Uitleg bij de extra's**. De tekst is het
+voorstel uit de werkopdracht van 13 oktober ("Suggested service content"). De uitleg bij de extra's
+is overal: "Wat er precies bij komt en wat het kost, spreken we altijd vooraf samen met je af."
 
-| ID | Pagina | Nu | Nodig | Status |
+| ID | Pagina | Nu (voorstel) | Nodig | Status |
 | --- | --- | --- | --- | --- |
-| E-01 | `/aanbod/bikefit-nieuwe-fiets` | voorstel: afstelling na aankoop; voet- of zadelanalyse | bevestiging van wat er echt bij kan | te bevestigen |
-| E-02 | `/aanbod/bikefit-huidige-fiets` | voorstel: vervolgafspraak; voet-/zadelanalyse; onderdelen apart | idem | te bevestigen |
-| E-03 | `/aanbod/voetanalyse` | voorstel: schoenplaatjes; bikefit. Geen inlegzolen vermeld | idem; of er inlegzolen worden aangeboden (nu bewust niet) | te bevestigen |
-| E-04 | `/aanbod/zadelanalyse` | voorstel: ruimer traject; ander zadel/onderdelen. Geen drukmeting vermeld | idem; of er een drukmeetsysteem is (nu bewust niet) | te bevestigen |
-| E-05 | `/aanbod/afstellen-schoenplaatjes` | voorstel: voetanalyse; bikefit; nieuwe plaatjes indien nodig | idem; plaatjes nooit "inbegrepen" | te bevestigen |
-| E-06 | `/aanbod/lactaattest` | voorstel: coaching; vervolgmeting in overleg | idem; protocol en materiaal | te bevestigen |
-| E-07 | `/aanbod/coaching` | voorstel: lactaattest; bikefit; extra opvolging | idem; vast opvolgritme pas na bevestiging | te bevestigen |
-| E-08 | alle dienstpagina's | geen pakketten of combinatieprijzen | bevestigen of er pakketten zijn | open |
+| E-01 | `/aanbod/bikefit-nieuwe-fiets` | extra's: afstelling van je nieuwe fiets na de aankoop; aanvullende voet- of zadelanalyse | bevestigen wat er echt bij kan | te bevestigen |
+| E-02 | `/aanbod/bikefit-huidige-fiets` | inhoud noemt 3D-bewegingsanalyse (G-06); extra's: vervolgafspraak; gerichte voet- of zadelanalyse; nieuwe onderdelen apart | idem; is een vervolgafspraak inbegrepen of apart? | te bevestigen |
+| E-03 | `/aanbod/voetanalyse` | extra's: schoenplaatjes afstellen; volledige bikefit. Inlegzolen bewust niet vermeld | idem; worden er inlegzolen aangeboden of verkocht? | te bevestigen |
+| E-04 | `/aanbod/zadelanalyse` | extra's: ruimer bikefittraject; ander zadel of onderdelen indien nodig. Drukmeting bewust niet vermeld | idem; is er een drukmeetsysteem? | te bevestigen |
+| E-05 | `/aanbod/afstellen-schoenplaatjes` | extra's: voetanalyse; volledige bikefit; nieuwe schoenplaatjes indien nodig | idem; plaatjes nooit "inbegrepen" zonder bevestiging | te bevestigen |
+| E-06 | `/aanbod/lactaattest` | inhoud: stapsgewijze inspanning met lactaatmetingen; extra's: coaching; vervolgmeting in overleg | idem; protocol en materiaal (fiets of eigen fiets op trainer?) | te bevestigen |
+| E-07 | `/aanbod/coaching` | extra's: lactaattest; bikefit; aanvullende opvolging in overleg | idem; vorm van de opvolging (online, in de studio, ritme) | te bevestigen |
+| E-08 | alle zeven dienstpagina's | geen pakketten of combinatieprijzen vermeld | bevestigen of er pakketten of combinaties zijn; zo ja: welke diensten, welke prijs | open |
 
-## 4. Team
+## 4. Team (T)
 
-Pagina `/ons-team`, blok *Team*. Het veld **Interne notitie** (niet publiek) herhaalt per persoon
-wat ontbreekt.
+Plaats: CMS → *Ons team* (`/ons-team`) → blok *Team* → **Teamleden** → de persoon → velden **Rol**,
+**Bio (alinea's, enkel gecontroleerde tekst)** en **Afbeelding**. Er is geen apart veld voor
+kwalificaties: die komen, met bron, in **Bio** of kort in **Rol**. Het veld **Interne notitie (niet
+publiek)** herhaalt per persoon de open rijen. Zonder **Afbeelding** toont de site de initialen.
 
-| ID | Persoon / veld | Nu | Nodig | Status |
+Robin en Goran hebben een neutrale tussenkaart: naam, initialen en twee regels, "*Naam* maakt deel
+uit van het team van De Bikefit Studio." en "Een uitgebreid profiel volgt binnenkort." Verwijder
+die tweede regel zodra de echte bio er staat.
+
+| ID | Persoon — veld | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
-| T-01 | Rutger Roelandts — Bio | ingekorte eigen tekst uit `content/about.html` §1 (eerder op `/over-ons`) | akkoord van Rutger op de korte versie | te bevestigen |
+| T-01 | Rutger Roelandts — Bio | twee alinea's, ingekorte eigen tekst uit `content/about.html` §1 (eerder op `/over-ons`), o.a. "Negentien jaar competitie" | akkoord van Rutger op de korte versie | te bevestigen |
 | T-02 | Rutger Roelandts — Rol | "Oprichter" (volgt uit zijn eigen tekst) | bevestigen | te bevestigen |
-| T-03 | Rutger Roelandts — Kwalificaties | niets vermeld | diploma's/opleidingen, enkel met bron | open |
-| T-04 | Rutger Roelandts — Foto | initialen "RR" | echte portretfoto (geen AI-beeld) | open |
-| T-05 | Robin Van Lierde — Bio | "Robin maakt deel uit van het team van De Bikefit Studio." | korte bio van Robin zelf | open |
-| T-06 | Robin Van Lierde — Rol | leeg | rol/functie | open |
+| T-03 | Rutger Roelandts — Kwalificaties | niets vermeld | diploma's of opleidingen, enkel met bron | open |
+| T-04 | Rutger Roelandts — Afbeelding | leeg → initialen "RR" | echte portretfoto (geen AI-beeld), met akkoord | open |
+| T-05 | Robin Van Lierde — Bio | "Robin maakt deel uit van het team van De Bikefit Studio." + "Een uitgebreid profiel volgt binnenkort." | korte bio, aangeleverd door Robin zelf | open |
+| T-06 | Robin Van Lierde — Rol | leeg (niet getoond) | rol of functie | open |
 | T-07 | Robin Van Lierde — Kwalificaties en specialisaties | niets vermeld | enkel met bron | open |
-| T-08 | Robin Van Lierde — Foto | initialen "RV" | echte portretfoto | open |
-| T-09 | Goran Van de Walle — Bio | "Goran maakt deel uit van het team van De Bikefit Studio." | korte bio van Goran zelf | open |
-| T-10 | Goran Van de Walle — Rol | leeg | rol/functie | open |
+| T-08 | Robin Van Lierde — Afbeelding | leeg → initialen "RV" | echte portretfoto, met akkoord | open |
+| T-09 | Goran Van de Walle — Bio | "Goran maakt deel uit van het team van De Bikefit Studio." + "Een uitgebreid profiel volgt binnenkort." | korte bio, aangeleverd door Goran zelf | open |
+| T-10 | Goran Van de Walle — Rol | leeg (niet getoond) | rol of functie | open |
 | T-11 | Goran Van de Walle — Kwalificaties en specialisaties | niets vermeld | enkel met bron | open |
-| T-12 | Goran Van de Walle — Foto | initialen "GV" | echte portretfoto | open |
-| T-13 | Aanbod-inleiding (`/aanbod`) | "werkt uitsluitend met ervaren, gediplomeerde professionals" | algemene claim, aangeleverd door Toshoni; geen individuele diploma's vermelden zonder bron | bevestigd |
+| T-12 | Goran Van de Walle — Afbeelding | leeg → initialen "GV" | echte portretfoto, met akkoord | open |
+| T-13 | Algemene claim: `/aanbod` → blok *Hero* → **Ondertitel** ("uitsluitend met ervaren, gediplomeerde professionals"); `/ons-team` → *Hero* → **Ondertitel** en home → blok *Oproep* → **Tekst** ("de nodige diploma's") | aangeleverd door Toshoni | blijft algemeen; geen individuele diploma's noemen zonder bron | bevestigd |
 
-## 5. Beelden (AI, tijdelijk)
+## 5. Beelden, AI-gegenereerd en tijdelijk (B)
 
-Drie gegenereerde sfeerbeelden van fictieve, algemene personen (`docs/editorial-images.md`). Ze
-zijn **nooit** een portret van Rutger, Robin of Goran. Vervangen door echte studiofotografie via
-*Media*, of met `npm run images:import -- --slot <slot> --src <bestand> --version 2` en daarna de
-staging-rollout.
+Drie gegenereerde sfeerbeelden van fictieve, algemene personen (herkomst en prompts:
+[`editorial-images.md`](./editorial-images.md), manifest `src/lib/studio/editorial-images.json`).
+Ze zijn **nooit** een portret van Rutger, Robin of Goran.
 
-| ID | Slot / bestand | Gebruikt op | Nodig | Status |
+Vervangen kan op twee manieren:
+
+1. **Per plaats in het CMS:** echte foto uploaden via `/admin` → **Media**, dan op elke plaats
+   hieronder het veld **Afbeelding** (blok *Hero*, *Beeld + tekst* of *Dienst (aanbod)*) op die
+   foto zetten, met Nederlandse alt-tekst, en publiceren.
+2. **Alles in één keer:** `npm run images:import -- --slot <slot> --src <bestand> --version 2` en
+   daarna de staging-rollout (`staging-runbook.md` §9). Dat vervangt het beeld op alle plaatsen.
+
+| ID | Slot → bestand | Gebruikt op (pagina → blok → veld **Afbeelding**) | Nodig | Status |
 | --- | --- | --- | --- | --- |
-| B-01 | `flemish-cyclists` → `public/images/editorial/flemish-cyclists-v1.webp` | home (hero), `/bikefit` (Waarom), `/aanbod/lactaattest` | echte foto, rechten geregeld | open |
-| B-02 | `bikefit-studio` → `public/images/editorial/bikefit-studio-v1.webp` | home (Bikefit), `/bikefit` (3D-analyse), de vijf Bikefit-dienstpagina's | echte foto in de studio | open |
-| B-03 | `junior-coaching` → `public/images/editorial/junior-coaching-v1.webp` | home (Voor wie), `/voor-wie` (Junioren), `/aanbod/coaching` | echte foto, toestemming ouders bij minderjarigen | open |
+| B-01 | `flemish-cyclists` → `public/images/editorial/flemish-cyclists-v1.webp` | home → *Hero* ("Meer plezier."); `/bikefit` → *Beeld + tekst* "Waarom is een bikefit belangrijk?"; `/aanbod/lactaattest` → *Dienst (aanbod)* | echte foto van fietsers, beeldrechten en toestemming geregeld | open |
+| B-02 | `bikefit-studio` → `public/images/editorial/bikefit-studio-v1.webp` | home → *Beeld + tekst* "Jij blijft het vertrekpunt"; `/bikefit` → *Beeld + tekst* "Meten om beter te kijken"; *Dienst (aanbod)* op `/aanbod/bikefit-nieuwe-fiets`, `/aanbod/bikefit-huidige-fiets`, `/aanbod/voetanalyse`, `/aanbod/zadelanalyse`, `/aanbod/afstellen-schoenplaatjes` | echte foto van een bikefit in de studio | open |
+| B-03 | `junior-coaching` → `public/images/editorial/junior-coaching-v1.webp` | home → *Beeld + tekst* "Voor elke fietser"; `/voor-wie` → *Beeld + tekst* "Jonge fietsers groeien"; `/aanbod/coaching` → *Dienst (aanbod)* | echte foto, schriftelijke toestemming van ouders bij minderjarigen | open |
 
-## 6. Online boeken per dienst
+## 6. Online boeken per dienst (K)
 
-Zie `docs/booking-architecture.md` §14. Veld: blok *Dienst (aanbod)* → **Online boeken via
-dienst(en)**. Leeg = de boekknop leidt naar een contactvraag (bellen/mailen) die de dienst noemt.
+Zie [`booking-architecture.md`](./booking-architecture.md) §14. Plaats: CMS → de dienstpagina →
+blok *Dienst (aanbod)* → veld **Online boeken via dienst(en)** (slug uit `/admin` → **Diensten**,
+één per regel). Leeg = de knop "Boek een afspraak voor deze dienst" leidt naar een contactvraag
+(bellen, of mailen zodra G-01 ingevuld is) die de dienst noemt.
 
 | ID | Onderwerp | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
-| K-01 | "Bikefit – huidige fiets" | gekoppeld aan de bestaande diensten Volwassenenfit (90 min) en Jeugdfit (60 min) | bevestigen dat dit dezelfde dienst is | te bevestigen |
-| K-02 | De andere zes diensten | niet online boekbaar (contactvraag) | per dienst: echte duur + aanbieder(s) die ze zelf bevestigen, dan dienst aanmaken in *Afspraken → Diensten* en de slug invullen | open |
-| K-03 | Lactaattest vs. bestaande dienst Inspanningstest | niet gekoppeld (niet bevestigd dat het dezelfde meting is) | beslissen: koppelen, of Inspanningstest uitzetten | open |
-| K-04 | Bestaande diensten Gezinspakket en Fit aan huis | blijven actief en boekbaar via `/afspraak` zonder dienstkeuze; komen niet meer voor in het aanbod | beslissen: behouden of uitzetten (zacht; boekingen blijven) | open |
-| K-05 | Aanbieders per dienst | ongewijzigd (enkel de bestaande aanbieder op de vijf oude diensten) | wie biedt welke nieuwe dienst aan — enkel door de persoon zelf bevestigd | open |
+| K-01 | *Bikefit – huidige fiets* | gekoppeld aan de bestaande diensten `volwassenenfit` (90 min) en `jeugdfit` (60 min); de widget toont hun naam en beschrijving ("Reken op 90 minuten …") | bevestigen dat dit dezelfde dienst is | te bevestigen |
+| K-02 | De andere zes diensten | veld leeg → contactvraag, niet online boekbaar | per dienst: echte duur (D-rij) en aanbieder(s) die het zelf bevestigen (K-05); dan dienst aanmaken in **Diensten** en de slug invullen | open |
+| K-03 | *Lactaattest* vs. bestaande dienst Inspanningstest | niet gekoppeld (niet bevestigd dat het dezelfde meting is) | beslissen: koppelen, of Inspanningstest uitzetten | open |
+| K-04 | Bestaande diensten Gezinspakket en Fit aan huis | actief en boekbaar via `/afspraak` zonder dienstkeuze; niet meer in het aanbod | beslissen: behouden of uitzetten (zacht; bestaande boekingen blijven). Raakt G-07 | open |
+| K-05 | Aanbieders per dienst | ongewijzigd: enkel de bestaande aanbieder op de vijf oude diensten | wie biedt welke nieuwe dienst aan, enkel door de persoon zelf bevestigd (`/admin` → **Aanbieders**) | open |
+| K-06 | Prijzen in de boekingswidget | verborgen (beslissing Toshoni, 24 sep 2026): **Diensten** → **Prijs tonen op de website** uit | na P-02 en de andere prijzen beslissen of de widget ook prijzen toont; dan **Prijs (euro)** en **Prijs tonen** per dienst invullen | open |
 
-## 7. Bestaande hiaten in aangeraakte inhoud
+## 7. Bestaande hiaten in aangeraakte inhoud (G)
 
-| ID | Waar | Nu | Nodig | Status |
+| ID | Waar (exacte plaats) | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
-| G-01 | Instellingen → Contact → e-mail | leeg; de contactvraag toont dan enkel bellen, de juridische pagina's gebruiken het onbevestigde `info@debikefitstudio.be` | publiek e-mailadres | open |
-| G-02 | Instellingen → Contact → adres | geen straat en postcode | adres van de studio | open |
-| G-03 | `/afspraak` (niet in deze rollout) | toont nog "Vier manieren om te boeken" (Volwassenenfit, Jeugdfit, Gezinspakket, Fit aan huis) | afstemmen op het nieuwe aanbod na K-02–K-04 | open |
-| G-04 | `/veelgestelde-vragen` (niet in deze rollout) | antwoorden noemen jeugdfit en 60/90 minuten | nakijken na D-01–D-07 | open |
-| G-05 | Korte verbindingszinnen (groepsinleidingen, sectietitels op home, `/voor-wie`, `/bikefit`) | neutraal geschreven door de implementatie, zonder nieuwe claims | redactie door Winston | te bevestigen |
-| G-06 | "nieuwste 3D-bewegingsanalyse" (`/bikefit`, home, Bikefit – huidige fiets) | tekst aangeleverd door Toshoni; geen merk of toestel genoemd | bevestigd; merk enkel noemen met bron | bevestigd |
+| G-01 | Publiek e-mailadres: `/admin` → **Instellingen** → Contact → **E-mail** (footer, contactvraag bij niet-boekbare diensten); blok *Contact* → **E-mail** op home, `/contact` en `/afspraak` | overal leeg → die rijen worden niet getoond; de juridische pagina's (`/privacy`, `/algemene-voorwaarden`) kregen bij de seed het onbevestigde `info@debikefitstudio.be` | bevestigd publiek e-mailadres; daarna ook de tekst van de juridische pagina's nakijken | open |
+| G-02 | Adres van de studio: **Instellingen** → Contact → **Adresregels** en **Postcode**; blok *Contact* → **Adresregels** op home, `/contact` en `/afspraak`; `/admin` → **Locaties** → "De Bikefit Studio, Ninove" → **Adresregels** | enkel "Ninove", geen straat en postcode; JSON-LD laat het adres weg | adres van de studio (optioneel ook **Kaart-embed URL** in blok *Contact*) | open |
+| G-03 | `/afspraak` (niet in deze rollout) | toont nog "Vier manieren om te boeken" (Volwassenenfit, Jeugdfit, Gezinspakket, Fit aan huis) | afstemmen op het nieuwe aanbod na K-02 – K-04 | open |
+| G-04 | `/veelgestelde-vragen` (niet in deze rollout) | antwoorden noemen jeugdfit en 60/90 minuten | nakijken na D-01 – D-07 | open |
+| G-05 | Korte verbindingszinnen: inleidingen van de groepen Bikefit/Begeleiding in blok *Aanbod (overzicht)* (home, `/aanbod`, `/bikefit`); sectietitels op home ("Wat we voor je doen"), `/voor-wie` ("Waar je ook staat") en `/bikefit` ("Meten om beter te kijken", "Onze bikefitdiensten") | neutraal geschreven door de implementatie, zonder nieuwe claims | redactie door Winston | te bevestigen |
+| G-06 | "nieuwste 3D-bewegingsanalyse": `/bikefit` en home → *Beeld + tekst* → **Alinea's**; `/aanbod/bikefit-huidige-fiets` → **Inhoud** | tekst aangeleverd door Toshoni; geen merk of toestel genoemd | merk of toestel enkel noemen met bron | bevestigd |
+| G-07 | "bij jou thuis / op locatie": home → *Hero* → **Ondertitel**; `/aanbod` → *Hero* → **Ondertitel**; `/bikefit` → *Beeld + tekst* "Kan een bikefit ook bij mij thuis?" | tekst aangeleverd (hero, aanbod) of uit het prototype (`/bikefit`); belooft fits aan huis | na K-04 nakijken: wordt Fit aan huis uitgezet, dan deze zinnen aanpassen | te bevestigen |

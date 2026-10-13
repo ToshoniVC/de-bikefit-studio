@@ -93,6 +93,18 @@ describe('offerPriceLabel', () => {
     expect(offerPriceLabel({ priceCents: 12000, priceLabel: '' })).toMatch(/120,00/);
     expect(offerPriceLabel({ priceCents: 12000, priceLabel: 'vanaf € 120' })).toBe('vanaf € 120');
   });
+
+  it('never lets the "Prijs op aanvraag" placeholder hide a confirmed amount', () => {
+    expect(offerPriceLabel({ priceCents: null, priceLabel: 'Prijs op aanvraag' })).toBe(
+      'Prijs op aanvraag',
+    );
+    expect(offerPriceLabel({ priceCents: 12000, priceLabel: 'Prijs op aanvraag' })).toMatch(
+      /120,00/,
+    );
+    expect(offerPriceLabel({ priceCents: 12000, priceLabel: ' prijs op aanvraag ' })).toMatch(
+      /120,00/,
+    );
+  });
 });
 
 describe('offerFromPage', () => {
@@ -256,7 +268,7 @@ describe('default offers and booking reconciliation', () => {
       const data = offerBlockData(entry);
       expect(data.ctaLabel).toBe(OFFER_CTA_LABEL);
       expect(data.priceCents).toBeNull();
-      expect(data.priceLabel).toBe('');
+      expect(data.priceLabel).toBe(OFFER_PRICE_FALLBACK);
       expect(String(data.duration)).toMatch(/in overleg$/);
       expect(JSON.stringify(data)).not.toMatch(/€|\b\d+\s*(min|minuten|uur)\b/);
     }

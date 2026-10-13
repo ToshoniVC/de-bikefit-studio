@@ -6,6 +6,7 @@ import {
   OFFER_DURATION_FALLBACK,
   OFFER_EXTRAS_NOTE,
   OFFER_INDEX_PATH,
+  OFFER_PRICE_FALLBACK,
 } from '@/lib/offers/catalogue';
 import {
   emptyImage,
@@ -37,7 +38,8 @@ const offerCategorySchema = z.enum(OFFER_CATEGORIES);
  * `offer` — one service. The page's `/aanbod/<slug>` path is the offer's
  * identity (booking links use that slug), so the block stores no slug of its
  * own. Price: a free-text `priceLabel` wins, then `priceCents`; with neither
- * the site shows "Prijs op aanvraag". `bookingServiceSlugs` points at
+ * the site shows "Prijs op aanvraag". The label "Prijs op aanvraag" itself
+ * (the seeded placeholder) never hides a confirmed `priceCents`. `bookingServiceSlugs` points at
  * `cms_services.slug`; empty = not online bookable (contact prompt).
  */
 export const offerSchema = z.object({
@@ -58,7 +60,7 @@ export const offerSchema = z.object({
   duration: z.string().default(OFFER_DURATION_FALLBACK),
   /** Kostprijs in euro cents, once confirmed. */
   priceCents: z.number().int().nonnegative().nullable().default(null),
-  /** Free-text price, e.g. "vanaf € 120"; empty + no cents = "Prijs op aanvraag". */
+  /** Free-text price, e.g. "vanaf € 120"; empty or "Prijs op aanvraag" + no cents = "Prijs op aanvraag". */
   priceLabel: z.string().default(''),
   /** Mogelijke extra's — one item per line. */
   extras: z.array(z.string()).default([]),
@@ -119,6 +121,8 @@ export const aanbodBlockRegistry = {
     label: 'Dienst (aanbod)',
     description:
       'Eén dienst uit het aanbod: inleiding, boekknop, doel, inhoud, duur, kostprijs en mogelijke extra’s. Hoort op een pagina onder /aanbod/.',
+    editorHint:
+      'Tijdelijke inhoud: laat “Prijs op aanvraag” en “Duur in overleg” staan tot ze bevestigd zijn. Een bevestigde prijs vul je in als bedrag in eurocent (12000 = € 120) of als prijslabel (bv. “vanaf € 120”). Open punten per dienst: register docs/content-placeholders.md (P-, D- en E-nummers).',
     schema: offerSchema,
     defaultData: {
       category: 'bikefit',
@@ -132,7 +136,7 @@ export const aanbodBlockRegistry = {
       contents: [],
       duration: OFFER_DURATION_FALLBACK,
       priceCents: null,
-      priceLabel: '',
+      priceLabel: OFFER_PRICE_FALLBACK,
       extras: [],
       extrasNote: OFFER_EXTRAS_NOTE,
       bookingServiceSlugs: [],
@@ -164,6 +168,8 @@ export const aanbodBlockRegistry = {
     label: 'Team',
     description:
       'Teamleden met naam, rol en een korte, gecontroleerde bio. Zonder foto tonen we de initialen.',
+    editorHint:
+      'Vul rol, bio en foto enkel in met tekst of beeld van de persoon zelf; geen gegenereerd portret. Zonder foto tonen we de initialen. Open punten per persoon: register docs/content-placeholders.md (T-nummers) en de interne notitie.',
     schema: teamSchema,
     defaultData: {
       variant: 'default',

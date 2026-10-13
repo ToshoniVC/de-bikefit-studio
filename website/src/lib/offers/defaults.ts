@@ -2,6 +2,7 @@ import {
   OFFER_CTA_LABEL,
   OFFER_DURATION_FALLBACK,
   OFFER_EXTRAS_NOTE,
+  OFFER_PRICE_FALLBACK,
   type OfferCategory,
 } from './catalogue';
 
@@ -11,13 +12,15 @@ import {
  *
  * COPY PROVENANCE: work block `2026-10-13-aanbod-staging-brief.md` ("Suggested
  * service content", supplied by Toshoni via Winston). Nothing beyond it:
- *  - no prices (none confirmed) → "Prijs op aanvraag" on every overview;
+ *  - no prices (none confirmed) → "Prijs op aanvraag", written into the
+ *    price label so editors see it in the CMS;
  *  - no durations (none confirmed) → "Duur in overleg" / "Traject en
  *    opvolging in overleg"; the scheduling length of a bookable service lives
  *    on its `cms_services` row and is never copied here;
  *  - no device brands, medical claims, guarantees or included products.
  *
- * Every field stays editable in the CMS after the seed.
+ * Every field stays editable in the CMS after the seed. Every placeholder is
+ * listed in `docs/content-placeholders.md` (P-, D-, E-rows).
  */
 
 export type DefaultOffer = {
@@ -209,7 +212,7 @@ export function offerBlockData(offer: DefaultOffer): Record<string, unknown> {
     contents: offer.contents,
     duration: offer.duration,
     priceCents: null,
-    priceLabel: '',
+    priceLabel: OFFER_PRICE_FALLBACK,
     extras: offer.extras,
     extrasNote: OFFER_EXTRAS_NOTE,
     bookingServiceSlugs: offer.bookingServiceSlugs,

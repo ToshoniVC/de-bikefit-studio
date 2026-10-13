@@ -359,7 +359,7 @@ Order (the old build cannot render the new block types, so code goes first):
    load each page twice, then verify. (A redeploy does not reliably clear Vercel's data cache.)
 7. **Verify** on the stable alias: `site-health`, plus `/aanbod` (two groups, seven cards,
    "Prijs op aanvraag"), the seven `/aanbod/<slug>` pages, `/voor-wie`, `/bikefit`,
-   `/ons-team`, `/over-ons` → 308 to `/ons-team`, the main menu (no Home), and
+   `/ons-team` (Robin and Goran: initials and "Een uitgebreid profiel volgt binnenkort."), `/over-ons` → 308 to `/ons-team`, the main menu (no Home), and
    `/afspraak?dienst=bikefit-huidige-fiets` (widget with Volwassenenfit/Jeugdfit, "Je boekt
    voor …") and `/afspraak?dienst=lactaattest` (contact prompt, no widget). Do not create
    bookings to test.

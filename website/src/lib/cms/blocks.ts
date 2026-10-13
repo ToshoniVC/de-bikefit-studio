@@ -289,6 +289,8 @@ export const bookingSchema = z.object({
 export type BlockDefinition<S extends z.ZodType = z.ZodType> = {
   label: string;
   description: string;
+  /** One line shown above the fields in the admin editor (e.g. where open placeholders are tracked). */
+  editorHint?: string;
   schema: S;
   defaultData: z.infer<S>;
 };

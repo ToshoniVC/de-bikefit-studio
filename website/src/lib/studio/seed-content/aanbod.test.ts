@@ -144,9 +144,11 @@ describe('aanbod rollout pages', () => {
     }
     for (const member of members.slice(1)) {
       expect(member.role).toBe('');
-      expect(member.bio).toHaveLength(1);
-      expect(member.bio[0]).toMatch(/maakt deel uit van het team van De Bikefit Studio\.$/);
-      expect(member.internalNote).toMatch(/^OPEN:/);
+      expect(member.bio).toEqual([
+        `${member.name.split(' ')[0]} maakt deel uit van het team van De Bikefit Studio.`,
+        'Een uitgebreid profiel volgt binnenkort.',
+      ]);
+      expect(member.internalNote).toMatch(/^OPEN \(register T-/);
     }
   });
 

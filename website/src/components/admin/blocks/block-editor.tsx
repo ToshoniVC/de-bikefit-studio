@@ -194,6 +194,12 @@ function BlockCard({
           <input type="hidden" name="blockId" value={block.id} />
           <input type="hidden" name="data" value={JSON.stringify(data)} />
 
+          {spec?.hint ? (
+            <p className="border-l-2 border-primary bg-muted px-3 py-2 text-xs text-muted-foreground">
+              {spec.hint}
+            </p>
+          ) : null}
+
           {spec ? (
             spec.fields.map((field) => (
               <FieldInput

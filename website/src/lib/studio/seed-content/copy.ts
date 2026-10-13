@@ -20,7 +20,16 @@ export const MOTION_ANALYSIS_TEXT =
 export const TEAM_INTRO =
   'Goede begeleiding begint bij de juiste mensen. We kiezen ons team op ervaring, vakkennis en de nodige diploma’s, maar ook op de manier waarop iemand luistert. Je krijgt een aanpak die bij jou past, met heldere uitleg en aandacht voor jouw doelen.';
 
-/** Team members. Only Rutger has a source-backed bio (content/about.html §1). */
+/**
+ * Second bio line on an interim profile, so the card reads as unfinished on
+ * purpose rather than as a finished one-line bio.
+ */
+export const TEAM_PROFILE_PENDING = 'Een uitgebreid profiel volgt binnenkort.';
+
+/**
+ * Team members. Only Rutger has a source-backed bio (content/about.html §1).
+ * Open fields per person: docs/content-placeholders.md, T-rows.
+ */
 export const TEAM_MEMBERS = [
   {
     name: 'Rutger Roelandts',
@@ -30,20 +39,20 @@ export const TEAM_MEMBERS = [
       'Daarom heb ik De Bikefit Studio opgericht. Iedereen verdient het om te genieten van alles wat een fiets te bieden heeft. Mijn werk is ervoor te zorgen dat jouw fiets je dat ook toelaat.',
     ],
     internalNote:
-      'Bio: Rutgers eigen tekst uit content/about.html §1 (eerder gepubliceerd op /over-ons), ingekort. Rol “Oprichter” volgt uit die tekst. Foto: nog geen echte portretfoto.',
+      'Register T-01–T-04. Bio: Rutgers eigen tekst uit content/about.html §1 (eerder gepubliceerd op /over-ons), ingekort; akkoord van Rutger nodig. Rol “Oprichter” volgt uit die tekst. Kwalificaties: niets vermeld. Foto: nog geen echte portretfoto (nu initialen).',
   },
   {
     name: 'Robin Van Lierde',
     role: '',
-    bio: ['Robin maakt deel uit van het team van De Bikefit Studio.'],
+    bio: ['Robin maakt deel uit van het team van De Bikefit Studio.', TEAM_PROFILE_PENDING],
     internalNote:
-      'OPEN: bio, rol, specialisaties en portretfoto nog op te vragen bij Robin. Niets invullen zonder bron; geen gegenereerd portret gebruiken.',
+      'OPEN (register T-05–T-08): bio, rol, kwalificaties/specialisaties en portretfoto nog op te vragen bij Robin. Niets invullen zonder bron; geen gegenereerd portret gebruiken. Verwijder de regel “profiel volgt” zodra de echte bio er staat.',
   },
   {
     name: 'Goran Van de Walle',
     role: '',
-    bio: ['Goran maakt deel uit van het team van De Bikefit Studio.'],
+    bio: ['Goran maakt deel uit van het team van De Bikefit Studio.', TEAM_PROFILE_PENDING],
     internalNote:
-      'OPEN: bio, rol, specialisaties en portretfoto nog op te vragen bij Goran. Niets invullen zonder bron; geen gegenereerd portret gebruiken.',
+      'OPEN (register T-09–T-12): bio, rol, kwalificaties/specialisaties en portretfoto nog op te vragen bij Goran. Niets invullen zonder bron; geen gegenereerd portret gebruiken. Verwijder de regel “profiel volgt” zodra de echte bio er staat.',
   },
 ];

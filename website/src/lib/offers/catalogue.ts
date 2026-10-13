@@ -77,10 +77,16 @@ export function offerBookingHref(offerSlug: string): string {
   return `${BOOKING_PAGE_PATH}?${SERVICE_PARAM}=${encodeURIComponent(offerSlug)}#boeken`;
 }
 
-/** Free-text label wins, then a confirmed amount in cents, else "Prijs op aanvraag". */
+/**
+ * Free-text label wins, then a confirmed amount in cents, else "Prijs op
+ * aanvraag". The seed writes "Prijs op aanvraag" into the label so editors see
+ * the placeholder in the CMS; that placeholder never hides a confirmed amount,
+ * so filling in only the cents is enough.
+ */
 export function offerPriceLabel(input: { priceCents: number | null; priceLabel: string }): string {
   const label = input.priceLabel.trim();
-  if (label) return label;
+  const isPlaceholder = label.toLowerCase() === OFFER_PRICE_FALLBACK.toLowerCase();
+  if (label && !(isPlaceholder && input.priceCents != null)) return label;
   if (input.priceCents != null) return formatPrice(input.priceCents);
   return OFFER_PRICE_FALLBACK;
 }

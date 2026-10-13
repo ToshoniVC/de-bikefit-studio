@@ -1,4 +1,10 @@
-import { blockRegistry, imageRefSchema, linkSchema, type BlockType } from '@/lib/cms/blocks';
+import {
+  blockRegistry,
+  getBlockDefinition,
+  imageRefSchema,
+  linkSchema,
+  type BlockType,
+} from '@/lib/cms/blocks';
 
 /**
  * Turns the zod schemas in the block registry into a small, JSON-serialisable
@@ -41,6 +47,8 @@ export type BlockSpec = {
   type: BlockType;
   label: string;
   description: string;
+  /** Editor guidance shown above the fields; empty = none. */
+  hint: string;
   fields: FieldSpec[];
 };
 
@@ -297,12 +305,13 @@ export function defaultValueFor(spec: FieldSpec): unknown {
 
 /** The full form description for one block type. */
 export function blockSpec(type: BlockType): BlockSpec {
-  const definition = blockRegistry[type];
+  const definition = getBlockDefinition(type);
   const def = defOf(definition.schema);
   return {
     type,
     label: definition.label,
     description: definition.description,
+    hint: definition.editorHint ?? '',
     fields: def?.type === 'object' ? objectFields(def) : [],
   };
 }
