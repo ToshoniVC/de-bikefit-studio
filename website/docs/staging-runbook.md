@@ -106,6 +106,7 @@ DATABASE_URL='<staging pooled url>' npm run db:migrate
 | `0005_cms_admin_mfa.sql` | Four `cms_mfa_*` tables and `cms_sessions.mfa_verified_at` (§14). |
 | `0006_cms_session_limits.sql` | `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at` (§15). |
 | `0007_cms_mfa_rate_limits.sql` | `cms_mfa_rate_limits` and the unique index `cms_mfa_challenges_user_id_unique_idx` (§16). |
+| `0008_cms_rate_limits.sql` | `cms_rate_limits`, the race-free public booking limit (`booking-architecture.md` §9). Needed **before** a build that contains it serves `/afspraak`: without the table every booking attempt answers "Er ging iets mis bij het boeken" (`[booking] create_failed`). |
 
 All additive and guarded (no `DROP`, `TRUNCATE` or webshop `ALTER`); already-applied files
 are skipped. Expect `→ driver: neon-http (<host>)` and `✓ migrations applied to Neon`. The

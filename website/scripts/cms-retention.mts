@@ -18,11 +18,14 @@
  *    in the future. In other words: all bookings of a customer go together,
  *    three years after their last appointment.
  *  - `cms_booking_rate_limit`: attempts older than 24 hours are deleted (the
- *    public booking action also prunes these opportunistically).
+ *    gift voucher requests also prune these opportunistically; bookings no
+ *    longer write here since migration 0008).
  *  - Never touched: `cms_audit_log`, `cms_sessions`, `cms_login_attempts`,
  *    the `cms_mfa_*` tables (the code-check counters in `cms_mfa_rate_limits`
  *    and the old attempt log prune themselves after a day, challenges on
- *    expiry), users, providers, services, locations and every content table.
+ *    expiry), the public rate-limit counters `cms_rate_limits` (the booking
+ *    limit since 0008; pruned on every booking attempt a day after their last
+ *    hit), users, providers, services, locations and every content table.
  *
  * Exit code 0 on a successful dry run or apply, 1 on any error. Nothing is
  * deleted without `--apply`.

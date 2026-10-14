@@ -9,11 +9,12 @@ import { SectionCard } from '@/components/admin/form';
 import { PageDeleteForm, PagePublishActions } from '@/components/admin/page-actions';
 import { PageSettingsForm } from '@/components/admin/page-settings-form';
 import { PageHeading } from '@/components/admin/shell';
-import { badgeTone } from '@/components/admin/tones';
+import { badgeTone, FLASH_TONES } from '@/components/admin/tones';
 import type { MediaOption } from '@/components/admin/media-picker';
 import { DEFAULT_LOCALE } from '@/db/cms-schema';
 import { listServices } from '@/lib/booking/repo';
 import { requireCmsUser } from '@/lib/cms/auth';
+import { pageDeleteDenial } from '@/lib/cms/page-policy';
 import { can } from '@/lib/cms/permissions';
 import { getPageForEdit, listMedia, publicPathFor } from '@/lib/cms/repo';
 
@@ -49,6 +50,8 @@ export default async function EditPagePage({ params }: { params: Promise<{ id: s
 
   const publicPath = publicPathFor(page.locale, page.slug);
   const canEdit = can(user.role, 'page.update');
+  // The rule `deletePage()` enforces: an editor may delete a draft, not a live page.
+  const deleteDenial = pageDeleteDenial(user.role, page.status);
 
   return (
     <>
@@ -141,7 +144,11 @@ export default async function EditPagePage({ params }: { params: Promise<{ id: s
             title="Gevarenzone"
             description="Verwijderen kan niet ongedaan gemaakt worden."
           >
-            <PageDeleteForm pageId={page.id} />
+            {deleteDenial ? (
+              <p className={`px-3 py-2 text-sm ${FLASH_TONES.info}`}>{deleteDenial}</p>
+            ) : (
+              <PageDeleteForm pageId={page.id} />
+            )}
           </SectionCard>
         ) : null}
       </div>

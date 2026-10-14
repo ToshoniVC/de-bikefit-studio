@@ -36,6 +36,9 @@ UTC (`timestamptz`).
 | `src/lib/booking/content.ts` | server-only | public read API (cached lists, live availability) |
 | `src/lib/booking/repo.ts` | server-only | admin write API (`RepoResult<T>`) |
 | `src/lib/booking/public-booking.ts` | server-only | anonymous create / look up / cancel by token |
+| `src/lib/booking/rate-limit-policy.ts` | plain | `bookingRateLimitScopes()`: the keys and limits of the public booking limit (§9 step 3) |
+| `src/lib/rate-limit.ts` | plain (`db` passed in) | shared race-free reservation on `cms_rate_limits`: reserve, release, prune |
+| `src/db/cms-rate-limit-schema.ts` + `drizzle/0008_cms_rate_limits.sql` | schema + migration | `cms_rate_limits` (guarded) |
 | `src/lib/booking/booking-log.ts` | plain | `logBookingFailure()` (safe `[booking]` log lines) and `isUniqueViolation()` |
 | `src/lib/booking/notifications.ts` | server-only | loads a booking and sends the right e-mails |
 | `src/lib/email/send.ts` | server-only | Resend REST API via `fetch` |
@@ -64,7 +67,13 @@ Worker C; the admin actions under `src/lib/cms/actions/*` belong to Worker B.
 | `cms_business_hours` | `weekday` 0–6 (0 = Sunday), `start_minute`/`end_minute` = minutes since local midnight, end exclusive. Several rows per weekday. |
 | `cms_availability_exceptions` | `date` (local), `kind` `closed`\|`open`, optional minutes, `note`. Unique (`provider_id`, `date`, `kind`, `start_minute`). |
 | `cms_bookings` | service (restrict), provider (restrict), location (set null), `starts_at`/`ends_at` (UTC), `timezone`, `status` (`confirmed`\|`cancelled`\|`completed`\|`no_show`), customer + guardian fields, `bike_details`, `notes`, `customer_address`, `cancel_token_hash` (unique, SHA-256 hex), `cancelled_at`, `cancelled_by` (`customer`\|`provider`\|`admin`), `google_event_id`, `google_sync_status` (`pending`\|`synced`\|`failed`\|`none`), `google_sync_error`, `source` (`web`). |
-| `cms_booking_rate_limit` | `ip_address`, `email`, `attempted_at`: one row per public booking attempt (mirror of `cms_login_attempts`, pruned after 1 day). |
+| `cms_booking_rate_limit` | `ip_address`, `email`, `attempted_at`: one row per attempt (mirror of `cms_login_attempts`). Bookings wrote here, plain e-mail and IP, until 0008; since then only the gift voucher requests do (`cadeaubon:` keys, hashed e-mail; `booking-runbook.md` §12). Pruned after 1 day by those requests and by `cms:retention`. Kept unchanged (additive migrations). |
+
+### Rate-limit counters (`drizzle/0008_cms_rate_limits.sql`)
+
+| Table | Purpose / notable columns |
+| --- | --- |
+| `cms_rate_limits` | One row per rate-limit key: `scope` (primary key, `booking:ip:<ip>` or `booking:email:<SHA-256 hex>`), `hits` (`timestamptz[]`, the attempts still inside the key's window), `updated_at` (indexed). No foreign key: the keys belong to anonymous visitors. A row untouched for a day is pruned on every booking attempt. Schema `src/db/cms-rate-limit-schema.ts`, reservation `src/lib/rate-limit.ts` (§9 step 3). |
 
 Indexes: bookings on (`provider_id`, `starts_at`), (`starts_at`),
 (`customer_email`), plus a **partial unique index**
@@ -82,8 +91,9 @@ Closed sets are `text` validated by zod, like the CMS. The only enum change is
 | --- | --- |
 | `0002_role_provider.sql` | `ALTER TYPE "public"."cms_role" ADD VALUE IF NOT EXISTS 'provider';`, and nothing else. |
 | `0003_booking.sql` | 8 `CREATE TABLE IF NOT EXISTS`, FKs in `duplicate_object` guards, `CREATE [UNIQUE] INDEX IF NOT EXISTS`. |
+| `0008_cms_rate_limits.sql` | `CREATE TABLE IF NOT EXISTS "cms_rate_limits"` and `CREATE INDEX IF NOT EXISTS` on `updated_at`, nothing else: no foreign key, no data change, `cms_booking_rate_limit` untouched. **Apply before deploying the build that uses it**: until the table exists every public booking attempt fails closed (`error`, "Er ging iets mis bij het boeken", logged as `[booking] create_failed`). |
 
-Both are **additive only** and idempotent (verified by migrating a fresh
+All are **additive only** and idempotent (verified by migrating a fresh
 PGlite twice). Note that drizzle's migrator runs *all pending files in one
 transaction*, so on a fresh database `0002` and `0003` share a transaction.
 That is fine because Postgres only forbids **using** a new enum value in the transaction
@@ -92,7 +102,9 @@ are created afterwards (bootstrap / seed / admin).
 
 Generated with two `drizzle-kit generate --name=…` runs, so
 `drizzle/meta/0002_snapshot.json` → `0003_snapshot.json` form a correct chain
-and future `db:generate` runs diff cleanly.
+and future `db:generate` runs diff cleanly. `0008` was generated the same way
+(`npm run db:generate -- --name=cms_rate_limits`, on top of `0007`) and then
+guarded by hand; self-test 14b re-runs it twice.
 
 ---
 
@@ -215,6 +227,7 @@ cancelBookingByToken(token, context?)
   : Promise<{ ok: true; message; booking } | { ok: false; code: 'not_found' | 'already_cancelled' | 'too_late' | 'error'; message; booking }>
 summarizeBooking(bookingId), generateCancelToken(), hashCancelToken(token),
 publicBookingInputSchema, validateBookingFields(), BOOKING_RATE_LIMIT_MAX = 5, BOOKING_RATE_LIMIT_WINDOW_MS = 15 min
+// (the two constants are re-exported from rate-limit-policy.ts)
 
 type PublicBookingSummary = { bookingId; serviceName; providerName; startsAt; endsAt; timezone; locationLabel; status };
 ```
@@ -228,7 +241,10 @@ when the service `requiresGuardian`), `guardianEmail`, `guardianPhone`,
 `bikeDetails`, `notes`, `website` (honeypot, must be empty), `locale`.
 `fieldErrors` keys are these names. When `context.ipAddress` is omitted the
 IP is read from `x-forwarded-for` / `x-real-ip`. An unknown IP is never used as a
-rate-limit key (it would lump every visitor together).
+rate-limit key (it would lump every visitor together). After the field rules and
+before the service is looked up, every attempt **reserves** one hit per key (the
+IP when valid, the customer e-mail, a different guardian e-mail) on
+`cms_rate_limits`; a full key answers `rate_limited` (§9 step 3).
 
 `getBookingByCancelToken()` is for the `/afspraak/annuleren/[token]` page:
 show what would be cancelled on GET, cancel only on a POST/server action.
@@ -239,6 +255,22 @@ bookingId?)` from `booking-log.ts` (§9, "What is logged"). `isUniqueViolation()
 too and decides the `slot_taken` race on SQLSTATE `23505` alone, found on the error or along
 its `cause` chain. It has no fallback on message text, because a Drizzle query error's message
 embeds every bound value, including the visitor's notes.
+
+### `rate-limit-policy.ts` (plain) and `src/lib/rate-limit.ts` (`db` passed in)
+
+```ts
+// rate-limit-policy.ts: pure, unit-tested (rate-limit-policy.test.ts)
+BOOKING_RATE_LIMIT_MAX = 5; BOOKING_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000
+bookingRateLimitScopes({ email, guardianEmail?, ip }): RateLimitScope[]
+  // in reservation order: booking:ip:<ip> (valid IP only), booking:email:<sha256>, a different guardian's
+bookingEmailKey(email), bookingIpKey(ip)
+
+// src/lib/rate-limit.ts: not server-only, so the self-test loads it
+type RateLimitScope = { key: string; limit: number; windowMs: number }   // window at most a day
+reserveRateLimit(db, scopes, nowMs?): Promise<{ ok: true; reservation: { at; scopes } } | { ok: false }>
+releaseRateLimit(db, reservation): Promise<void>   // one hit back per scope (unused by booking today)
+pruneRateLimits(db): Promise<void>                 // rows untouched for a day; reserveRateLimit runs it first
+```
 
 ### `repo.ts` (server-only, admin)
 
@@ -473,8 +505,46 @@ module later.
 
 1. zod structural parse; field rules with Dutch messages → `invalid` + `fieldErrors`.
 2. Honeypot `website` non-empty → `invalid`.
-3. Rate limit: ≥ 5 attempts in 15 min for this e-mail **or** this IP →
-   `rate_limited`. Then the attempt is recorded (and rows > 1 day pruned).
+3. Rate limit, **reserve then check** (`rate-limit-policy.ts`, `src/lib/rate-limit.ts`,
+   table `cms_rate_limits`): at most 5 attempts per 15 minutes for **each** key on its own,
+   in this order:
+   - the client IP, `booking:ip:<ip>`, only when it parses as an IPv4/IPv6 address
+     (`normalizeIp()`). An unknown or malformed IP is never a shared key; the e-mail rule
+     then applies alone;
+   - the customer's e-mail and, when given and different, the guardian's (who gets the
+     confirmation too), both `booking:email:<SHA-256 hex of the trimmed, lower-cased
+     address>`. One namespace, so an address gets 5 attempts whether it is typed as
+     customer or as guardian. The counters store the hash, never the address (the old
+     `cms_booking_rate_limit` rows held it in plain text); a hash is a pseudonym, kept at
+     most a day.
+
+   Rows untouched for a day are pruned first. Then each key gets one hit in ONE statement,
+   `INSERT … ON CONFLICT (scope) DO UPDATE SET hits = <hits in the window> || now WHERE
+   <hits in the window> < 5 RETURNING`, decided on the key's own row. A full key: the hits
+   already taken are given back (one `UPDATE` per key, removing exactly one occurrence of
+   this attempt's timestamp) and the answer is `rate_limited` ("Te veel boekingen op korte
+   tijd. Probeer het over een kwartier opnieuw of bel ons."). Only then are the service and
+   the slot looked at. An attempt that got past the limit **keeps** its hits whatever
+   happens next (`slot_taken`, a later `invalid`, `error`, a booking): every attempt
+   counts, as before.
+
+   *Why one statement per key.* Until 0008 the check counted rows (`SELECT count(*) … WHERE
+   email = $e OR ip_address = $ip`) and recorded the attempt in a second statement.
+   neon-http has no interactive transactions (every statement is its own READ COMMITTED
+   transaction, and drizzle-orm 0.45.2 throws on `db.transaction()` there), so a parallel
+   burst (one HTTP/2 connection is enough) read the same count before any insert landed:
+   self-test 14b let 20 of 20 parallel attempts from one IP through with that code, each of
+   which could have been a confirmed booking, a Google event and mail from the studio's
+   verified sender to an address of the attacker's choosing. The upsert cannot be raced: Postgres
+   locks the conflicting row and evaluates the `WHERE` and `SET` on its latest committed
+   version, so parallel reservations of one key queue on that row (the same pattern as the
+   second-step limits, `cms-architecture.md` §4, Rate limiting).
+
+   *Failure modes.* A database error in the prune or a reservation ends in the catch-all
+   (`error`, `[booking] create_failed`, nothing of the error logged). A hit taken before
+   such an error, or one whose give-back failed, stays until it leaves the 15-minute window:
+   that request is refused, nobody is locked out beyond the window. Without the table (0008
+   not applied) every attempt fails closed this way.
 4. Service must be active; guardian required for `requiresGuardian`.
 5. **Fresh** `getAvailability()` for that day (live bookings + Google). The
    exact start must be offered → otherwise `slot_taken`.
@@ -578,6 +648,27 @@ token hash, `google_sync_status = 'none'`, audit, re-check → `slot_taken`,
 the partial unique index, rate limit, admin/provider lists and stats,
 look-up / too late / cancel / already cancelled, provider cancel, no revival.
 
+Section **14b** (`scripts/selftest/booking-rate-limit.mts`) tests the rate limit under
+parallel requests through the real `createPublicBooking()` (a throwaway service, a start in
+2020, so an attempt that passes the limit stops at the slot check as `slot_taken`; nothing is
+booked or mailed): migration 0008 (columns, index, additive, `cms_booking_rate_limit`
+unchanged, re-run twice); the helper on its own (12 parallel reservations in one millisecond →
+exactly 5, a release frees exactly one of five equal timestamps, a full later scope keeps
+nothing in the earlier one, hits older than the window do not count, a row untouched for a day
+is pruned); then four bursts of 20 parallel attempts, each with exactly 5 passing: one IP with
+20 e-mails (the IP key holds 5 hits), one e-mail from 20 IPs (5 hits; every refused attempt
+gave its IP hit back), no usable IP (missing or malformed: no IP key written) and one guardian
+e-mail for 20 customers and IPs (both earlier hits of a refused attempt given back); the stored
+keys hold no address; bookings no longer write `cms_booking_rate_limit`; with the table renamed
+away (a database without 0008) an attempt answers `error` with one `[booking] create_failed`
+line. Against the old count-then-insert code the same bursts let 20, 20, 10 and 20 of 20
+through (in the third, all ten without an IP passed; the ten with the malformed IP `unknown`
+were refused only because the old code matched them against every stored `'unknown'` row, one
+shared bucket). The sequential check in section 14 (5 attempts reach the slot check, the 6th is
+`rate_limited`) is unchanged. PGlite has one connection, so this proves the interleaving of
+separate awaits, which is what defeated the old check; the row lock under truly concurrent
+Neon sessions is Postgres' documented `ON CONFLICT DO UPDATE` behaviour, not exercised here.
+
 Unit tests (vitest, next to the modules) cover the pure parts. For logging and error
 persistence: `booking-log.test.ts` builds Drizzle-, Neon- and PGlite-shaped failures with a
 distinctive dummy value in every field the flow binds (customer and guardian data, notes,
@@ -586,7 +677,12 @@ address, raw token, hash, client IP, encrypted Google token, an HTTP body), offe
 every read, and asserts that nothing was read and that none of it reaches what
 `console.error` receives or prints, plus the twelve event codes and the `isUniqueViolation()`
 rules; `public-booking.test.ts` drives `createPublicBooking()` and `cancelBookingByToken()`
-into their catch-alls against a database mock whose every query fails;
+into their catch-alls against a database mock whose queries fail (a failed prune, a failed
+reservation of the first or second key, a failed give-back: each the generic error and one
+`[booking] create_failed` line without the IP, the address or its hash) and checks the
+`rate_limited` answer of a full key, before the service is looked up;
+`rate-limit-policy.test.ts` checks the keys (known, unknown, malformed and IPv6 addresses, a
+port, the hashed and lower-cased e-mail, the guardian, the order, the limits);
 `public-actions.test.ts` does the same for the three server actions and the unsigned
 confirmation ref, with what they call mocked to reject with such a failure; and
 `provider-calendar-errors.test.ts` checks `describeProviderError()` with the real
@@ -626,6 +722,26 @@ confirmation ref, with what they call mocked to reject with such a failure; and
   that needs a change at the query layer (strip `params` from what it throws), not more catch
   blocks. `describeProviderError()` still keeps a validated Google code and an error's class
   name in `google_sync_error` (§7); dropping those too is an owner decision.
+- **The public booking limit is one race-free reservation per key** (14 Oct 2026, review
+  finding R-2; §9 step 3, migration 0008). A new table, `cms_rate_limits`, rather than
+  `cms_mfa_rate_limits` with a null user (that table belongs to the second step: its schema,
+  `clearMfaAttempts()` and the MFA self-test's clean-up own its rows) or the old
+  `cms_booking_rate_limit` (a log of rows cannot express an atomic per-key reservation, and the
+  gift voucher store still uses it, so it is neither dropped nor altered; the booking rows left
+  in it age out through the voucher requests' prune and `cms:retention`).
+  **Semantics changed slightly:** the old rule counted the attempts of "this e-mail OR this IP"
+  together against one limit of 5; now each key has its own 5 (5 per IP **and** 5 per e-mail).
+  The bound per IP and per address is the same; an attempt whose IP and e-mail each have fewer
+  than 5 but together 5 or more is now allowed. **Stricter:** the guardian e-mail, which
+  receives the confirmation as well, is a key too. Only a valid IP is a key (the old code used
+  whatever text it was handed; through `public-actions.ts` that was already a validated address
+  or null). **Unchanged on purpose:** every attempt that passes keeps its hits,
+  including `slot_taken` and successes (no give-back on outcome: review R-4/R-11 left open);
+  the gift voucher limit (R-3) still counts and inserts on `cms_booking_rate_limit`; the
+  second-step limiter keeps its own copy of the same statements in
+  `src/lib/cms/mfa/rate-limit.ts` and can move onto `src/lib/rate-limit.ts` later (its
+  `user_id` column serves `clearMfaAttempts()`). Not covered: an IPv6 visitor who rotates
+  addresses inside their /64 counts as many IPs (the e-mail key still holds per address).
 
 ---
 

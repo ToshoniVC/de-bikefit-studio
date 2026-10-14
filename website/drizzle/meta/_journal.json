@@ -57,6 +57,13 @@
       "when": 1791915146515,
       "tag": "0007_cms_mfa_rate_limits",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792002720407,
+      "tag": "0008_cms_rate_limits",
+      "breakpoints": true
     }
   ]
 }

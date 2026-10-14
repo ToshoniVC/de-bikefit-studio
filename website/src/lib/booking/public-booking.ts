@@ -1,10 +1,9 @@
 import 'server-only';
 import { createHash, randomBytes } from 'node:crypto';
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { getCmsDb, type CmsDatabase } from '@/db/cms';
+import { getCmsDb } from '@/db/cms';
 import {
-  cmsBookingRateLimit,
   cmsBookings,
   cmsLocations,
   cmsProviderServices,
@@ -16,6 +15,7 @@ import {
 } from '@/db/cms-schema';
 import { recordAudit } from '@/lib/cms/auth';
 import { getSiteSettings } from '@/lib/cms/content';
+import { reserveRateLimit } from '@/lib/rate-limit';
 import { clientIpFromHeaders } from '@/lib/request-ip';
 import { isUniqueViolation, logBookingFailure } from './booking-log';
 import { getAvailability, resolveLocationId } from './content';
@@ -27,6 +27,7 @@ import {
   sendBookingCreatedEmails,
 } from './notifications';
 import { cancelProviderEvent, createProviderEvent } from './provider-calendar';
+import { bookingRateLimitScopes } from './rate-limit-policy';
 import { getBookingRules } from './settings';
 import { formatSlot, instantToLocal } from './time';
 
@@ -36,12 +37,14 @@ import { formatSlot, instantToLocal } from './time';
  * (`src/lib/booking/public-actions.ts`).
  *
  * `createPublicBooking()`:
- *   validate (zod, Dutch messages) → rate limit (5 per 15 min per IP or
- *   e-mail, `cms_booking_rate_limit`) → re-check the slot with a FRESH
- *   availability computation (live bookings + Google free/busy) → insert →
- *   Google event without attendees (`google_sync_status`) → e-mails (customer
- *   confirmation with .ics + cancel link, provider notification) → audit
- *   (`recordAudit(db, null, …)`).
+ *   validate (zod, Dutch messages) → rate limit: reserve one hit per key,
+ *   5 per 15 min for the IP (when known) and for each e-mail address on its
+ *   own, one race-free upsert per key on `cms_rate_limits`
+ *   (`./rate-limit-policy.ts`, `@/lib/rate-limit`) → re-check the slot with
+ *   a FRESH availability computation (live bookings + Google free/busy) →
+ *   insert → Google event without attendees (`google_sync_status`) → e-mails
+ *   (customer confirmation with .ics + cancel link, provider notification) →
+ *   audit (`recordAudit(db, null, …)`).
  *
  * Cancel tokens: 32 random bytes, base64url. Only their SHA-256 is stored
  * (`cms_bookings.cancel_token_hash`); the raw token exists only in the mail.
@@ -50,8 +53,7 @@ import { formatSlot, instantToLocal } from './time';
  * with the caught error: a query error carries every bound value.
  */
 
-export const BOOKING_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
-export const BOOKING_RATE_LIMIT_MAX = 5;
+export { BOOKING_RATE_LIMIT_MAX, BOOKING_RATE_LIMIT_WINDOW_MS } from './rate-limit-policy';
 
 // ---------------------------------------------------------------------------
 // Tokens
@@ -248,35 +250,6 @@ async function requestIp(): Promise<string | null> {
 }
 
 // ---------------------------------------------------------------------------
-// Rate limiting (mirrors cms_login_attempts)
-// ---------------------------------------------------------------------------
-
-async function recentAttempts(db: CmsDatabase, email: string, ip: string | null): Promise<number> {
-  const since = new Date(Date.now() - BOOKING_RATE_LIMIT_WINDOW_MS);
-  // An unknown IP is never used as a key — it would lump every visitor together.
-  const who = ip
-    ? sql`(${cmsBookingRateLimit.email} = ${email} OR ${cmsBookingRateLimit.ipAddress} = ${ip})`
-    : sql`${cmsBookingRateLimit.email} = ${email}`;
-  const rows = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(cmsBookingRateLimit)
-    .where(and(gte(cmsBookingRateLimit.attemptedAt, since), who));
-  return Number(rows[0]?.count ?? 0);
-}
-
-async function recordBookingAttempt(
-  db: CmsDatabase,
-  email: string,
-  ip: string | null,
-): Promise<void> {
-  await db.insert(cmsBookingRateLimit).values({ email, ipAddress: ip ?? 'unknown' });
-  // Opportunistic pruning keeps the table from growing without a cron job.
-  await db
-    .delete(cmsBookingRateLimit)
-    .where(sql`${cmsBookingRateLimit.attemptedAt} < now() - interval '1 day'`);
-}
-
-// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 
@@ -334,13 +307,19 @@ export async function createPublicBooking(
   try {
     const db = await getCmsDb();
 
-    if ((await recentAttempts(db, email, ip)) >= BOOKING_RATE_LIMIT_MAX) {
+    // Reserve before anything is looked at: one statement per key, so a
+    // parallel burst cannot get past the limit. A full key gives back what was
+    // taken; an attempt that got through keeps its hits, whatever comes next.
+    const reserved = await reserveRateLimit(
+      db,
+      bookingRateLimitScopes({ email, guardianEmail: input.guardianEmail, ip }),
+    );
+    if (!reserved.ok) {
       return fail(
         'rate_limited',
         'Te veel boekingen op korte tijd. Probeer het over een kwartier opnieuw of bel ons.',
       );
     }
-    await recordBookingAttempt(db, email, ip);
 
     const [service] = await db
       .select()

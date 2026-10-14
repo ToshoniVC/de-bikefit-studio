@@ -81,6 +81,16 @@ BEGIN
   END IF;
 END $$;
 
+-- Public rate-limit counters (0008_cms_rate_limits.sql: the booking limit):
+-- their keys hold client IP addresses and SHA-256 hashes of e-mail addresses.
+-- Guarded: production may not have 0008 yet.
+DO $$
+BEGIN
+  IF to_regclass('public.cms_rate_limits') IS NOT NULL THEN
+    EXECUTE 'TRUNCATE TABLE cms_rate_limits';
+  END IF;
+END $$;
+
 -- E-mail service set up in /admin/email (0004_integration_settings.sql), like
 -- "Opgeslagen sleutel verwijderen" there. The stored API key is production's
 -- Resend credential, sealed under a key derived from production's

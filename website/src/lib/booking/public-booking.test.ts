@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { inspect } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -7,21 +8,46 @@ import {
   hashCancelToken,
 } from './public-booking';
 
-// The pure token helpers, and what the two public flows log when a query
-// fails. `server-only` is stubbed in vitest.config.ts and `@/db/cms` is
-// replaced by a database whose every query fails, so nothing here opens a
-// real one. The log helper itself is covered in `booking-log.test.ts`.
+// The pure token helpers, what the two public flows log when a query fails,
+// and how `createPublicBooking()` answers when the rate-limit reservation
+// refuses. `server-only` is stubbed in vitest.config.ts and `@/db/cms` is
+// replaced by a fake database, so nothing here opens a real one. The log
+// helper itself is covered in `booking-log.test.ts`; the reservation on a real
+// database in self-test section 14b.
 
-/** A database handle whose every query rejects with `state.failure` once awaited. */
+/**
+ * A database handle: every awaited query takes the next entry of
+ * `state.results` (the rows it resolves to) and, once those are used up,
+ * rejects with `state.failure`. `state.awaited` counts the awaited queries.
+ */
 const fake = vi.hoisted(() => {
-  const state: { failure: unknown } = { failure: new Error('no failure set') };
+  const state: { failure: unknown; results: unknown[][]; awaited: number } = {
+    failure: new Error('no failure set'),
+    results: [],
+    awaited: 0,
+  };
   const query: Record<string, unknown> = {
     then: (
       onFulfilled?: ((value: never) => unknown) | null,
       onRejected?: ((reason: unknown) => unknown) | null,
-    ) => Promise.reject(state.failure).then(onFulfilled, onRejected),
+    ) => {
+      state.awaited += 1;
+      const rows = state.results.shift();
+      const settled: Promise<never> = rows
+        ? Promise.resolve(rows as never)
+        : Promise.reject(state.failure);
+      return settled.then(onFulfilled, onRejected);
+    },
   };
-  for (const step of ['from', 'where', 'limit', 'values', 'set', 'returning']) {
+  for (const step of [
+    'from',
+    'where',
+    'limit',
+    'values',
+    'set',
+    'returning',
+    'onConflictDoUpdate',
+  ]) {
     query[step] = () => query;
   }
   const db = {
@@ -103,6 +129,8 @@ describe('public flows: a failed query is logged without personal data', () => {
   let logged: Array<{ level: string; args: unknown[] }> = [];
 
   beforeEach(() => {
+    fake.state.results = [];
+    fake.state.awaited = 0;
     logged = [];
     for (const level of ['debug', 'info', 'log', 'warn', 'error'] as const) {
       vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
@@ -133,12 +161,18 @@ describe('public flows: a failed query is logged without personal data', () => {
     }
   }
 
-  it('createPublicBooking: a failed rate-limit query, the generic error and one safe line', async () => {
-    const sql =
-      'select count(*)::int from "cms_booking_rate_limit" where ("cms_booking_rate_limit"."attempted_at" >= $1 and ("cms_booking_rate_limit"."email" = $2 OR "cms_booking_rate_limit"."ip_address" = $3))';
-    const params = ['2026-10-20T07:45:00.000Z', CUSTOMER_EMAIL, CLIENT_IP];
-    fake.state.failure = failedQuery(
-      sql,
+  // What the reservation binds (`src/lib/rate-limit.ts`): the scope key, which
+  // holds the client IP or the e-mail hash, and the hit's time.
+  const AT = '2026-10-20T07:45:00.000Z';
+  const SINCE = '2026-10-20T07:30:00.000Z';
+  const IP_KEY = `booking:ip:${CLIENT_IP}`;
+  const EMAIL_KEY = `booking:email:${createHash('sha256').update(CUSTOMER_EMAIL).digest('hex')}`;
+  const RESERVE_SQL =
+    'insert into "cms_rate_limits" ("scope", "hits", "updated_at") values ($1, ARRAY[$2::timestamptz], $3) on conflict ("scope") do update set "hits" = array_append(ARRAY(SELECT h FROM unnest("cms_rate_limits"."hits") AS h WHERE h > $4::timestamptz ORDER BY h), $5::timestamptz), "updated_at" = greatest("cms_rate_limits"."updated_at", $6::timestamptz) where (SELECT count(*) FROM unnest("cms_rate_limits"."hits") AS h WHERE h > $7::timestamptz) < $8::int returning "scope"';
+  const reserveFailure = (key: string) => {
+    const params = [key, AT, AT, SINCE, AT, AT, SINCE, 5];
+    return failedQuery(
+      RESERVE_SQL,
       params,
       Object.assign(new Error(`connection to ${CLIENT_IP} failed for ${CUSTOMER_EMAIL}`), {
         name: 'NeonDbError',
@@ -146,22 +180,101 @@ describe('public flows: a failed query is logged without personal data', () => {
         detail: `params: ${params.join(', ')}`,
       }),
     );
-
-    const result = await createPublicBooking(INPUT, {
-      ipAddress: CLIENT_IP,
-      now: new Date('2026-10-20T07:45:00.000Z'),
-    });
-
-    expect(result).toStrictEqual({
-      ok: false,
-      code: 'error',
-      message: 'Er ging iets mis bij het boeken. Probeer het opnieuw of bel ons.',
-      fieldErrors: {},
-    });
+  };
+  const book = () =>
+    createPublicBooking(INPUT, { ipAddress: CLIENT_IP, now: new Date('2026-10-20T07:45:00.000Z') });
+  const GENERIC_ERROR = {
+    ok: false,
+    code: 'error',
+    message: 'Er ging iets mis bij het boeken. Probeer het opnieuw of bel ons.',
+    fieldErrors: {},
+  };
+  const RATE_LIMITED = {
+    ok: false,
+    code: 'rate_limited',
+    message: 'Te veel boekingen op korte tijd. Probeer het over een kwartier opnieuw of bel ons.',
+    fieldErrors: {},
+  };
+  const NOT_LOGGED = [
+    CUSTOMER_EMAIL,
+    CLIENT_IP,
+    EMAIL_KEY.slice('booking:email:'.length),
+    'booking:',
+    'kanarie',
+    'Failed query',
+    'params',
+    '@',
+  ];
+  function expectOneSafeLine() {
     expect(logged).toHaveLength(1);
     expect(logged[0].level).toBe('error');
     expect(logged[0].args).toStrictEqual(['[booking] create_failed', { event: 'create_failed' }]);
-    expectNoneLogged([CUSTOMER_EMAIL, CLIENT_IP, 'kanarie', 'Failed query', 'params', '@']);
+    expectNoneLogged(NOT_LOGGED);
+  }
+
+  it('createPublicBooking: a failed rate-limit query, the generic error and one safe line', async () => {
+    // The prune passes; reserving the IP scope fails.
+    fake.state.results = [[]];
+    fake.state.failure = reserveFailure(IP_KEY);
+
+    expect(await book()).toStrictEqual(GENERIC_ERROR);
+    expectOneSafeLine();
+    expect(fake.state.awaited).toBe(2);
+  });
+
+  it('createPublicBooking: a failed prune (before any reservation), the generic error and one safe line', async () => {
+    fake.state.failure = failedQuery(
+      'delete from "cms_rate_limits" where "cms_rate_limits"."updated_at" < now() - interval \'1 day\'',
+      [],
+      Object.assign(new Error(`connection to ${CLIENT_IP} failed for ${CUSTOMER_EMAIL}`), {
+        name: 'NeonDbError',
+        code: '08006',
+      }),
+    );
+
+    expect(await book()).toStrictEqual(GENERIC_ERROR);
+    expectOneSafeLine();
+    expect(fake.state.awaited).toBe(1);
+  });
+
+  it('createPublicBooking: the e-mail scope fails after the IP scope was reserved, still one safe line', async () => {
+    fake.state.results = [[], [{ scope: IP_KEY }]];
+    fake.state.failure = reserveFailure(EMAIL_KEY);
+
+    expect(await book()).toStrictEqual(GENERIC_ERROR);
+    expectOneSafeLine();
+    expect(fake.state.awaited).toBe(3);
+  });
+
+  it('createPublicBooking: a full first scope → rate_limited before the service check, nothing logged', async () => {
+    // Prune, then the IP scope's upsert returns no row: full. Nothing to give back.
+    fake.state.results = [[], []];
+
+    expect(await book()).toStrictEqual(RATE_LIMITED);
+    expect(logged).toHaveLength(0);
+    expect(fake.state.awaited).toBe(2);
+  });
+
+  it('createPublicBooking: a full e-mail scope gives the IP hit back (one statement) → rate_limited', async () => {
+    // Prune, IP reserved, e-mail full, then the release of the IP hit.
+    fake.state.results = [[], [{ scope: IP_KEY }], [], []];
+
+    expect(await book()).toStrictEqual(RATE_LIMITED);
+    expect(logged).toHaveLength(0);
+    expect(fake.state.awaited).toBe(4);
+  });
+
+  it('createPublicBooking: a release that fails still refuses, with the generic error and one safe line', async () => {
+    fake.state.results = [[], [{ scope: IP_KEY }], []];
+    fake.state.failure = failedQuery(
+      'update "cms_rate_limits" set "hits" = … where ("cms_rate_limits"."scope" = $3 and …)',
+      [AT, AT, IP_KEY, AT],
+      new Error(`release failed for ${CLIENT_IP}`),
+    );
+
+    expect(await book()).toStrictEqual(GENERIC_ERROR);
+    expectOneSafeLine();
+    expect(fake.state.awaited).toBe(4);
   });
 
   it('cancelBookingByToken: a failed token lookup, the generic error and one safe line', async () => {

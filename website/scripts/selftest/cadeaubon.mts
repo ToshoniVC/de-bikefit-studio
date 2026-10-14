@@ -330,8 +330,10 @@ export async function cadeaubonSection(ctx: {
       JSON.stringify([fifth, sixth]),
     );
 
-    // Booking attempts key on the plain e-mail and IP (public-booking.ts): none of
-    // these rows can match one, and none holds the visitor's address.
+    // Bookings no longer write this table (since 0008 they reserve hits on
+    // `cms_rate_limits`, section 14b); the voucher rows are namespaced, so even
+    // the rows of a database from before 0008 (plain e-mail and IP) can never
+    // match one, and none of these holds the visitor's address.
     const rows = (await db.select().from(schema.cmsBookingRateLimit)).filter((row) =>
       row.email.startsWith('cadeaubon'),
     );

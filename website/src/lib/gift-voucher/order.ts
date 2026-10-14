@@ -30,6 +30,28 @@ export const GIFT_VOUCHER_LIMITS = {
   phone: 40,
 } as const;
 
+/**
+ * Caps on the RAW request fields, checked by the schema before any normalising
+ * or pattern runs. Technical bounds, not voucher terms: validation comes before
+ * the rate limit (`delivery.ts`), on a server-action body of up to 6 MB, so
+ * these keep the work one anonymous request can cause small. They sit far
+ * above {@link GIFT_VOUCHER_LIMITS}, which apply after normalising, so what
+ * normalising removes (CRLF, tabs, trailing spaces, blank lines, invisible
+ * characters) never gets an order refused that fits those; the form's
+ * `maxLength` keeps a browser within the visitor-facing limits anyway.
+ */
+export const GIFT_VOUCHER_RAW_LIMITS = {
+  amount: 64,
+  message: 4000,
+  name: 500,
+  email: 400,
+  phone: 100,
+  /** Honeypot: a longer value counts as filled in, unread. */
+  website: 400,
+  /** Request id: a longer one is dropped like any malformed id. */
+  requestId: 128,
+} as const;
+
 /** Visitor-facing messages of the whole flow (shared by the form and the server). */
 export const GIFT_VOUCHER_MESSAGES = {
   invalid: 'Controleer de gemarkeerde velden.',
@@ -41,6 +63,11 @@ export const GIFT_VOUCHER_MESSAGES = {
 
 export type GiftVoucherField = 'amount' | 'message' | 'name' | 'email' | 'phone';
 
+/**
+ * A plain address. Backtracks quadratically on a long run of dots (`a@....@`),
+ * so only ever test a value whose length was checked first (at most 200
+ * characters, here and in `recipient.ts`).
+ */
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_RE = /^[+0-9()./\s-]{6,25}$/;
 /** Shape of the per-form request id the client generates (`crypto.randomUUID()`). */
@@ -61,11 +88,16 @@ export function singleLine(value: string): string {
     .trim();
 }
 
-/** Plain-text message: LF line breaks, at most one empty line in a row, trimmed. */
+/**
+ * Plain-text message: LF line breaks, at most one empty line in a row, trimmed.
+ * Line ends go through `trimEnd()`: the same characters as `/\s+$/`, but in
+ * linear time, where that pattern is quadratic on a long run of whitespace
+ * followed by text.
+ */
 export function normalizeMessage(value: string): string {
   return stripInvisible(value.replace(/\r\n?/g, '\n').replace(/\t/g, ' '))
     .split('\n')
-    .map((line) => line.replace(/\s+$/, ''))
+    .map((line) => line.trimEnd())
     .join('\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -102,19 +134,36 @@ export function parseEuroAmountToCents(raw: string): number | null {
   return Number(value) * 100 + Number(fraction.padEnd(2, '0'));
 }
 
-const text = z.string().default('');
+/** A raw text field: `''` when absent, a `too_big` issue over its cap. */
+const text = (max: number) => z.string().max(max).default('');
 
-/** Shape only (types, defaults); the rules and messages are in {@link validateGiftVoucherOrder}. */
+/**
+ * Shape and raw caps only (types, defaults, {@link GIFT_VOUCHER_RAW_LIMITS});
+ * the rules and messages are in {@link validateGiftVoucherOrder}.
+ */
 export const giftVoucherInputSchema = z.object({
-  amount: text,
-  message: text,
-  name: text,
-  email: text,
-  phone: text,
-  /** Honeypot: must stay empty. */
-  website: text,
-  /** Per-form id; a repeat after a successful send is answered without a second e-mail. */
-  requestId: text,
+  amount: text(GIFT_VOUCHER_RAW_LIMITS.amount),
+  message: text(GIFT_VOUCHER_RAW_LIMITS.message),
+  name: text(GIFT_VOUCHER_RAW_LIMITS.name),
+  email: text(GIFT_VOUCHER_RAW_LIMITS.email),
+  phone: text(GIFT_VOUCHER_RAW_LIMITS.phone),
+  /**
+   * Honeypot: must stay empty. Reduced to "filled in?" here and never refused,
+   * so a bot gets the same quiet refusal whatever it sends: whitespace alone is
+   * not filled in (as before), anything over the cap is, without being read.
+   */
+  website: z
+    .string()
+    .default('')
+    .transform((value) => value.length > GIFT_VOUCHER_RAW_LIMITS.website || value.trim() !== ''),
+  /**
+   * Per-form id; a repeat after a successful send is answered without a second
+   * e-mail. Over the cap it is dropped like any malformed id, never a refusal.
+   */
+  requestId: z
+    .string()
+    .default('')
+    .transform((value) => (value.length > GIFT_VOUCHER_RAW_LIMITS.requestId ? '' : value)),
 });
 
 export type GiftVoucherInput = z.input<typeof giftVoucherInputSchema>;
@@ -132,12 +181,45 @@ export type GiftVoucherValidation =
   | { ok: true; order: GiftVoucherOrder; honeypot: boolean }
   | { ok: false; fieldErrors: Partial<Record<GiftVoucherField, string>> };
 
-/** Normalises and checks every field; Dutch messages keyed by field name. */
+/**
+ * Each field's message for a value that is too long or not valid. A field over
+ * its raw cap gets the same one, whichever check caught it.
+ */
+const FIELD_MESSAGES: Record<GiftVoucherField, string> = {
+  amount: 'Vul een bedrag in euro in, bijvoorbeeld 50 of 75,50.',
+  message: `Maximaal ${GIFT_VOUCHER_LIMITS.message} tekens.`,
+  name: `Maximaal ${GIFT_VOUCHER_LIMITS.name} tekens.`,
+  email: 'Vul een geldig e-mailadres in.',
+  phone: 'Vul een geldig telefoonnummer in.',
+};
+
+function isField(key: PropertyKey | undefined): key is GiftVoucherField {
+  return typeof key === 'string' && Object.hasOwn(FIELD_MESSAGES, key);
+}
+
+/**
+ * Schema issues → Dutch field messages. Only "over the raw cap" belongs to a
+ * field; any other issue (a value that is not a string, a body that is not an
+ * object) makes the request malformed: one generic message, as before.
+ */
+function rawFieldErrors(issues: z.ZodError['issues']): Partial<Record<GiftVoucherField, string>> {
+  const errors: Partial<Record<GiftVoucherField, string>> = {};
+  for (const issue of issues) {
+    const field = issue.path[0];
+    if (issue.code !== 'too_big' || !isField(field)) return { amount: 'Controleer je aanvraag.' };
+    errors[field] = FIELD_MESSAGES[field];
+  }
+  return errors;
+}
+
+/**
+ * Normalises and checks every field; Dutch messages keyed by field name. It
+ * runs before the rate limit, so it stays cheap: the schema caps each raw field
+ * first, and everything after that is linear in the (capped) input.
+ */
 export function validateGiftVoucherOrder(raw: unknown): GiftVoucherValidation {
   const parsed = giftVoucherInputSchema.safeParse(raw ?? {});
-  if (!parsed.success) {
-    return { ok: false, fieldErrors: { amount: 'Controleer je aanvraag.' } };
-  }
+  if (!parsed.success) return { ok: false, fieldErrors: rawFieldErrors(parsed.error.issues) };
   const input = parsed.data;
   const errors: Partial<Record<GiftVoucherField, string>> = {};
 
@@ -147,7 +229,7 @@ export function validateGiftVoucherOrder(raw: unknown): GiftVoucherValidation {
   if (!amountText) {
     errors.amount = 'Vul een bedrag in.';
   } else if (amountCents === null) {
-    errors.amount = 'Vul een bedrag in euro in, bijvoorbeeld 50 of 75,50.';
+    errors.amount = FIELD_MESSAGES.amount;
   } else if (amountCents < GIFT_VOUCHER_MIN_CENTS) {
     errors.amount = 'Vul een bedrag van minstens € 1 in.';
   } else if (amountCents > GIFT_VOUCHER_MAX_CENTS) {
@@ -156,23 +238,24 @@ export function validateGiftVoucherOrder(raw: unknown): GiftVoucherValidation {
 
   const message = normalizeMessage(input.message);
   if (message.length > GIFT_VOUCHER_LIMITS.message) {
-    errors.message = `Maximaal ${GIFT_VOUCHER_LIMITS.message} tekens.`;
+    errors.message = FIELD_MESSAGES.message;
   }
 
   const name = singleLine(input.name);
   if (name.length < 2) errors.name = 'Vul je naam in.';
   else if (name.length > GIFT_VOUCHER_LIMITS.name) {
-    errors.name = `Maximaal ${GIFT_VOUCHER_LIMITS.name} tekens.`;
+    errors.name = FIELD_MESSAGES.name;
   }
 
+  // Length before pattern: EMAIL_RE never sees more than 200 characters.
   const email = singleLine(input.email);
-  if (!EMAIL_RE.test(email) || email.length > GIFT_VOUCHER_LIMITS.email) {
-    errors.email = 'Vul een geldig e-mailadres in.';
+  if (email.length > GIFT_VOUCHER_LIMITS.email || !EMAIL_RE.test(email)) {
+    errors.email = FIELD_MESSAGES.email;
   }
 
   const phone = singleLine(input.phone);
-  if (phone && (!PHONE_RE.test(phone) || phone.length > GIFT_VOUCHER_LIMITS.phone)) {
-    errors.phone = 'Vul een geldig telefoonnummer in.';
+  if (phone && (phone.length > GIFT_VOUCHER_LIMITS.phone || !PHONE_RE.test(phone))) {
+    errors.phone = FIELD_MESSAGES.phone;
   }
 
   if (Object.keys(errors).length > 0) return { ok: false, fieldErrors: errors };
@@ -180,7 +263,8 @@ export function validateGiftVoucherOrder(raw: unknown): GiftVoucherValidation {
   const requestId = input.requestId.trim();
   return {
     ok: true,
-    honeypot: input.website.trim().length > 0,
+    // The schema already reduced the honeypot to "filled in?".
+    honeypot: input.website,
     order: {
       amountCents: amountCents!,
       message,

@@ -37,6 +37,8 @@ import {
 } from './blocks';
 import { sanitizeBlockData } from './actions/sanitize';
 import { CMS_TAGS, normalizeRedirectPath, normalizeSlug } from './content';
+import { deletePageRow } from './page-delete';
+import { pageDeleteDenial } from './page-policy';
 
 /**
  * CMS write API — the surface Worker B's server actions sit on.
@@ -280,15 +282,22 @@ export async function updatePage(
   return ok(page);
 }
 
-/** Hard-deletes a page and (by cascade) its draft blocks. */
+/**
+ * Hard-deletes a page and (by cascade) its draft blocks. A published page also
+ * needs `page.unpublish` (`page-policy.ts`), refused before anything is deleted,
+ * audited or revalidated; the statement repeats the rule (`page-delete.ts`).
+ */
 export async function deletePage(pageId: string): Promise<RepoResult<true>> {
   const actor = await requirePermission('page.delete');
   const db = await getCmsDb();
 
   const [existing] = await db.select().from(cmsPages).where(eq(cmsPages.id, pageId)).limit(1);
   if (!existing) return err('Pagina niet gevonden.');
+  const denial = pageDeleteDenial(actor.role, existing.status);
+  if (denial) return err(denial);
 
-  await db.delete(cmsPages).where(eq(cmsPages.id, pageId));
+  const refused = await deletePageRow(db, pageId, actor.role);
+  if (refused) return err(refused);
   await recordAudit(db, actor, {
     action: 'page.delete',
     entityType: 'cms_page',

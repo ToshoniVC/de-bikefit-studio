@@ -7,6 +7,7 @@ import { env, isProduction } from '@/lib/env';
 import * as webshopSchema from './schema';
 import * as cmsSchema from './cms-schema';
 import * as cmsMfaSchema from './cms-mfa-schema';
+import * as cmsRateLimitSchema from './cms-rate-limit-schema';
 
 /**
  * CMS database client.
@@ -29,16 +30,19 @@ import * as cmsMfaSchema from './cms-mfa-schema';
  * middleware/edge graph entirely).
  */
 
-export const schema = { ...webshopSchema, ...cmsSchema, ...cmsMfaSchema };
+export const schema = { ...webshopSchema, ...cmsSchema, ...cmsMfaSchema, ...cmsRateLimitSchema };
 export type CmsSchema = typeof schema;
 
 /**
  * Both drivers expose the same Drizzle query-builder surface; we present the
  * neon-http type so callers get one concrete type instead of a union.
  *
- * Caveat: `db.transaction()` is a real transaction on PGlite but only a batched
- * request on neon-http (the HTTP driver cannot hold a session). Never rely on
- * rollback semantics in code that also runs on Neon.
+ * Caveat: `db.transaction()` is a real transaction on PGlite but THROWS on
+ * neon-http (drizzle-orm 0.45: the HTTP driver cannot hold a session, so every
+ * statement is its own READ COMMITTED transaction). Never call it in code that
+ * also runs on Neon; order multi-statement writes so a partial failure leaves
+ * valid data, and make anything that must be atomic a single statement
+ * (`src/lib/rate-limit.ts`, `src/lib/cms/mfa/rate-limit.ts`).
  */
 export type CmsDatabase = NeonHttpDatabase<CmsSchema>;
 

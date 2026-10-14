@@ -503,7 +503,8 @@ them:
 | Data | Period | How |
 | --- | --- | --- |
 | Bookings (`cms_bookings`: contact details, bike, complaints, address) | 3 years after the customer's **last** appointment | `scripts/cms-retention.mts`, monthly (below) |
-| Booking rate-limit rows (`cms_booking_rate_limit`: IP + e-mail) | 24 hours | pruned on every booking; the script is the backstop |
+| Booking rate-limit counters (`cms_rate_limits`, since migration 0008: the IP and a SHA-256 hash of the e-mail address in the key, attempt times) | 1 day after the last attempt of that key | pruned on every booking attempt (`src/lib/rate-limit.ts`); the script does not touch them |
+| Older rate-limit rows (`cms_booking_rate_limit`: IP + e-mail; bookings wrote here until 0008, now only gift voucher requests, with a hashed e-mail) | 24 hours | pruned on every gift voucher request; the script is the backstop. Booking rows written before 0008 go with the next voucher request or the next `--apply` run |
 | Admin login attempts (`cms_login_attempts`) | pruned on every login | automatic (`src/lib/cms/auth.ts`); the script does not touch it |
 | Admin two-step code counters (`cms_mfa_rate_limits`: user id and IP in the key, attempt times; the older `cms_mfa_attempts` log is no longer written) and sign-in challenges (`cms_mfa_challenges`) | 1 day / 10 minutes | pruned on every code check and sign-in (`src/lib/cms/mfa/`); the script does not touch them |
 | Server logs (Vercel) | ≤ 30 days | Vercel's log retention for the plan |
@@ -655,6 +656,13 @@ Origin check on the server action, 5 requests per 15 minutes per e-mail address 
 `cms_booking_rate_limit` with `cadeaubon:` keys, e-mail stored as a truncated SHA-256, pruned
 after a day), and a per-form request id: a repeat of a form that was already sent is confirmed
 without a second mail. The form disables "Bestel nu" while a request is in flight.
+Validation runs before the rate limit, so it is kept cheap: the schema first caps every raw
+field (`GIFT_VOUCHER_RAW_LIMITS` in `src/lib/gift-voucher/order.ts`: message 4000 characters,
+name 500, e-mail 400, phone 100, amount 64, honeypot 400, request id 128; technical bounds far
+above the form's limits, not voucher terms), and the normalising and patterns after it run in
+linear time (the e-mail pattern never sees more than 200 characters). A field over its cap gets
+that field's usual Dutch message, an over-long honeypot counts as filled in and an over-long
+request id is ignored like any malformed one.
 
 **Privacy.** No order is stored on the site; the order exists only in the studio's mailbox.
 Server logs carry no visitor data (`[cadeaubon] aanvraag niet verstuurd (not_configured)`; an

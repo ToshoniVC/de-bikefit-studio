@@ -150,8 +150,9 @@ Resets the Neon staging branch from its parent (`production`), then runs
 > bike details and notes, plus the Google event references (so a staging cancellation can
 > never delete a real calendar event); it truncates `cms_sessions`, `cms_login_attempts`
 > and `cms_booking_rate_limit`, empties the `cms_mfa_*` tables when they exist (the four of
-> 0005 and the rate-limit counters of 0007; staging admins then enrol anew) and nulls every
-> Google token on `cms_providers`. On
+> 0005 and the rate-limit counters of 0007; staging admins then enrol anew) and the public
+> rate-limit counters `cms_rate_limits` of 0008 when it exists (IP addresses and e-mail
+> hashes in the keys), and nulls every Google token on `cms_providers`. On
 > `cms_integration_settings` (when it exists) it clears the stored e-mail API key (ciphertext,
 > hint, date) and the gift voucher order inbox, so staging never uses production's Resend
 > credential or mails test orders to the studio's real inbox; sender and reply-to stay. After a

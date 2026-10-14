@@ -33,6 +33,11 @@
  *   6. block registry: every block's defaultData validates, unknown type fails
  *   7. permissions: admin / editor content matrix
  *   8. draft → publish snapshot: draft blocks freeze into a published snapshot
+ *  8b. deleting a published page needs `page.unpublish` (AZ-1): through the
+ *      real `deletePage()`, an editor is refused for a published page and the
+ *      home page (nothing deleted or audited), also by the delete statement
+ *      alone (`status = 'draft'`); an editor's draft, an admin's delete and a
+ *      page taken offline still go (`scripts/selftest/page-delete.mts`)
  *   9. bootstrap defaults: settings table writable (bootstrap runs separately)
  *  10. booking schema: the eight booking tables + the `provider` enum value
  *  11. provider role permissions: provider / editor / admin booking matrix
@@ -43,6 +48,12 @@
  *  14. booking flow on PGlite (provider without Google): the new provider's
  *      forced password change, repo scopes, public create / re-check / rate
  *      limit / cancel by token
+ *  14b. public booking rate limit under concurrency (R-2): migration 0008,
+ *      the reservation helper (parallel, release, window, prune), parallel
+ *      `createPublicBooking()` bursts from one IP, for one e-mail, without a
+ *      usable IP and for one guardian e-mail (exactly 5 pass each), hashed
+ *      keys, partial reservations given back, fail closed without the table
+ *      (`scripts/selftest/booking-rate-limit.mts`)
  *  15. aanbod rollout + service preselection: the CLI dry run and the plan
  *      write nothing (no session, no audit, read-only db), draft guard,
  *      apply/backup, booking tables untouched, catalogue, menus, /over-ons
@@ -484,6 +495,10 @@ async function main() {
     check('snapshot keeps Dutch copy', JSON.stringify(roundTripped).includes('Fiets met'));
   }
 
+  // 8b: deleting a published page needs page.unpublish; removes what it creates.
+  const { pageDeleteSection } = await import('./selftest/page-delete.mjs');
+  await pageDeleteSection({ db, admin: user, check, section, cookieJar });
+
   section('9. bootstrap defaults');
   const settingRows = await db
     .select({ key: cmsSiteSettings.key })
@@ -496,6 +511,10 @@ async function main() {
   );
 
   await bookingSections(db, user);
+
+  // 14b: the public booking rate limit under parallel requests; removes what it creates.
+  const { bookingRateLimitSection } = await import('./selftest/booking-rate-limit.mjs');
+  await bookingRateLimitSection({ db, check, section });
 
   const { aanbodSection } = await import('./selftest/aanbod.mjs');
   await aanbodSection({

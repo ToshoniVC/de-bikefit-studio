@@ -74,15 +74,20 @@ in the seed and self-test scripts).
 
 ### Transactions
 
-`db.transaction()` is a real transaction on PGlite but only a batched request
-on neon-http, which cannot hold a session. **Do not rely on rollback.** Order
-multi-statement writes so a partial failure still leaves valid data (that is
-why `publishPage()` writes the snapshot last).
+`db.transaction()` is a real transaction on PGlite but **throws** on neon-http
+(drizzle-orm 0.45: the HTTP driver cannot hold a session, so every statement is
+its own READ COMMITTED transaction). **Do not call it in code that also runs on
+Neon, and do not rely on rollback.** Order multi-statement writes so a partial
+failure still leaves valid data (that is why `publishPage()` writes the snapshot
+last), and make anything that must be atomic a single statement: the rate-limit
+reservations (§4, Rate limiting) and the status-conditioned delete of
+`deletePage()` (§7) are built that way.
 
 ### Schema
 
 All tables in `src/db/cms-schema.ts` (the two-step verification tables in
-`src/db/cms-mfa-schema.ts`), all prefixed `cms_`.
+`src/db/cms-mfa-schema.ts`, the public rate-limit counters in
+`src/db/cms-rate-limit-schema.ts`), all prefixed `cms_`.
 
 | Table | Purpose |
 | --- | --- |
@@ -106,7 +111,10 @@ described in [`booking-architecture.md`](./booking-architecture.md) §2.
 Two-step verification adds five — `cms_mfa_factors`, `cms_mfa_recovery_codes`,
 `cms_mfa_challenges`, `cms_mfa_rate_limits` (0007) and `cms_mfa_attempts` (no
 longer written since 0007, kept because migrations are additive) — described
-in §4. That makes twenty-five `cms_*` tables in total.
+in §4. Public rate limits add one, `cms_rate_limits` (0008: the race-free
+booking limit; `cms_booking_rate_limit` stays for the gift voucher requests),
+described in `booking-architecture.md` §2 and §9. That makes twenty-six
+`cms_*` tables in total.
 
 Only two real Postgres enums exist (`cms_role` = `admin`, `editor`,
 `provider`; `cms_page_status`). Locale, menu key, block type, media storage and
@@ -139,6 +147,7 @@ URL prefix (`publicPathFor()` in `repo.ts` encodes that rule).
 | `drizzle/0005_cms_admin_mfa.sql` | Two-step verification (§4, MFA): four `cms_mfa_*` tables and one nullable column `cms_sessions.mfa_verified_at`. Additive and guarded; existing sessions get `NULL`, which is what makes existing **admin** sessions sign in again. |
 | `drizzle/0006_cms_session_limits.sql` | Admin session limits and step-up (§4, Sessions): two nullable columns, `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at`. Additive and guarded (`ADD COLUMN IF NOT EXISTS`); existing rows get `NULL`, so an existing admin session ends at `created_at` + 8 h at the latest and has no recent step-up. |
 | `drizzle/0007_cms_mfa_rate_limits.sql` | Race-free second-step limits (§4, Rate limiting): the `cms_mfa_rate_limits` table (FK to `cms_users`, two indexes) and a **unique** index `cms_mfa_challenges_user_id_unique_idx` (one challenge per user; the old non-unique index stays). Guarded and re-runnable. Its one data change: duplicate challenge rows of a user (ephemeral sign-in state, at most 10 minutes old) are deleted, the newest kept, in the same locked statement that builds the index. No DROP, no webshop table. |
+| `drizzle/0008_cms_rate_limits.sql` | Race-free public booking limit (§4, Rate limiting; `booking-architecture.md` §9): the `cms_rate_limits` table (one row per key, no FK) and its index on `updated_at`, both `IF NOT EXISTS`. No data change, no DROP, no webshop table; `cms_booking_rate_limit` untouched. Migrate **before** deploying the build that uses it: without the table every public booking attempt fails closed (`error`, `[booking] create_failed`). |
 
 **Rollout order of 0004–0007.** The e-mail settings (from `staging`) and the
 security release met in one merge: the MFA and session migrations were
@@ -157,7 +166,7 @@ under their old numbers never receives 0004 from `db:migrate`: apply
 repeat) or, locally, delete `website/.pglite/`.
 
 `drizzle.config.ts` lists the schema files (`schema.ts`, `cms-schema.ts`,
-`cms-mfa-schema.ts`) and falls back to a placeholder URL
+`cms-mfa-schema.ts`, `cms-rate-limit-schema.ts`) and falls back to a placeholder URL
 so `npm run db:generate` works without `DATABASE_URL`.
 
 Every schema change ships as a named migration, guarded so it can run twice:
@@ -189,6 +198,10 @@ cms_blocks  (draft)  --- publishPage() --->  cms_pages.published_snapshot (froze
   rendering exactly as published even if a block schema later gains a field.
 - `unpublishPage()` flips the status back to `draft` but **keeps** the
   snapshot, so re-publishing without edits restores exactly what was live.
+- `deletePage()` is a **hard** delete: the row, its draft blocks and the
+  snapshot are gone (no trash; only a database backup brings them back). On a
+  published page that is at least an unpublish, so it needs `page.unpublish`
+  as well (admin only): editors delete drafts, never a live page (§4).
 - Snapshot shape: `publishedSnapshotSchema` in `blocks.ts` (`version: 1`).
   Read it back with `parsePublishedSnapshot(value)`, which returns `null` if it
   no longer validates — treat that as "not published".
@@ -402,6 +415,17 @@ touched for a day are pruned on the way. `cms_mfa_attempts`, the log the old
 count-then-act check used, is no longer written (the audit log has every
 failure and success) and its remaining rows are pruned after a day as well.
 
+**Public booking (0008).** The anonymous booking form uses the same
+reservation, through the shared helper `src/lib/rate-limit.ts` on its own table
+`cms_rate_limits` (no user column; the keys are `booking:ip:<ip>` and
+`booking:email:<SHA-256 hex>`): 5 attempts per 15 minutes per valid IP and per
+e-mail address (customer or guardian), each key on its own, reserved before the
+slot is looked at; an attempt that passes keeps its hits. Policy and details in
+`booking-architecture.md` §9 (step 3); self-test 14b fires bursts of 20 parallel
+attempts and lets exactly 5 through (the earlier count-then-insert let 20 of 20
+through). The second-step limiter keeps its own copy of the statements for now;
+moving it onto the shared helper is a follow-up.
+
 ### API
 
 ```ts
@@ -570,7 +594,9 @@ random tokens or non-secret data: session and challenge tokens (HMAC-SHA256,
 `session.ts`), booking cancel tokens (SHA-256), the OAuth state and booking
 confirmation references (HMAC signatures), TOTP itself (HMAC-SHA1, RFC 6238),
 key derivation from `CMS_SESSION_SECRET` (HKDF, `secrets.ts`), the gift
-voucher rate-limit key (SHA-256 of an e-mail address) and content fingerprints
+voucher rate-limit key (SHA-256 of an e-mail address), the booking rate-limit
+keys (SHA-256 of the customer's and guardian's e-mail address,
+`src/lib/booking/rate-limit-policy.ts`, 14 Oct 2026) and content fingerprints
 in two CMS scripts.
 
 **Signed-in management** (`manage.ts`, *Mijn account → Tweestapsverificatie*):
@@ -657,7 +683,7 @@ navigation, redirects or settings**.
 | View pages | `page.read` | ❌ | ✅ | ✅ |
 | Create page | `page.create` | ❌ | ✅ | ✅ |
 | Edit page + SEO | `page.update` | ❌ | ✅ | ✅ |
-| Delete page | `page.delete` | ❌ | ✅ | ✅ |
+| Delete page (a published one also needs `page.unpublish`, below) | `page.delete` | ❌ | ✅ | ✅ |
 | **Publish page** | `page.publish` | ❌ | ❌ | ✅ |
 | **Unpublish page** | `page.unpublish` | ❌ | ❌ | ✅ |
 | Edit / add / delete blocks | `block.update` | ❌ | ✅ | ✅ |
@@ -711,6 +737,25 @@ editor could pull a page off the public site without the publish permission,
 contradicting §3's "editors change nothing a visitor sees". Renaming a *draft*
 page stays an ordinary `page.update`. Enforced in `updatePageMeta()`
 (`repo-admin.ts`).
+
+Deleting a **published page** likewise requires `page.unpublish` on top of
+`page.delete` (AZ-1, 14 Oct 2026). A delete is hard (row, draft blocks and
+snapshot; no trash), so on a live page it takes the page off the public site at
+once — visitors get a 404, the home page included — which is at least an
+unpublish. Editors keep `page.delete` for drafts, including a page an admin
+took offline (its kept snapshot is not live); any status other than `draft`
+counts as live, so a future status fails closed. The rule is
+`pageDeleteDenial(role, status)` in `page-policy.ts` (pure, unit-tested):
+`deletePage()` checks it after loading the page and refuses with "Een
+gepubliceerde pagina verwijderen mag alleen een beheerder. Vraag een beheerder
+om de pagina eerst offline te halen." before anything is deleted, audited or
+revalidated; the page editor shows the same sentence in place of the delete
+form. The check and the delete are two statements (no transaction on
+neon-http), so for roles without `page.unpublish` (`mayDeleteOnlyDrafts()`) the
+delete statement itself is conditioned on `status = 'draft'`
+(`deletePageRow()` in `page-delete.ts`): a page published between the check and
+the delete is not removed, and the editor gets the same refusal. Self-test
+section 8b runs it through the real `deletePage()` and the statement alone.
 
 ### Middleware
 
@@ -971,7 +1016,7 @@ listPages(locale?): Promise<PageListItem[]>
 getPageForEdit(pageId): Promise<{ page: CmsPage; blocks: CmsBlock[] } | null>   // DRAFT blocks
 createPage({ locale?, slug, title, kind?, translationGroup? }): Promise<RepoResult<CmsPage>>
 updatePage(pageId, { slug?, title?, kind?, translationGroup?, ...PageSeo }): Promise<RepoResult<CmsPage>>
-deletePage(pageId): Promise<RepoResult<true>>
+deletePage(pageId): Promise<RepoResult<true>>   // HARD delete; a published page also needs page.unpublish
 
 // Blocks (draft)
 addBlock(pageId, type: BlockType, position?): Promise<RepoResult<CmsBlock>>
@@ -1016,6 +1061,20 @@ Media limits enforced in `createMedia`: 8 MB, and
 **Media deletion is always soft.** `cms_media_blobs` rows are never removed, so
 an image still referenced by an older published snapshot can always be
 recovered.
+
+**Page deletion is hard.** `deletePage()` removes the row, its draft blocks (by
+cascade) and the published snapshot; there is no trash. It needs `page.delete`,
+and for a page that is not a draft also `page.unpublish` (§4,
+`pageDeleteDenial()` in `page-policy.ts`). An editor deleting a published page
+gets `{ ok: false, message }` with the Dutch reason, checked after the page is
+loaded and before anything is deleted, audited or revalidated. The delete
+statement (`deletePageRow()`, `page-delete.ts`) repeats the rule: for roles
+without `page.unpublish` it is `DELETE … WHERE id = $id AND status = 'draft'
+RETURNING id`, so a page published between the check and the delete is not
+removed. No row back means the same refusal while the page still exists, or
+"Pagina niet gevonden." once it is gone, again without an audit entry or a
+cache bust. Allowed deletes are unchanged: one `page.delete` audit entry, then
+the page's cache tags and public path are busted.
 
 ### `revalidateContent()` and the Next 16 cache API
 
@@ -1162,9 +1221,9 @@ git checkout webshop-baseline-2026-09-23 -- website
 git clone .winston/repos/de-bikefit-studio/baselines/webshop-baseline-2026-09-23.bundle restored
 ```
 
-Database rollback: nothing needs undoing. All migrations (0000–0007) are
+Database rollback: nothing needs undoing. All migrations (0000–0008) are
 additive, so the webshop tables and data are byte-identical before and after.
-If you want the CMS gone from a database, drop the twenty-five `cms_*` tables
+If you want the CMS gone from a database, drop the twenty-six `cms_*` tables
 and the two `cms_*` enum types — no webshop object references them.
 
 ---

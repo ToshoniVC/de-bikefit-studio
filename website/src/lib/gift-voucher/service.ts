@@ -18,11 +18,14 @@ import { deliverGiftVoucherOrder, type GiftVoucherResult, type GiftVoucherStore 
  *    Resend (`src/lib/email/send.ts`), never the visitor's address; the
  *    visitor's address is only the Reply-To;
  *  - rate limit and duplicate protection: rows in `cms_booking_rate_limit`
- *    with keys namespaced `cadeaubon:` / `cadeaubon-sent:`, so they never
- *    match a booking attempt (bookings key on the plain e-mail and IP). The
+ *    with keys namespaced `cadeaubon:` / `cadeaubon-sent:`. Bookings wrote
+ *    plain e-mail and IP rows here until migration 0008; since then they
+ *    reserve hits on `cms_rate_limits` (`src/lib/rate-limit.ts`), so this is
+ *    the table's only writer and no row can match a booking attempt. The
  *    e-mail address is stored only as a truncated SHA-256; rows are pruned
- *    after a day, like booking attempts. No migration, no order table: the
- *    order itself lives only in the studio's mailbox.
+ *    after a day. This limiter still counts, then inserts (review R-3, open):
+ *    it has not been moved onto the shared reservation yet. No migration, no
+ *    order table: the order itself lives only in the studio's mailbox.
  */
 
 const KEY = 'cadeaubon:';
