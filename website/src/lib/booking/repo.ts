@@ -28,6 +28,7 @@ import { CmsAuthError, recordAudit, requireCmsUser, requirePermission } from '@/
 import { createUser } from '@/lib/cms/users';
 import { can, type CmsPermission } from '@/lib/cms/permissions';
 import { revalidateContent, type RepoResult } from '@/lib/cms/repo';
+import { logBookingFailure } from './booking-log';
 import { BOOKING_TAG } from './content';
 import { slugify } from './format';
 import { decryptSecret, encryptSecret, revokeToken } from './google';
@@ -1326,16 +1327,16 @@ export async function cancelBooking(
   if (provider) {
     try {
       await cancelProviderEvent(provider, cancelled);
-    } catch (error) {
-      console.error('[booking] Google delete failed', error);
+    } catch {
+      logBookingFailure('admin_google_delete_failed', cancelled.id);
     }
   }
   // Only upcoming bookings trigger a mail; cancelling history stays silent.
   if (new Date(cancelled.startsAt).getTime() > now.getTime()) {
     try {
       await sendBookingCancelledEmails(cancelled.id, cancelledBy);
-    } catch (error) {
-      console.error('[booking] cancellation e-mails failed', error);
+    } catch {
+      logBookingFailure('admin_cancellation_mail_failed', cancelled.id);
     }
   }
 

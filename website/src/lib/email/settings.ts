@@ -63,12 +63,10 @@ export async function readStoredEmailSettings(db?: CmsDatabase): Promise<StoredE
       apiKeyHint: row.secretHint,
       apiKeyUpdatedAt: row.secretUpdatedAt,
     };
-  } catch (error) {
-    // The first line of a driver error names the query, never a stored value.
-    const detail = error instanceof Error ? error.message.split('\n')[0].slice(0, 200) : '';
-    console.error(
-      `[email] e-mailinstellingen niet leesbaar (migratie 0004 toegepast?); alleen omgevingsvariabelen gelden. ${detail}`,
-    );
+  } catch {
+    // Usually migration 0004 not applied: only the environment variables count.
+    // A fixed code, never the error: a driver error carries the SQL and params.
+    console.error('[email] stored_settings_unreadable');
     return NO_STORED_EMAIL_SETTINGS;
   }
 }

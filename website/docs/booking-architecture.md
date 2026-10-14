@@ -32,9 +32,11 @@ UTC (`timestamptz`).
 | `src/lib/booking/defaults.ts` | plain | bootstrap data (locations, 5 services, default hours) |
 | `src/lib/booking/google.ts` | server-only | OAuth + Calendar REST via `fetch`, token encryption |
 | `src/lib/booking/provider-calendar.ts` | server-only | a provider's busy times and events, degrading gracefully |
+| `src/lib/booking/provider-calendar-errors.ts` | plain | `describeProviderError()`: the fixed text stored as `google_sync_error` |
 | `src/lib/booking/content.ts` | server-only | public read API (cached lists, live availability) |
 | `src/lib/booking/repo.ts` | server-only | admin write API (`RepoResult<T>`) |
 | `src/lib/booking/public-booking.ts` | server-only | anonymous create / look up / cancel by token |
+| `src/lib/booking/booking-log.ts` | plain | `logBookingFailure()` (safe `[booking]` log lines) and `isUniqueViolation()` |
 | `src/lib/booking/notifications.ts` | server-only | loads a booking and sends the right e-mails |
 | `src/lib/email/send.ts` | server-only | Resend REST API via `fetch` |
 | `src/lib/email/ics.ts` | plain | RFC 5545 `.ics` builder |
@@ -231,6 +233,13 @@ rate-limit key (it would lump every visitor together).
 `getBookingByCancelToken()` is for the `/afspraak/annuleren/[token]` page:
 show what would be cancelled on GET, cancel only on a POST/server action.
 
+Failures are never logged as the caught error. Every catch in `createPublicBooking()` and
+`cancelBookingByToken()` binds no error (`catch {`) and calls `logBookingFailure(event,
+bookingId?)` from `booking-log.ts` (§9, "What is logged"). `isUniqueViolation()` lives there
+too and decides the `slot_taken` race on SQLSTATE `23505` alone, found on the error or along
+its `cause` chain. It has no fallback on message text, because a Drizzle query error's message
+embeds every bound value, including the visitor's notes.
+
 ### `repo.ts` (server-only, admin)
 
 ```ts
@@ -306,6 +315,10 @@ createProviderEvent(provider, booking): Promise<{ status; eventId; error }>     
 cancelProviderEvent(provider, booking): Promise<{ status; eventId; error }>
 getProviderAccessToken(provider): Promise<string | null>, isProviderConnected(provider)
 ```
+
+`error`, and whatever `recordProviderError()` stores on the provider, is always the fixed text
+from `describeProviderError()` in `provider-calendar-errors.ts` (§7), never the caught error's
+own message.
 
 ### `src/lib/email/*`
 
@@ -384,6 +397,24 @@ Google consent ────────────► GET /api/google/oauth/cal
   notes in the description, `extendedProperties.private.bookingId`) and sets
   `google_sync_status` to `synced`, `failed` (+ error) or `none` (not
   connected). Cancelling deletes the event (404/410 count as done).
+- **What `google_sync_error` holds.** Only the fixed text from `describeProviderError()`
+  (`provider-calendar-errors.ts`), on the provider and on the booking. A revoked or expired
+  grant (`invalid_grant`) gives "Google-toegang is ingetrokken of verlopen. Verbind Google
+  Agenda opnieuw."; another Google refusal gives "Google Agenda gaf een fout (HTTP 503,
+  invalid_client)." with at most an HTTP error status (400–599) and a short lower-case code;
+  anything else (a failed query, a network error) gives "De synchronisatie met Google Agenda
+  is mislukt (TypeError)." with at most the error's class name. Never Google's own message
+  (it can echo the event, so the customer's details), a query's SQL or bound values (the
+  token update binds the encrypted access token), or a stack. Rows written before
+  14 Oct 2026 may still hold older text until the next sync write for that provider or
+  booking replaces or clears it.
+- **What the OAuth callback logs.** Fixed codes only: `[google-oauth] code_exchange_failed`
+  when `exchangeCode()` throws, `[google-oauth] store_refused` when `storeGoogleConnection()`
+  answers `ok: false` (provider missing, no refresh token, key problem) and
+  `[google-oauth] store_failed` when it throws. Never Google's `error_description` (the
+  `GoogleApiError` message) or a failed query's text, which binds the encrypted tokens and the
+  account e-mail; Google's own `?error=` value is not logged either. The `reason` in the
+  redirect is unchanged (`booking-runbook.md` §10).
 
 ---
 
@@ -405,14 +436,22 @@ as `validation_error`) and the name of a thrown error (`TimeoutError`, `TypeErro
 customer's name), any address (not even masked), the body, Resend's error `message` (it can echo
 the request) or an error's message, and never the key; `redactSecrets()` still runs on top. The
 admin test mail shows that reason; its audit entry and the gift voucher log keep only a code
-(`provider_error` / `provider`). The full refusal text is in Resend's own dashboard.
+(`provider_error` / `provider`). The full refusal text is in Resend's own dashboard. The
+settings store logs fixed codes only: `[email] api_key_store_failed` when the key could not be
+written, `[email] stored_settings_unreadable` when the row could not be read (usually migration
+0004 not applied; the environment variables still apply). Neither carries anything of the
+error: the driver error's text and `params` hold the ciphertext and the hint.
 
 The gift voucher order form (`src/lib/gift-voucher/`, `booking-runbook.md` §12) uses the same
 `sendEmail()` with the opposite rule: there the mail *is* the order, so a skipped or failed send
 is reported to the visitor as "niet verstuurd" and only a provider-accepted send counts as
 success. It mails the studio's order inbox (env `GIFT_VOUCHER_RECIPIENT`, else `/admin/email` →
 *Ontvanger cadeaubonbestellingen*; never `contact.email`, `src/lib/gift-voucher/recipient.ts`)
-with the visitor as Reply-To, never the visitor.
+with the visitor as Reply-To, never the visitor. Its server action logs
+`[cadeaubon] order_action_failed` and nothing else when anything throws (a failed rate-limit
+query binds the client IP); the delivery helper's own lines,
+`[cadeaubon] aanvraag niet verstuurd (<code>)`, carry one of four fixed reason codes
+(`reasonCode()` in `delivery.ts`), never the provider's text.
 
 | Event | Customer (+ guardian e-mail if different) | Provider (`cms_providers.email` or login e-mail) |
 | --- | --- | --- |
@@ -448,6 +487,31 @@ Cancel token: 32 random bytes, base64url (43 chars); only `sha256(token)` hex
 is stored. `cancelBookingByToken()` allows cancelling until `cancelUntilHours`
 (48 h) before the start, then deletes the Google event, mails both parties and
 audits `booking.cancel` with no actor.
+
+**What is logged.** Nothing of a caught error, anywhere on the booking path. A failed query
+arrives as Drizzle's `DrizzleQueryError`, whose message and `params` carry every bound value
+(names, e-mail addresses, phone numbers, notes, address, the cancel-token hash, the client IP
+of the rate-limit query, an encrypted Google token), and the Neon or PGlite driver error
+behind it repeats them; even its `name` or `code` is decided by the thrower, so no field of it
+is kept. Instead each catch binds no error (`catch {`) and calls
+`logBookingFailure(event, bookingId?)` (`booking-log.ts`), which writes one line,
+`[booking] <event>`, followed by `{ event, bookingId? }`:
+
+| Event | Where |
+| --- | --- |
+| `create_failed` | the `createPublicBooking()` catch-all; no booking id, the insert may not have happened |
+| `google_event_failed`, `confirmation_mail_failed` | after the insert, with the booking id |
+| `cancel_failed` | the `cancelBookingByToken()` catch-all |
+| `google_delete_failed`, `cancellation_mail_failed` | after the status update, with the booking id |
+| `availability_action_failed`, `book_action_failed`, `cancel_action_failed` | the catch-alls of the widget's server actions (`public-actions.ts`); no booking id |
+| `confirmation_ref_unsigned` | `bookAction()`: the booking stands, only the signed confirmation URL is skipped; with the booking id |
+| `admin_google_delete_failed`, `admin_cancellation_mail_failed` | `cancelBooking()` in `repo.ts` (admin and provider cancellations), with the booking id |
+
+`bookingId` is included only when it is a UUID. `BookingLogEvent` is a closed union: every
+call site passes a literal, and `booking-log.test.ts` lists all twelve, so a new event is a
+type error until that list is updated. The cancel page logs
+`[booking] cancel_page_lookup_failed` and nothing else when the look-up throws. An error
+nobody catches (a page's own read) is still printed by Next in full (§13).
 
 ---
 
@@ -514,6 +578,20 @@ token hash, `google_sync_status = 'none'`, audit, re-check → `slot_taken`,
 the partial unique index, rate limit, admin/provider lists and stats,
 look-up / too late / cancel / already cancelled, provider cancel, no revival.
 
+Unit tests (vitest, next to the modules) cover the pure parts. For logging and error
+persistence: `booking-log.test.ts` builds Drizzle-, Neon- and PGlite-shaped failures with a
+distinctive dummy value in every field the flow binds (customer and guardian data, notes,
+address, raw token, hash, client IP, encrypted Google token, an HTTP body), offers them to
+`logBookingFailure()` in the old `(event, error, id)` call shape behind a proxy that records
+every read, and asserts that nothing was read and that none of it reaches what
+`console.error` receives or prints, plus the twelve event codes and the `isUniqueViolation()`
+rules; `public-booking.test.ts` drives `createPublicBooking()` and `cancelBookingByToken()`
+into their catch-alls against a database mock whose every query fails;
+`public-actions.test.ts` does the same for the three server actions and the unsigned
+confirmation ref, with what they call mocked to reject with such a failure; and
+`provider-calendar-errors.test.ts` checks `describeProviderError()` with the real
+`GoogleApiError` and a Drizzle-shaped failure.
+
 ---
 
 ## 13. Decisions and open points
@@ -539,6 +617,15 @@ look-up / too late / cancel / already cancelled, provider cancel, no revival.
 - No overlap check **between providers** (one studio, two fitters at the same
   time is allowed), and no travel time for Fit aan huis.
 - No reminder e-mails yet. There is no cron job; they need a scheduled job later.
+- **Booking logs and `google_sync_error` carry no personal data** (14 Oct 2026, §7 and §9).
+  The public flows, the widget's server actions, the admin cancel path in `repo.ts`, the
+  OAuth callback, the e-mail settings store and the server-action wrapper
+  `src/lib/cms/actions/run.ts` log fixed codes only. Still open: an error nobody catches (a
+  page's own read, `getCurrentCmsUser()` in the callback) is printed by Next with its full
+  message, and a Drizzle query error's message holds the SQL and every bound value. Closing
+  that needs a change at the query layer (strip `params` from what it throws), not more catch
+  blocks. `describeProviderError()` still keeps a validated Google code and an error's class
+  name in `google_sync_error` (§7); dropping those too is an owner decision.
 
 ---
 

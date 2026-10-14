@@ -49,16 +49,17 @@ export async function BookingBlock({
   let options: BookingOptions | null = null;
   try {
     options = await loadBookingOptions(locale, data.serviceIds);
-  } catch (error) {
-    console.error('[booking] widget data unavailable', error);
+  } catch {
+    // A fixed code, never the error: a failed query's message holds the SQL and its bound values.
+    console.error('[booking] widget_data_unavailable');
   }
 
   let offers: CatalogueOffer[] = [];
   if (page.requestedService) {
     try {
       offers = await listPublishedOffers(locale);
-    } catch (error) {
-      console.error('[booking] offer catalogue unavailable', error);
+    } catch {
+      console.error('[booking] offer_catalogue_unavailable');
     }
   }
   const selection: BookingSelection = resolveBookingSelection({

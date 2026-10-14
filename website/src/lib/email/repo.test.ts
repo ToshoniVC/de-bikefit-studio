@@ -223,3 +223,37 @@ describe('e-mail service changes need a recent step-up (direct calls included)',
     expect(mail.sendEmail).not.toHaveBeenCalled();
   });
 });
+
+describe('a failed key write', () => {
+  it('is refused in Dutch, not audited, and logged as a fixed code only', async () => {
+    signIn(cmsUser('admin'), { reauthenticatedAt: minutesAgo(1) });
+    // Drizzle's error for the upsert: the SQL, then every bound value.
+    const failure = Object.assign(
+      new Error(
+        'Failed query: insert into "cms_integration_settings" ("key", "secret_ciphertext", "secret_hint") values ($1, $2, $3)\nparams: email,v1.iv.tag.ciphertext,6789',
+      ),
+      { params: ['email', 'v1.iv.tag.ciphertext', '6789'] },
+    );
+    const insert = vi.spyOn(fake.db, 'insert').mockImplementation(() => ({
+      values: () =>
+        Object.assign(Promise.resolve(), {
+          onConflictDoUpdate: async () => {
+            throw failure;
+          },
+        }),
+    }));
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await expect(setEmailApiKey('re_unit_test_key_0123456789')).resolves.toEqual({
+        ok: false,
+        message: 'De sleutel kon niet opgeslagen worden. Probeer het opnieuw.',
+      });
+      expect(log.mock.calls).toEqual([['[email] api_key_store_failed']]);
+      // The upsert was the only insert: no audit entry for a key that was not stored.
+      expect(insert).toHaveBeenCalledTimes(1);
+    } finally {
+      insert.mockRestore();
+      log.mockRestore();
+    }
+  });
+});

@@ -1,10 +1,13 @@
 import 'server-only';
 
+import { createHash } from 'node:crypto';
 import { JWT } from 'google-auth-library';
 import { unstable_cache } from 'next/cache';
 
 import { getSiteSettings } from '@/lib/cms/content';
 import { env, features } from '@/lib/env';
+
+import { toGa4ReadError } from './ga4-errors';
 
 /**
  * GA4 Data API reader for the admin dashboard (`AnalyticsPanel`).
@@ -21,7 +24,9 @@ import { env, features } from '@/lib/env';
  *   failures are not cached, so fixing the configuration shows up at once.
  *
  * Never throws: every failure comes back as `{ connected: false, reason }`
- * with a Dutch message that is safe to show to an admin.
+ * with a Dutch message that is safe to show to an admin. For a failed read
+ * that is fixed text from `ga4-errors.ts`, never Google's; the server log gets
+ * `[analytics] ga4_request_failed` and at most the HTTP status.
  */
 
 export const ANALYTICS_CACHE_TAG = 'analytics';
@@ -141,6 +146,11 @@ type RunReportResponse = {
   }>;
 };
 
+/**
+ * A non-2xx Data API response. The message is Google's text: only tested in
+ * `ga4-errors.ts` (which recognises this class by `name`, `status` and
+ * `googleStatus`), never shown or logged.
+ */
 class Ga4ApiError extends Error {
   constructor(
     readonly status: number,
@@ -250,36 +260,30 @@ async function fetchOverview(
   };
 }
 
-function describeError(error: unknown, account: ServiceAccount, propertyId: string): string {
-  if (error instanceof Ga4ApiError) {
-    const text = error.message.toLowerCase();
-    if (error.googleStatus === 'PERMISSION_DENIED' || error.status === 403) {
-      if (
-        text.includes('has not been used') ||
-        text.includes('disabled') ||
-        text.includes('service_disabled')
-      ) {
-        return 'De Google Analytics Data API staat niet aan in het Google Cloud-project van het serviceaccount. Schakel ze in en probeer over enkele minuten opnieuw.';
-      }
-      return `Het serviceaccount ${account.clientEmail} heeft geen toegang tot property ${propertyId}. Voeg het in GA4 toe als Kijker (Viewer).`;
-    }
-    if (error.status === 400 || error.status === 404) {
-      return `Google Analytics kent property ${propertyId} niet. Controleer de property-ID (een getal, geen G-…-meet-ID).`;
-    }
-    if (error.status === 401) {
-      return 'Google weigerde het toegangstoken van het serviceaccount. Maak een nieuwe sleutel aan en werk GA4_SERVICE_ACCOUNT_JSON bij.';
-    }
-    return `Google Analytics gaf een fout (${error.status}): ${error.message}`.slice(0, 300);
+/**
+ * {@link fetchOverview}, but a failure leaves only as a `Ga4ReadError` (fixed
+ * message, Dutch admin text, HTTP status, no `cause`). When the background
+ * refresh of a stale cache entry fails, Next logs the thrown error in full
+ * (`revalidating cache with key: …`), so Google's error must not get that far.
+ */
+async function loadOverview(
+  propertyId: string,
+  account: ServiceAccount,
+): Promise<Extract<AnalyticsOverview, { connected: true }>> {
+  try {
+    return await fetchOverview(propertyId, account);
+  } catch (error) {
+    throw toGa4ReadError(error, propertyId);
   }
+}
 
-  const message = error instanceof Error ? error.message : String(error);
-  if (/invalid_grant|invalid_client|account not found|no key/i.test(message)) {
-    return 'De sleutel van het serviceaccount werd geweigerd (verwijderd of verlopen?). Maak een nieuwe JSON-sleutel aan en werk GA4_SERVICE_ACCOUNT_JSON bij.';
-  }
-  if (/timeout|aborted/i.test(message)) {
-    return 'Google Analytics antwoordde niet op tijd. Probeer het later opnieuw.';
-  }
-  return `Google Analytics kon niet worden gelezen: ${message}`.slice(0, 300);
+/**
+ * Stands for the service account in the cache key, so a swapped account takes
+ * effect at once. A hash rather than the e-mail: Next prints the key when a
+ * background refresh fails.
+ */
+function accountFingerprint(account: ServiceAccount): string {
+  return createHash('sha256').update(account.clientEmail).digest('hex').slice(0, 16);
 }
 
 // ---------------------------------------------------------------------------
@@ -325,22 +329,20 @@ export async function getAnalyticsOverview(): Promise<AnalyticsOverview> {
 
   try {
     const load = unstable_cache(
-      () => fetchOverview(propertyId, account),
+      () => loadOverview(propertyId, account),
       // The end date rolls the cache over at Brussels midnight; the account
-      // e-mail makes a swapped service account take effect immediately.
-      ['analytics-overview', propertyId, range.end, account.clientEmail],
+      // fingerprint makes a swapped service account take effect immediately.
+      ['analytics-overview', propertyId, range.end, accountFingerprint(account)],
       { revalidate: CACHE_SECONDS, tags: [ANALYTICS_CACHE_TAG] },
     );
     return await load();
   } catch (error) {
-    console.error(
-      '[analytics] GA4 Data API request failed:',
-      error instanceof Error ? error.message : error,
-    );
-    return {
-      connected: false,
-      reason: 'error',
-      message: describeError(error, account, propertyId),
-    };
+    // A Ga4ReadError from loadOverview(), or an error of the cache itself.
+    const failure = toGa4ReadError(error, propertyId);
+    // A fixed code and at most the HTTP status (400–599), never the error:
+    // it can hold Google's text or the service account (CLAUDE.md §4).
+    if (failure.status === null) console.error('[analytics] ga4_request_failed');
+    else console.error('[analytics] ga4_request_failed', failure.status);
+    return { connected: false, reason: 'error', message: failure.description };
   }
 }

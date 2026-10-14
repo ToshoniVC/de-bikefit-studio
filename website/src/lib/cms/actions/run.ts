@@ -38,7 +38,9 @@ export async function runAction(body: () => Promise<ActionState>): Promise<Actio
     if (error instanceof PasswordHasherBusyError) {
       return actionError('Het is even druk. Probeer het over een minuut opnieuw.');
     }
-    console.error('[cms] action failed', error);
+    // A fixed code, never the error: a failed query carries its SQL and every
+    // bound value (page content, e-mail addresses, password hashes, secrets).
+    console.error('[cms] action_failed');
     return actionError('Er ging iets mis. Probeer het opnieuw.');
   }
 }

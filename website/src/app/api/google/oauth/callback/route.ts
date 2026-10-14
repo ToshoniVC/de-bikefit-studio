@@ -34,6 +34,9 @@ import {
  *
  * Success → `/admin/agenda?google=connected` (or `/admin/providers/<id>?…`
  * when started from there). The state cookie is cleared on every outcome.
+ * Failures 4 and 7 log a fixed `[google-oauth] <event>` code only, never the
+ * error: it can hold Google's `error_description` or, for a failed query, the
+ * encrypted tokens and the account e-mail.
  */
 
 export const dynamic = 'force-dynamic';
@@ -83,11 +86,8 @@ export async function GET(request: NextRequest) {
   let tokens: GoogleTokens;
   try {
     tokens = await exchangeCode(code, oauthRedirectUri());
-  } catch (error) {
-    console.error(
-      '[google-oauth] code exchange failed:',
-      error instanceof Error ? error.message : error,
-    );
+  } catch {
+    console.error('[google-oauth] code_exchange_failed');
     return fail('exchange');
   }
 
@@ -117,16 +117,13 @@ export async function GET(request: NextRequest) {
       googleEmail,
     );
     if (!stored.ok) {
-      console.error('[google-oauth] storing the connection failed:', stored.message);
+      console.error('[google-oauth] store_refused');
       return fail(tokens.refreshToken ? 'store' : 'no_refresh_token');
     }
   } catch (error) {
     if (error instanceof CmsAuthError)
       return fail(error.code === 'forbidden' ? 'forbidden' : 'session');
-    console.error(
-      '[google-oauth] storing the connection failed:',
-      error instanceof Error ? error.message : error,
-    );
+    console.error('[google-oauth] store_failed');
     return fail('store');
   }
 

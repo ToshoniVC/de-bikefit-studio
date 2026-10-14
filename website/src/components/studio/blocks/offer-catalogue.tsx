@@ -35,8 +35,9 @@ export async function OfferCatalogueBlock({
   let offers: CatalogueOffer[] = [];
   try {
     offers = await listPublishedOffers(locale);
-  } catch (error) {
-    console.error('[aanbod] catalogue unavailable', error);
+  } catch {
+    // A fixed code, never the error: a failed query's message holds the SQL and its bound values.
+    console.error('[aanbod] catalogue_unavailable');
   }
 
   const groups = data.groups

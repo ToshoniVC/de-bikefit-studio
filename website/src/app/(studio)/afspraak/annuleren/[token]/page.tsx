@@ -48,8 +48,9 @@ export default async function CancelBookingPage({
   try {
     // Tokens are base64url; anything else is rejected inside as "ongeldig".
     lookup = await getBookingByCancelToken(token);
-  } catch (error) {
-    console.error('[booking] cancel page lookup failed', error);
+  } catch {
+    // A fixed event code only: the error carries the SQL params (the token's hash).
+    console.error('[booking] cancel_page_lookup_failed');
     lookup = { ok: false, message: 'Er ging iets mis. Probeer het later opnieuw of bel ons.' };
   }
 

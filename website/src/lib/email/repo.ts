@@ -133,11 +133,10 @@ export async function setEmailApiKey(value: string): Promise<RepoResult<true>> {
         target: cmsIntegrationSettings.key,
         set: { ...secret, updatedAt: now },
       });
-  } catch (error) {
-    // Never let this reach `runAction`'s log: a driver error lists the query
-    // parameters (ciphertext and hint) after its first line.
-    const detail = error instanceof Error ? error.message.split('\n')[0].slice(0, 200) : '';
-    console.error(`[email] API-sleutel niet opgeslagen. ${detail}`);
+  } catch {
+    // A fixed code, never the error: a driver error carries the SQL and the
+    // bound values (ciphertext and hint).
+    console.error('[email] api_key_store_failed');
     return err('De sleutel kon niet opgeslagen worden. Probeer het opnieuw.');
   }
   await recordAudit(db, actor, {

@@ -16,13 +16,13 @@ import {
   deleteEvent,
   encryptSecret,
   getFreeBusy,
-  GoogleApiError,
   insertEvent,
   isGoogleConfigured,
   refreshAccessToken,
   type GoogleBusyInterval,
 } from './google';
 import { formatLocation } from './format';
+import { describeProviderError } from './provider-calendar-errors';
 
 /**
  * A provider's Google Calendar, from the booking engine's point of view.
@@ -30,7 +30,8 @@ import { formatLocation } from './format';
  * Never throws for Google problems: a missing connection or a failing Google
  * call degrades to "no busy time" / "not synced", and the reason is written to
  * `cms_providers.google_sync_error` (shown on the admin's Google card) or to
- * `cms_bookings.google_sync_error`.
+ * `cms_bookings.google_sync_error` as fixed text from `describeProviderError()`,
+ * never the error's own message.
  */
 
 /** Refresh the access token when it expires within this window. */
@@ -52,16 +53,6 @@ async function recordProviderError(providerId: string, message: string | null): 
     .update(cmsProviders)
     .set({ googleSyncError: message, updatedAt: new Date() })
     .where(eq(cmsProviders.id, providerId));
-}
-
-function describe(error: unknown): string {
-  if (error instanceof GoogleApiError) {
-    if (error.code === 'invalid_grant') {
-      return 'Google-toegang is ingetrokken of verlopen. Verbind Google Agenda opnieuw.';
-    }
-    return error.message;
-  }
-  return error instanceof Error ? error.message : 'Onbekende fout bij Google.';
 }
 
 /**
@@ -107,7 +98,7 @@ export async function getProviderAccessToken(provider: CmsProvider): Promise<str
       .where(eq(cmsProviders.id, provider.id));
     return fresh.accessToken;
   } catch (error) {
-    await recordProviderError(provider.id, describe(error));
+    await recordProviderError(provider.id, describeProviderError(error));
     return null;
   }
 }
@@ -134,7 +125,7 @@ export async function getProviderBusy(
     if (provider.googleSyncError) await recordProviderError(provider.id, null);
     return busy;
   } catch (error) {
-    await recordProviderError(provider.id, describe(error));
+    await recordProviderError(provider.id, describeProviderError(error));
     return [];
   }
 }
@@ -231,7 +222,11 @@ export async function createProviderEvent(
     await writeBookingSync(booking.id, result);
     return result;
   } catch (error) {
-    const result: GoogleSyncResult = { status: 'failed', eventId: null, error: describe(error) };
+    const result: GoogleSyncResult = {
+      status: 'failed',
+      eventId: null,
+      error: describeProviderError(error),
+    };
     await writeBookingSync(booking.id, result);
     return result;
   }
@@ -276,7 +271,7 @@ export async function cancelProviderEvent(
     const result: GoogleSyncResult = {
       status: 'failed',
       eventId: booking.googleEventId,
-      error: describe(error),
+      error: describeProviderError(error),
     };
     await writeBookingSync(booking.id, result);
     return result;

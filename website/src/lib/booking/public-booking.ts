@@ -17,6 +17,7 @@ import {
 import { recordAudit } from '@/lib/cms/auth';
 import { getSiteSettings } from '@/lib/cms/content';
 import { clientIpFromHeaders } from '@/lib/request-ip';
+import { isUniqueViolation, logBookingFailure } from './booking-log';
 import { getAvailability, resolveLocationId } from './content';
 import { formatLocation } from './format';
 import {
@@ -44,6 +45,9 @@ import { formatSlot, instantToLocal } from './time';
  *
  * Cancel tokens: 32 random bytes, base64url. Only their SHA-256 is stored
  * (`cms_bookings.cancel_token_hash`); the raw token exists only in the mail.
+ *
+ * Failures are logged as a fixed event code (`logBookingFailure()`), never
+ * with the caught error: a query error carries every bound value.
  */
 
 export const BOOKING_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
@@ -295,24 +299,6 @@ export async function summarizeBooking(bookingId: string): Promise<PublicBooking
   };
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  const seen = new Set<unknown>();
-  let current: unknown = error;
-  while (current && typeof current === 'object' && !seen.has(current)) {
-    seen.add(current);
-    const candidate = current as { code?: unknown; message?: unknown; cause?: unknown };
-    if (candidate.code === '23505') return true;
-    if (
-      typeof candidate.message === 'string' &&
-      /duplicate key|unique constraint/i.test(candidate.message)
-    ) {
-      return true;
-    }
-    current = candidate.cause;
-  }
-  return false;
-}
-
 // ---------------------------------------------------------------------------
 // Create
 // ---------------------------------------------------------------------------
@@ -485,8 +471,8 @@ export async function createPublicBooking(
     let googleSyncStatus: CmsGoogleSyncStatus = 'pending';
     try {
       googleSyncStatus = (await createProviderEvent(provider, booking)).status;
-    } catch (error) {
-      console.error('[booking] Google event failed', error);
+    } catch {
+      logBookingFailure('google_event_failed', booking.id);
       googleSyncStatus = 'failed';
     }
 
@@ -495,8 +481,8 @@ export async function createPublicBooking(
       const mails = await sendBookingCreatedEmails(booking.id, cancelToken);
       emailSent.customer = mails.customer?.sent === true;
       emailSent.provider = mails.provider?.sent === true;
-    } catch (error) {
-      console.error('[booking] confirmation e-mails failed', error);
+    } catch {
+      logBookingFailure('confirmation_mail_failed', booking.id);
     }
 
     await recordAudit(db, null, {
@@ -527,8 +513,8 @@ export async function createPublicBooking(
       googleSyncStatus,
       emailSent,
     };
-  } catch (error) {
-    console.error('[booking] createPublicBooking failed', error);
+  } catch {
+    logBookingFailure('create_failed');
     return fail('error', 'Er ging iets mis bij het boeken. Probeer het opnieuw of bel ons.');
   }
 }
@@ -649,14 +635,14 @@ export async function cancelBookingByToken(
     if (provider) {
       try {
         await cancelProviderEvent(provider, cancelled);
-      } catch (error) {
-        console.error('[booking] Google delete failed', error);
+      } catch {
+        logBookingFailure('google_delete_failed', cancelled.id);
       }
     }
     try {
       await sendBookingCancelledEmails(cancelled.id, 'customer');
-    } catch (error) {
-      console.error('[booking] cancellation e-mails failed', error);
+    } catch {
+      logBookingFailure('cancellation_mail_failed', cancelled.id);
     }
 
     await recordAudit(db, null, {
@@ -673,8 +659,8 @@ export async function cancelBookingByToken(
       message: 'Je afspraak is geannuleerd. Je krijgt een bevestiging per e-mail.',
       booking: summary!,
     };
-  } catch (error) {
-    console.error('[booking] cancelBookingByToken failed', error);
+  } catch {
+    logBookingFailure('cancel_failed');
     return {
       ok: false,
       code: 'error',

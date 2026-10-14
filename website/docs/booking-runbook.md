@@ -342,10 +342,10 @@ The callback returns to `/admin/agenda` (or `/admin/providers/<id>`) with
 | `state` | The 10-minute window passed, the flow was finished in another browser, or it started on a different host than `NEXT_PUBLIC_SITE_URL`. | Start again from the admin on the `NEXT_PUBLIC_SITE_URL` host. |
 | `session` | Not signed in to the admin, signed in as someone else than who started, or an admin session without two-step verification. | Sign in (with the code from your authenticator) and start again. |
 | `forbidden` | The signed-in user may not manage this provider. | Use the provider's own login or an admin. |
-| `exchange` | Google refused the authorisation code (often a redirect URI or client secret mismatch). | Check §4 and the Vercel values; start again. |
+| `exchange` | Google refused the authorisation code (often a redirect URI or client secret mismatch). | Check §4 and the Vercel values; start again. The server log has only `[google-oauth] code_exchange_failed`; Google's description is not logged. |
 | `no_refresh_token` | Google returned no refresh token. | Remove the app at <https://myaccount.google.com/permissions>, then connect again. |
-| `store` | The tokens could not be saved (provider missing, database or key problem). | Check the server log; verify `GOOGLE_TOKEN_ENCRYPTION_KEY` is base64 of 32 bytes. |
-| `google` | Google returned another error. | The message is in the server log. |
+| `store` | The tokens could not be saved (provider missing, database or key problem). | The server log has only `[google-oauth] store_refused` (the repo said no) or `store_failed` (it threw). Verify `GOOGLE_TOKEN_ENCRYPTION_KEY` is base64 of 32 bytes and that the provider still exists. |
+| `google` | Google returned another error. | Google's `error` value is not logged; retry, then check the OAuth client and consent screen (§3–§4). |
 
 A plain-text **503 "Google Agenda is nog niet ingesteld"** means
 `GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET` are missing in this
@@ -385,6 +385,11 @@ The panel names the problem:
   Property details, not `G-…`.
 - *sleutel … geweigerd* → the key was deleted in Cloud console; create a new
   JSON key and update `GA4_SERVICE_ACCOUNT_JSON`.
+- *gaf een fout (HTTP …)*, *antwoordde niet op tijd* or *kon niet worden
+  gelezen* → Google's own text is neither shown nor logged; the server log has
+  `[analytics] ga4_request_failed` and, for a Data API error, the HTTP status.
+  Retry after a few minutes; if it persists, check the service account and key
+  in Cloud console (§5.2).
 - All zeros → new property: wait 24–48 h. The panel refreshes at most hourly.
 
 ### No cookie banner on the public site
@@ -652,7 +657,8 @@ after a day), and a per-form request id: a repeat of a form that was already sen
 without a second mail. The form disables "Bestel nu" while a request is in flight.
 
 **Privacy.** No order is stored on the site; the order exists only in the studio's mailbox.
-Server logs carry no visitor data (`[cadeaubon] aanvraag niet verstuurd (not_configured)`; the
+Server logs carry no visitor data (`[cadeaubon] aanvraag niet verstuurd (not_configured)`; an
+unexpected failure in the action logs `[cadeaubon] order_action_failed` and nothing else; the
 mail helper logs no subject and no address, only the number of recipients, the HTTP status and
 Resend's error code). Server-action argument logging in `next dev` is switched off
 (`logging.serverFunctions: false`), so neither visitor data nor a key typed into

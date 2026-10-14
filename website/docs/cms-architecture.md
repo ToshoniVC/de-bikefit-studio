@@ -437,8 +437,12 @@ createUser(input: { email; name; role; password? }): Promise<AuthResult<{ user; 
 `password_change_required` to `/admin/password`, `mfa_required` to
 `/admin/login?mfa=1` and every other `CmsAuthError` to `/admin/login`; each
 page then checks its own permission. `runAction()` turns each code into a
-short Dutch form message. User management moved from `auth.ts` to `users.ts`
-(file-size rule); `repo.ts` still re-exports it.
+short Dutch form message. Any other failure gets the generic *Er ging iets
+mis. Probeer het opnieuw.* and one server line, `[cms] action_failed`, with
+nothing of the error: a failed query's message and `params` carry every bound
+value (page content, e-mail addresses, password hashes, sealed secrets). User
+management moved from `auth.ts` to `users.ts` (file-size rule); `repo.ts` still
+re-exports it.
 
 `getCurrentCmsUser()` never returns `passwordHash` (the type is
 `CmsUserPublic`). It only says who is signed in; anything that returns CMS
@@ -892,7 +896,10 @@ and sending uses the env variables alone.
   `GIFT_VOUCHER_RECIPIENT`) wins over the admin value; the page says so.
 - Audit actions `email.settings.update` (metadata: names of the changed fields),
   `email.key.set`, `email.key.clear` (no metadata) and `email.test` (masked address,
-  `sent`, a reason code). No value, key, ciphertext or hint is ever audited or logged.
+  `sent`, a reason code). No value, key, ciphertext or hint is ever audited or logged: a
+  failed key write logs `[email] api_key_store_failed`, an unreadable settings row
+  `[email] stored_settings_unreadable` (usually migration 0004 not applied; the environment
+  variables still apply), both without anything of the error.
 
 `getSiteSettings()` always returns every key with schema defaults filled in, so
 it never throws and never returns `undefined` fields.
@@ -1244,6 +1251,15 @@ around a cached read, but publishing goes live immediately instead of at the
 next deploy. It also keeps `next build` free of any database requirement, which
 matters because `src/db/cms.ts` refuses PGlite when `NODE_ENV=production`.
 
+**What a failed read logs.** The booking section and the offer catalogue never
+break the page when their reads fail (the section falls back to "bel ons", the
+catalogue renders nothing). Each logs a fixed code only,
+`[booking] widget_data_unavailable`, `[booking] offer_catalogue_unavailable` or
+`[aanbod] catalogue_unavailable`, never the error: a failed query's message
+holds the SQL and its bound values. A failure in a page's other reads
+(`getSiteSettings()`, the page itself) is not caught and is printed by Next in
+full (§13).
+
 ### 12.5 Structured data
 
 `src/lib/studio/jsonld.ts` builds one `@graph` per page. The layout emits
@@ -1318,6 +1334,32 @@ visible only with `analytics.read` (admins). It reads the GA4 Data API through
 property id from `GA4_PROPERTY_ID` or the `analytics.ga4PropertyId` setting),
 cached for one hour, and shows setup steps when not connected.
 
+**What a failed read shows and logs** (14 Oct 2026). Only fixed Dutch text from
+`src/lib/analytics/ga4-errors.ts` (`toGa4ReadError()`), never Google's message,
+the service-account e-mail or the key id. An error's message is only
+pattern-matched to pick a sentence; the property id appears only when it is
+the numeric one:
+
+| Failure | Admin text |
+| --- | --- |
+| Data API 403 / `PERMISSION_DENIED`, Google says the API is disabled | *De Google Analytics Data API staat niet aan in het Google Cloud-project van het serviceaccount. …* |
+| Data API 403 / `PERMISSION_DENIED`, otherwise | *Het serviceaccount heeft geen toegang tot property `<id>`. Voeg het in GA4 toe als Kijker (Viewer).* |
+| Data API 400 or 404 | *Google Analytics kent property `<id>` niet. Controleer de property-ID …* |
+| Data API 401 | *Google weigerde het toegangstoken van het serviceaccount. Maak een nieuwe sleutel aan …* |
+| another Data API error status (integer, 400–599) | *Google Analytics gaf een fout (HTTP 503). Probeer het later opnieuw.* |
+| a Data API error without such a status | *Google Analytics gaf een fout. Probeer het later opnieuw.* |
+| the token endpoint refused the key (`invalid_grant`, `invalid_client`, no key) | *De sleutel van het serviceaccount werd geweigerd (verwijderd of verlopen?). …* |
+| a timeout (`TimeoutError`, `AbortError`) | *Google Analytics antwoordde niet op tijd. Probeer het later opnieuw.* |
+| anything else | *Google Analytics kon niet worden gelezen. Probeer het later opnieuw.* |
+
+The server log gets `[analytics] ga4_request_failed` and, for a Data API error,
+that same integer status; nothing else. The loader inside `unstable_cache`
+throws only a `Ga4ReadError` (message `ga4_request_failed`, no `cause`) and the
+cache key holds a SHA-256 fingerprint of the service-account e-mail instead of
+the e-mail, because Next prints a failed background refresh with the thrown
+error and the cache key in full. Decided in `ga4-errors.test.ts` with dummy
+service-account values.
+
 Setup of the GA4 property, stream and service account:
 `booking-runbook.md` §5. GDPR rules for the banner: `booking-runbook.md` §11.1.
 
@@ -1371,6 +1413,15 @@ above the fields; `offer` and `team` use it to point editors at the register.
   Whether editors and providers get limits too is an owner decision.
 - Session rows are only pruned opportunistically. If volume ever matters, add a
   scheduled `pruneExpiredSessions()` call.
+- **Uncaught errors are printed by Next in full.** Every explicit catch (server
+  actions through `runAction()`, the OAuth callback, the booking and voucher
+  flows, the public blocks, the e-mail store, the GA4 reader) logs a fixed
+  `[area] <event>` code and nothing of the error (14 Oct 2026). An error nobody
+  catches (a page's own read, `getSiteSettings()` in a block,
+  `getCurrentCmsUser()` in a route handler) still reaches Next's own logging
+  with its message, and a Drizzle query error's message holds the SQL and every
+  bound value. Closing that needs a change at the query layer (strip `params`
+  from what it throws), not more catch blocks.
 
 ---
 

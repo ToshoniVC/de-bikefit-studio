@@ -1,3 +1,4 @@
+import { inspect } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CmsAuthError, type CmsAuthErrorCode } from '@/lib/cms/guard';
 import { PasswordHasherBusyError } from '@/lib/cms/password';
@@ -65,14 +66,70 @@ describe('runAction', () => {
     expect(log).not.toHaveBeenCalled();
   });
 
-  it('logs other failures with a prefix and shows a generic message', async () => {
+  it('logs other failures as a fixed code only and shows a generic message', async () => {
     const log = vi.spyOn(console, 'error').mockImplementation(() => {});
     const boom = new Error('relation "cms_pages" does not exist');
     await expect(failWith(boom)()).resolves.toEqual({
       ok: false,
       message: 'Er ging iets mis. Probeer het opnieuw.',
     });
-    expect(log).toHaveBeenCalledWith('[cms] action failed', boom);
+    expect(log).toHaveBeenCalledExactlyOnceWith('[cms] action_failed');
+  });
+
+  it('never logs a failed query’s SQL, bound values, cause or driver detail', async () => {
+    const calls: Array<{ level: string; args: unknown[] }> = [];
+    for (const level of ['debug', 'info', 'log', 'warn', 'error'] as const) {
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        calls.push({ level, args });
+      });
+    }
+    // Shaped like Drizzle's `DrizzleQueryError` around Neon's `NeonDbError`:
+    // message, `query`, `params` and `cause` all hold what the action wrote.
+    const failedQuery = Object.assign(
+      new Error(
+        'Failed query: insert into "cms_users" ("email", "password_hash") values ($1, $2)\nparams: kanarie@lek-test.invalid,$scrypt$kanarie-hash',
+      ),
+      {
+        query: 'insert into "cms_users" ("email", "password_hash") values ($1, $2)',
+        params: ['kanarie@lek-test.invalid', '$scrypt$kanarie-hash'],
+        cause: Object.assign(
+          new Error(
+            'detail: Failing row contains (kanarie@lek-test.invalid, $scrypt$kanarie-hash).',
+          ),
+          {
+            name: 'NeonDbError',
+            code: '23505',
+            detail: 'Key (email)=(kanarie@lek-test.invalid) already exists.',
+          },
+        ),
+      },
+    );
+
+    await expect(failWith(failedQuery)()).resolves.toEqual({
+      ok: false,
+      message: 'Er ging iets mis. Probeer het opnieuw.',
+    });
+    // Exactly one console call in total, and it is `console.error`.
+    expect(calls.map(({ level }) => level)).toEqual(['error']);
+    const args = calls.map((call) => call.args);
+    const canaries = [
+      'kanarie',
+      'lek-test',
+      'scrypt',
+      'Failed query',
+      'params',
+      'Failing row',
+      '@',
+      'insert into',
+      'cms_users',
+      '23505',
+      'NeonDbError',
+    ];
+    for (const text of [JSON.stringify(args), inspect(args, { depth: 10 })]) {
+      for (const canary of canaries) {
+        expect(text.toLowerCase(), `${canary} leaked: ${text}`).not.toContain(canary.toLowerCase());
+      }
+    }
   });
 
   it('passes control flow through and returns a normal result untouched', async () => {

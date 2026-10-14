@@ -16,6 +16,7 @@ import type {
   CancelActionResult,
 } from '@/components/studio/booking/types';
 import { clientIpFromHeaders } from '@/lib/request-ip';
+import { logBookingFailure } from './booking-log';
 import { getAvailability } from './content';
 import {
   cancelBookingByToken,
@@ -32,7 +33,9 @@ import {
  * happens here is only the public-endpoint hygiene — every argument is treated
  * as untrusted, shapes are checked before anything else runs, the client IP is
  * read from the request headers, and results are reduced to plain serialisable
- * objects that never contain contact data or the raw cancel token.
+ * objects that never contain contact data or the raw cancel token. A failure
+ * is logged as a fixed event code (`logBookingFailure()`), never with the
+ * caught error, and answered with a generic Dutch message.
  *
  * Next's server actions carry their own Origin/Host check, which is what keeps
  * these from being posted cross-site.
@@ -135,8 +138,8 @@ export async function availabilityAction(
         providerId: slot.providerId,
       })),
     };
-  } catch (error) {
-    console.error('[booking] availabilityAction failed', error);
+  } catch {
+    logBookingFailure('availability_action_failed');
     return { ok: false, message: LOAD_ERROR };
   }
 }
@@ -202,14 +205,14 @@ export async function bookAction(input: BookActionInput): Promise<BookActionResu
           where: booking.locationLabel,
         }),
       );
-    } catch (error) {
+    } catch {
       // No signing secret: the booking stands, only the refresh-safe URL is skipped.
-      console.error('[booking] confirmation ref could not be signed', error);
+      logBookingFailure('confirmation_ref_unsigned', result.bookingId);
     }
 
     return { ok: true, bookingId: result.bookingId, booking, confirmationPath: path };
-  } catch (error) {
-    console.error('[booking] bookAction failed', error);
+  } catch {
+    logBookingFailure('book_action_failed');
     return { ok: false, code: 'error', message: BOOK_ERROR, fieldErrors: {} };
   }
 }
@@ -226,8 +229,8 @@ export async function cancelAction(token: string): Promise<CancelActionResult> {
       message: result.message,
       booking: result.booking ? toSummary(result.booking) : null,
     };
-  } catch (error) {
-    console.error('[booking] cancelAction failed', error);
+  } catch {
+    logBookingFailure('cancel_action_failed');
     return { ok: false, message: CANCEL_ERROR, booking: null };
   }
 }

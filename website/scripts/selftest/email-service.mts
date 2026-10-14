@@ -405,7 +405,8 @@ export async function emailServiceSection(ctx: {
 
     // --- 10. failed key write ------------------------------------------------------------------
     // A driver error lists the query parameters (ciphertext, hint) after its
-    // first line; none of that may reach a log.
+    // first line; none of that may reach a log. The repo logs the fixed code
+    // `[email] api_key_store_failed` and nothing else.
     const FAIL_KEY = 're_SelftestFailedWrite_Zq7Xw9Kp';
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const exec = (sql: string) => (db as any).execute(sql);
@@ -428,7 +429,7 @@ export async function emailServiceSection(ctx: {
       'failed key write: refused in Dutch, not audited; the log has no key, ciphertext, hint or query parameters',
       failedWrite !== null &&
         !failedWrite!.ok &&
-        writeLogs.some((line) => line.startsWith('[email] API-sleutel niet opgeslagen')) &&
+        writeLogs.some((line) => line === '[email] api_key_store_failed') &&
         !writeLogs.some(
           (line) =>
             line.includes(FAIL_KEY) ||
