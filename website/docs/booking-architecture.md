@@ -36,6 +36,7 @@ UTC (`timestamptz`).
 | `src/lib/booking/content.ts` | server-only | public read API (cached lists, live availability) |
 | `src/lib/booking/repo.ts` | server-only | admin write API (`RepoResult<T>`) |
 | `src/lib/booking/public-booking.ts` | server-only | anonymous create / look up / cancel by token |
+| `src/lib/booking/public-booking-input.ts` | plain | `publicBookingInputSchema` (raw caps) and `validateBookingFields()` (field rules, length before pattern), re-exported by `public-booking.ts` (§5) |
 | `src/lib/booking/rate-limit-policy.ts` | plain | `bookingRateLimitScopes()`: the keys and limits of the public booking limit (§9 step 3) |
 | `src/lib/rate-limit.ts` | plain (`db` passed in) | shared race-free reservation on `cms_rate_limits`: reserve, release, prune |
 | `src/db/cms-rate-limit-schema.ts` + `drizzle/0008_cms_rate_limits.sql` | schema + migration | `cms_rate_limits` (guarded) |
@@ -227,7 +228,8 @@ cancelBookingByToken(token, context?)
   : Promise<{ ok: true; message; booking } | { ok: false; code: 'not_found' | 'already_cancelled' | 'too_late' | 'error'; message; booking }>
 summarizeBooking(bookingId), generateCancelToken(), hashCancelToken(token),
 publicBookingInputSchema, validateBookingFields(), BOOKING_RATE_LIMIT_MAX = 5, BOOKING_RATE_LIMIT_WINDOW_MS = 15 min
-// (the two constants are re-exported from rate-limit-policy.ts)
+// (re-exported: the schema and the rules from public-booking-input.ts, which also exports
+//  PUBLIC_BOOKING_LIMITS and PUBLIC_BOOKING_RAW_LIMITS; the two constants from rate-limit-policy.ts)
 
 type PublicBookingSummary = { bookingId; serviceName; providerName; startsAt; endsAt; timezone; locationLabel; status };
 ```
@@ -245,6 +247,32 @@ rate-limit key (it would lump every visitor together). After the field rules and
 before the service is looked up, every attempt **reserves** one hit per key (the
 IP when valid, the customer e-mail, a different guardian e-mail) on
 `cms_rate_limits`; a full key answers `rate_limited` (§9 step 3).
+
+**Validation runs first, without a query, and stays cheap** (`public-booking-input.ts`, pure;
+input review 2026-10-14 §8, the booking sibling of R-1). It comes before the rate limit, so a
+malformed form never costs a hit, and `createPublicBooking()` is the validation boundary for
+every caller: the widget's `bookAction` caps its fields lower first (`public-actions.ts`), but
+the self-tests call it directly, and a server action accepts a body of up to 6 MB
+(`next.config.ts`). The order:
+
+1. **Raw caps** (`publicBookingInputSchema`, `PUBLIC_BOOKING_RAW_LIMITS`): every string field is
+   capped as sent, before trimming: `serviceId`, `providerId` and `startsAt` 64 characters, the
+   names 500, the e-mails 400, the phones 100, `customerAddress` 600, `bikeDetails` 1000,
+   `notes` 4000, `website` 400, `locale` 16, an age sent as text 16. Technical bounds, at least
+   twice each visitor-facing limit and never below the action's caps, so only an absurd payload
+   stops here: `invalid` with, per field over its cap, the message the rules give a value over
+   its limit (`Maximaal N tekens.`; for a phone `Vul een geldig telefoonnummer in.`), or for
+   the other fields, which the widget never sends as free text (ids, start, an age sent as
+   text, honeypot, locale), `Ongeldige invoer.`, as for a value of the wrong type.
+2. **Honeypot**: `website` non-empty after trimming → `invalid` (unchanged).
+3. **Field rules** (`validateBookingFields()`, limits in `PUBLIC_BOOKING_LIMITS`), every
+   field's message at once, **length before pattern**: the e-mail pattern backtracks
+   quadratically on `a@` + dots + `@`, so it never sees more than 200 characters, and the
+   phone pattern never more than 40. An e-mail over 200 gets `Maximaal 200 tekens.` even when
+   it is also malformed (until 14 Oct 2026 the pattern ran first and such an address got
+   `Vul een geldig e-mailadres in.`); a phone number over 40 gets
+   `Vul een geldig telefoonnummer in.`, as before.
+4. Only then the reservation, the service, and the fresh slot re-check (§9 steps 3–5).
 
 `getBookingByCancelToken()` is for the `/afspraak/annuleren/[token]` page:
 show what would be cancelled on GET, cancel only on a POST/server action.
@@ -503,8 +531,10 @@ module later.
 
 `createPublicBooking(input)`:
 
-1. zod structural parse; field rules with Dutch messages → `invalid` + `fieldErrors`.
-2. Honeypot `website` non-empty → `invalid`.
+1. Validation, without a query (§5, `public-booking.ts`): the zod parse caps every raw field,
+   then the honeypot (step 2), then the field rules with Dutch messages, length before
+   pattern → `invalid` + `fieldErrors`.
+2. Honeypot `website` non-empty → `invalid` (checked between the parse and the field rules).
 3. Rate limit, **reserve then check** (`rate-limit-policy.ts`, `src/lib/rate-limit.ts`,
    table `cms_rate_limits`): at most 5 attempts per 15 minutes for **each** key on its own,
    in this order:
@@ -687,6 +717,15 @@ port, the hashed and lower-cased e-mail, the guardian, the order, the limits);
 confirmation ref, with what they call mocked to reject with such a failure; and
 `provider-calendar-errors.test.ts` checks `describeProviderError()` with the real
 `GoogleApiError` and a Drizzle-shaped failure.
+
+For input size (input review 2026-10-14 §8): `public-booking-input.test.ts` pins the limits and
+raw caps, checks every field at and one over its cap (the cap's message equals the rule's),
+every field's message at once, the unchanged messages for ordinary input, and, with a spy on
+`RegExp.prototype.exec` (which every pattern method calls), that no pattern ever sees more than
+a field's limit, even when the rules get a value the schema would have refused;
+`public-booking.test.ts` sends over-long e-mails and phone numbers (just over the limit, at and
+just over the raw cap, 1000 characters) through `createPublicBooking()`: each is answered
+`invalid` with the field's message, no pattern beyond the limit, zero queries, nothing logged.
 
 ---
 

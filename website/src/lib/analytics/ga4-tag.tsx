@@ -5,6 +5,7 @@ import Script from 'next/script';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { readConsent, subscribeConsent } from './consent';
+import { analyticsPageView } from './page-view';
 
 /**
  * The GA4 tag, gated on consent. Mounted only by `StudioAnalytics`
@@ -18,10 +19,21 @@ import { readConsent, subscribeConsent } from './consent';
  * Once granted (from the cookie on load, or live via the banner's
  * `cms-consent` event):
  *  1. an inline `next/script` bootstraps `dataLayer`/`gtag` with ads storage
- *     denied, `anonymize_ip: true` and `send_page_view: false`;
+ *     denied (`gtag('consent','default')`) and `gtag('js')`;
  *  2. `gtag/js` loads with `strategy="afterInteractive"`;
- *  3. a `page_view` is sent for the current path and again on every client
- *     route change (`usePathname`).
+ *  3. for the current path, and again on every client route change
+ *     (`usePathname`): `gtag('config')` with `anonymize_ip: true`,
+ *     `send_page_view: false`, signals off and the page's fields, then one
+ *     `page_view` with the same fields and `document.title`.
+ *
+ * The page fields come from `analyticsPageView()` (`page-view.ts`), never
+ * from `location.href`: the cancel link `/afspraak/annuleren/<token>` becomes
+ * `/afspraak/annuleren/[token]`, and the query keeps only the `utm_*` keys.
+ * They go on the config as well as on the event, and no config is ever sent
+ * without them, so gtag's own later hits on the page (`user_engagement`,
+ * enhanced-measurement `scroll` or clicks) should take the masked page rather
+ * than the raw `document.location`. That is gtag behaviour no unit test can
+ * reach: it is checked in the browser (`docs/booking-runbook.md` §9.5).
  *
  * A later withdrawal sets GA's documented kill switch `ga-disable-<id>` and
  * downgrades `analytics_storage` for the rest of the page's life; the banner
@@ -37,24 +49,35 @@ declare global {
 
 const noConsentOnServer = () => null;
 
-function bootstrapSnippet(measurementId: string): string {
-  const id = JSON.stringify(measurementId);
-  return [
-    'window.dataLayer=window.dataLayer||[];',
-    'window.gtag=window.gtag||function(){window.dataLayer.push(arguments);};',
-    "gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'granted'});",
-    "gtag('js',new Date());",
-    `gtag('config',${id},{anonymize_ip:true,send_page_view:false,allow_google_signals:false,allow_ad_personalization_signals:false});`,
-  ].join('');
-}
+/**
+ * The settings of every `gtag('config')`. `send_page_view: false`: a config
+ * never sends a page view of its own; the manual `page_view` is the only one.
+ */
+const CONFIG_FLAGS = {
+  anonymize_ip: true,
+  send_page_view: false,
+  allow_google_signals: false,
+  allow_ad_personalization_signals: false,
+};
+
+/**
+ * Consent defaults and `gtag('js')` only. The first `config` is sent together
+ * with the first page view, so it already carries the masked page fields.
+ */
+const BOOTSTRAP_SNIPPET = [
+  'window.dataLayer=window.dataLayer||[];',
+  'window.gtag=window.gtag||function(){window.dataLayer.push(arguments);};',
+  "gtag('consent','default',{ad_storage:'denied',ad_user_data:'denied',ad_personalization:'denied',analytics_storage:'granted'});",
+  "gtag('js',new Date());",
+].join('');
 
 export function Ga4Tag({ measurementId }: { measurementId: string }) {
   const consent = useSyncExternalStore(subscribeConsent, readConsent, noConsentOnServer);
   const granted = consent === 'granted';
   const pathname = usePathname();
 
-  // Flipped by the inline bootstrap's `onReady`, so the first page_view can
-  // never be queued ahead of `gtag('config')`.
+  // Flipped by the inline bootstrap's `onReady`, so `config` and the first
+  // page_view can never be queued ahead of the consent defaults.
   const [ready, setReady] = useState(false);
   const lastSentPath = useRef<string | null>(null);
 
@@ -73,14 +96,18 @@ export function Ga4Tag({ measurementId }: { measurementId: string }) {
     const timer = window.setTimeout(() => {
       if (typeof window.gtag !== 'function' || lastSentPath.current === pathname) return;
       lastSentPath.current = pathname;
-      window.gtag('event', 'page_view', {
-        page_path: pathname,
-        page_location: window.location.href,
-        page_title: document.title,
+      const page = analyticsPageView({
+        pathname,
+        origin: window.location.origin,
+        search: window.location.search,
       });
+      // Config first, so that gtag's own later hits on this page get the
+      // masked page too. It sends nothing itself (`send_page_view: false`).
+      window.gtag('config', measurementId, { ...CONFIG_FLAGS, ...page });
+      window.gtag('event', 'page_view', { ...page, page_title: document.title });
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [granted, ready, pathname]);
+  }, [granted, ready, pathname, measurementId]);
 
   if (!granted) return null;
 
@@ -89,7 +116,7 @@ export function Ga4Tag({ measurementId }: { measurementId: string }) {
       <Script
         id="cms-ga4-init"
         strategy="afterInteractive"
-        dangerouslySetInnerHTML={{ __html: bootstrapSnippet(measurementId) }}
+        dangerouslySetInnerHTML={{ __html: BOOTSTRAP_SNIPPET }}
         onReady={() => setReady(true)}
       />
       <Script

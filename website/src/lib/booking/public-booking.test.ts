@@ -9,11 +9,12 @@ import {
 } from './public-booking';
 
 // The pure token helpers, what the two public flows log when a query fails,
-// and how `createPublicBooking()` answers when the rate-limit reservation
-// refuses. `server-only` is stubbed in vitest.config.ts and `@/db/cms` is
-// replaced by a fake database, so nothing here opens a real one. The log
-// helper itself is covered in `booking-log.test.ts`; the reservation on a real
-// database in self-test section 14b.
+// how `createPublicBooking()` answers when the rate-limit reservation refuses,
+// and that it refuses over-long input before any query. `server-only` is
+// stubbed in vitest.config.ts and `@/db/cms` is replaced by a fake database, so
+// nothing here opens a real one. The log helper itself is covered in
+// `booking-log.test.ts`, the field rules in `public-booking-input.test.ts`; the
+// reservation on a real database in self-test section 14b.
 
 /**
  * A database handle: every awaited query takes the next entry of
@@ -306,5 +307,105 @@ describe('public flows: a failed query is logged without personal data', () => {
     expect(logged[0].level).toBe('error');
     expect(logged[0].args).toStrictEqual(['[booking] cancel_failed', { event: 'cancel_failed' }]);
     expectNoneLogged([token, hash, 'cancel_token_hash', 'Failed query', 'params']);
+  });
+});
+
+// Input review 2026-10-14 §8 (sibling of R-1): the field rules run before the rate limit, on input
+// of any size, so an over-long field is refused without a pattern ever seeing more than the field's
+// limit, and without a single query. Sizes stay small; nothing here depends on timing.
+describe('createPublicBooking: over-long input is refused before the rate limit', () => {
+  const VALID = {
+    serviceId: 'svc-bikefit',
+    startsAt: '2026-10-20T08:00:00.000Z',
+    customerName: 'Kanarie Klant',
+    customerEmail: 'kanarie.klant@lek-test.invalid',
+  };
+  /** `a@` + dots + `@`, `length` characters: the e-mail pattern backtracks quadratically on it. */
+  const dotted = (length: number) => `a@${'.'.repeat(length - 3)}@`;
+  /** Only characters the phone pattern accepts, so it would run up to its own bound. */
+  const digits = (length: number) => '0'.repeat(length);
+  const INVALID = 'Controleer de gemarkeerde velden.';
+
+  let logged: unknown[][] = [];
+
+  beforeEach(() => {
+    fake.state.results = [];
+    fake.state.awaited = 0;
+    fake.state.failure = new Error('the database was reached');
+    logged = [];
+    for (const level of ['debug', 'info', 'log', 'warn', 'error'] as const) {
+      vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
+        logged.push(args);
+      });
+    }
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  /** Books `input`; also returns every string a pattern ran on meanwhile. */
+  async function bookWatched(input: Record<string, unknown>) {
+    // test, match, replace, split and search all run a pattern through `exec` (ECMAScript
+    // RegExpExec), so this spy sees every pattern run, whichever method started it.
+    const exec = vi.spyOn(RegExp.prototype, 'exec');
+    try {
+      const result = await createPublicBooking(input, {
+        ipAddress: '203.0.113.77',
+        now: new Date('2026-10-20T07:45:00.000Z'),
+      });
+      return { result, patternInputs: exec.mock.calls.map(([value]) => String(value)) };
+    } finally {
+      exec.mockRestore();
+    }
+  }
+
+  // Lengths: just over the limit, at and just over the raw cap, and far over it.
+  it.each([
+    ['customerEmail', dotted, 200, 400, 'Maximaal 200 tekens.'],
+    ['guardianEmail', dotted, 200, 400, 'Maximaal 200 tekens.'],
+    ['customerPhone', digits, 40, 100, 'Vul een geldig telefoonnummer in.'],
+    ['guardianPhone', digits, 40, 100, 'Vul een geldig telefoonnummer in.'],
+  ] as const)(
+    '%s over its limit: its message, no pattern on more than the limit, no query, nothing logged',
+    async (field, shape, limit, cap, message) => {
+      for (const length of [limit + 1, cap, cap + 1, 1000]) {
+        fake.state.awaited = 0;
+        const { result, patternInputs } = await bookWatched({ ...VALID, [field]: shape(length) });
+
+        const tooLong = patternInputs.map((value) => value.length).filter((n) => n > limit);
+        expect(tooLong, `${field}, ${length} characters: pattern input lengths`).toEqual([]);
+        expect(result, `${field}, ${length} characters`).toStrictEqual({
+          ok: false,
+          code: 'invalid',
+          message: INVALID,
+          fieldErrors: { [field]: message },
+        });
+        expect(fake.state.awaited, `${field}, ${length} characters: queries`).toBe(0);
+      }
+      expect(logged).toEqual([]);
+    },
+  );
+
+  it('a short malformed e-mail still meets the pattern and its message, as before', async () => {
+    // The self-test's validation case (section 14): the spy does see the e-mail pattern run.
+    const { result, patternInputs } = await bookWatched({
+      serviceId: VALID.serviceId,
+      startsAt: VALID.startsAt,
+      customerEmail: 'geen-mail',
+    });
+
+    expect(result).toStrictEqual({
+      ok: false,
+      code: 'invalid',
+      message: INVALID,
+      fieldErrors: {
+        customerName: 'Vul je naam in.',
+        customerEmail: 'Vul een geldig e-mailadres in.',
+      },
+    });
+    expect(patternInputs).toContain('geen-mail');
+    expect(fake.state.awaited).toBe(0);
+    expect(logged).toEqual([]);
   });
 });

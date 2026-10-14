@@ -33,7 +33,7 @@ File ownership during parallel work comes from the work-block file (see
 | Admin | `src/app/admin/**`, `src/components/admin/**`, `src/lib/cms/actions/**` (server actions + `sanitize.ts`), `src/app/api/cms/media/**` |
 | Public site | `src/app/(studio)/**`, `src/components/studio/**`, `src/lib/studio/**`, `src/app/sitemap.ts`, `src/app/robots.ts` |
 | Booking | `src/lib/booking/**`, `src/lib/email/**`, `src/app/api/google/oauth/**` — see `booking-architecture.md` |
-| Analytics | `src/lib/analytics/{consent,ga4-tag,ga4}.ts(x)`, `src/components/studio/{analytics,consent-banner}.tsx`, `src/components/admin/analytics-panel.tsx` |
+| Analytics | `src/lib/analytics/{consent,ga4-tag,page-view,ga4,ga4-errors}.ts(x)`, `src/components/studio/{analytics,consent-banner}.tsx`, `src/components/admin/analytics-panel.tsx` |
 | Scripts | `scripts/{db-migrate,cms-bootstrap,cms-seed,cms-seed-booking,cms-rollout-aanbod,cms-patch-booking-cta,cms-patch-page-cleanup,cms-patch-cadeaubon,cms-mfa-reset,cms-selftest,cms-retention,import-editorial-image}.mts`, shared helpers in `scripts/lib/`, self-test sections 5b–5f and 15–19 in `scripts/selftest/` |
 | Shared | `src/middleware.ts`, `src/lib/env.ts`, `.env.example`, `next.config.ts`, `package.json`, `src/app/layout.tsx` |
 
@@ -1381,7 +1381,16 @@ components:
   removes any `_ga*` cookies left from an earlier acceptance. The footer link
   *Cookies* reopens the banner; the banner links to `/privacy` once published.
 - `Ga4Tag` (`src/lib/analytics/ga4-tag.tsx`) loads `gtag/js` only after
-  `granted` and sends a `page_view` on every route change.
+  `granted` and sends a `page_view` on every route change. The page fields
+  come from `analyticsPageView()` (`src/lib/analytics/page-view.ts`), never
+  from `location.href`: `page_path` is the path, `page_location` the origin
+  plus the path with only the five `utm_*` query keys (campaign attribution;
+  no `?ref=`, no `?dienst=`, no fragment), and the cancel link
+  `/afspraak/annuleren/<token>` is reported as `/afspraak/annuleren/[token]`
+  without any query. The same fields go on every `gtag('config')`, the first
+  one included, so GA's own later hits (`user_engagement`, `scroll`) should
+  use them too; decided in `page-view.test.ts`, checked in the browser as in
+  `booking-runbook.md` §9.5.
 
 Before consent there is no analytics script, no request to Google and no
 analytics cookie. When the guard fails there is no banner either and no

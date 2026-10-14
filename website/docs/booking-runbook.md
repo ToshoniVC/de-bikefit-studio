@@ -18,8 +18,8 @@ Everything degrades gracefully: the booking flow works with none of these set.
 > Code references: `src/lib/booking/google.ts` (OAuth + Calendar REST),
 > `src/app/api/google/oauth/{start,callback}/route.ts` (connect flow),
 > `src/lib/email/**` (Resend), `src/components/studio/{analytics,consent-banner}.tsx`
-> (tag + banner), `src/lib/analytics/ga4.ts` (Data API), architecture in
-> `docs/booking-architecture.md`.
+> (tag + banner), `src/lib/analytics/{ga4-tag,page-view}.ts(x)` (what the tag sends, §9.5),
+> `src/lib/analytics/ga4.ts` (Data API), architecture in `docs/booking-architecture.md`.
 
 ---
 
@@ -140,8 +140,11 @@ Changes to redirect URIs can take a few minutes to take effect.
 3. Copy the **Measurement ID** (`G-XXXXXXXXXX`) from the stream details.
 4. Same page → **Enhanced measurement** (gear) → **Page views → Show advanced
    settings** → **untick "Page changes based on browser history events"** →
-   Save. Our tag sends its own `page_view` on every route change; leaving
-   this on would count every client-side navigation twice.
+   Save. Our tag sends its own `page_view` on every route change, with a
+   masked address (§9.5); leaving this on would count every client-side
+   navigation twice, and GA's extra page views would report the browser's
+   own address, such as `/afspraak/bevestigd` with its signed `?ref=` after
+   a booking.
 5. Leave **Google signals** off (Admin → Data collection). Optional: Admin →
    Data retention → 14 months.
 6. **Admin → Property details**: copy the **Property ID** — a number such as
@@ -324,6 +327,63 @@ Do this on staging after every change to the integrations.
    `en=page_view` follows; navigating sends another one. GA4 → Reports →
    *Realtime* shows the visit. **Weigeren** loads nothing; the footer link
    **Cookies** reopens the banner.
+
+   **What GA4 receives about the page.** The tag never sends the browser's
+   own address (`src/lib/analytics/page-view.ts`): `page_path` is the path;
+   `page_location` is the origin, the path and, of the query, only
+   `utm_source`, `utm_medium`, `utm_campaign`, `utm_term` and `utm_content`
+   (GA4 reads campaign attribution from them). `?ref=` on
+   `/afspraak/bevestigd`, `?dienst=`, click ids and the `#…` fragment are
+   dropped. The cancel link `/afspraak/annuleren/<token>` is always reported
+   as `/afspraak/annuleren/[token]`, without any query: the token cancels the
+   booking. The tag puts the same values on its `gtag('config')`, so that
+   GA's own later hits on the page (`user_engagement`, enhanced-measurement
+   `scroll` and clicks) use them too. That part is Google's code and only a
+   browser shows it, so run this check on staging before production, and
+   again after any change to the tag or to the property's enhanced
+   measurement:
+
+   1. Make a dummy cancel link: the deployment's origin +
+      `/afspraak/annuleren/KanarieKanarieKanarieKanarieKanarieKanarie1?utm_source=kanarie&x=kanarie#kanarie`.
+      The token is made up, which is fine: the page shows *Deze link werkt
+      niet* and still counts as a page view. Never use a customer's link.
+   2. Open a private window, then DevTools → Network with *Preserve log*
+      on, and only then the dummy link. Before any choice: the banner
+      shows, there is **no** request to `googletagmanager.com`,
+      `google-analytics.com` or `analytics.google.com`, and no `_ga`
+      cookie.
+   3. Click **Accepteren**. `gtag/js` loads, then a `collect` request to
+      `google-analytics.com` (or `analytics.google.com`). Open its *Payload*
+      (the query string and, when GA batches events, the request body with
+      one line per event). For `en=page_view`: `dl` is
+      `https://<host>/afspraak/annuleren/[token]` (shown encoded as
+      `%5Btoken%5D`), with no `?` and no `#`; `dt` is *Afspraak annuleren*
+      in the site's title template; a page-path field, if present
+      (`ep.page_path`, or `dp`), is `/afspraak/annuleren/[token]`.
+   4. **Automatic hits — the part our code cannot prove.** Stay about 15
+      seconds, switch to another tab and back (GA normally sends
+      `en=user_engagement` when the tab is hidden); make the window short
+      enough to scroll and scroll to the bottom (`en=scroll`, when
+      *Scrolls* is on in enhanced measurement). Every new `collect` request
+      must show the same masked `dl`.
+   5. Click **Naar de homepagina**: exactly one new `page_view` (two means
+      §5.1.4 is still on), with `dl` = `https://<host>/` and the home
+      page's title as `dt`. Switch tabs once more: the next
+      `user_engagement` should show `dl` = `https://<host>/` too. If it
+      still shows the cancel placeholder, GA ignores the repeated config:
+      nothing leaks, but engagement lands on the wrong page; report it.
+   6. Search the log for `kanarie` (Network → search; for request bodies,
+      export the log as HAR and search the file). Only the site's own
+      requests may match; no request to a Google host may.
+   7. A normal page keeps its campaign keys: open
+      `<origin>/afspraak?utm_source=runbook&utm_medium=check&dienst=bikefit`
+      in the same tab. `dl` is
+      `https://<host>/afspraak?utm_source=runbook&utm_medium=check` (no
+      `dienst`), `dt` is that page's title.
+
+   A Google request with `kanarie` in it, or a `dl`/`dr` with a query key
+   other than `utm_*` or a `#`, is a failure: untick *Analytics
+   ingeschakeld* (§5.3) and keep GA4 off in production until it is fixed.
 6. **Dashboard.** `/admin` as admin: the Google Analytics panel shows numbers.
    A new property needs 24–48 h before the Data API returns data (realtime is
    not included), and the panel caches for one hour.
@@ -429,6 +489,13 @@ production** (§11.5).
 - Before a choice: **no** GA script, no request to `googletagmanager.com` or
   `google-analytics.com`, no `_ga` cookie. The only cookie a choice writes is
   `cms_consent` (`granted` or `denied`, 365 days).
+- After **Accepteren**, the tag sends GA4 each page's title, its path, and
+  the origin plus path with only the `utm_*` campaign keys of the query,
+  never the full address: no other query keys (such as the signed `?ref=` of
+  `/afspraak/bevestigd`) and no fragment. It never sends the cancel link's
+  token, which can cancel a booking: that page is reported as
+  `/afspraak/annuleren/[token]`. Data minimisation; §9.5 verifies it in the
+  browser, GA's own automatic hits included.
 - **Weigeren** is as easy as **Accepteren**: two buttons of equal weight side
   by side, no pre-ticked boxes, no "more options" detour. Weigeren also removes
   any `_ga*` cookies left from an earlier acceptance.

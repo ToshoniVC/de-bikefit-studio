@@ -1,7 +1,6 @@
 import 'server-only';
 import { createHash, randomBytes } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import { z } from 'zod';
 import { getCmsDb } from '@/db/cms';
 import {
   cmsBookings,
@@ -27,6 +26,7 @@ import {
   sendBookingCreatedEmails,
 } from './notifications';
 import { cancelProviderEvent, createProviderEvent } from './provider-calendar';
+import { publicBookingInputSchema, validateBookingFields } from './public-booking-input';
 import { bookingRateLimitScopes } from './rate-limit-policy';
 import { getBookingRules } from './settings';
 import { formatSlot, instantToLocal } from './time';
@@ -37,7 +37,9 @@ import { formatSlot, instantToLocal } from './time';
  * (`src/lib/booking/public-actions.ts`).
  *
  * `createPublicBooking()`:
- *   validate (zod, Dutch messages) → rate limit: reserve one hit per key,
+ *   validate, without a query (`./public-booking-input.ts`: the schema caps
+ *   every raw field, then the honeypot, then the field rules with Dutch
+ *   messages, length before pattern) → rate limit: reserve one hit per key,
  *   5 per 15 min for the IP (when known) and for each e-mail address on its
  *   own, one race-free upsert per key on `cms_rate_limits`
  *   (`./rate-limit-policy.ts`, `@/lib/rate-limit`) → re-check the slot with
@@ -54,6 +56,11 @@ import { formatSlot, instantToLocal } from './time';
  */
 
 export { BOOKING_RATE_LIMIT_MAX, BOOKING_RATE_LIMIT_WINDOW_MS } from './rate-limit-policy';
+export {
+  publicBookingInputSchema,
+  validateBookingFields,
+  type PublicBookingInput,
+} from './public-booking-input';
 
 // ---------------------------------------------------------------------------
 // Tokens
@@ -69,100 +76,6 @@ export function hashCancelToken(token: string): string {
 
 function looksLikeToken(token: string): boolean {
   return /^[A-Za-z0-9_-]{40,64}$/.test(token);
-}
-
-// ---------------------------------------------------------------------------
-// Input
-// ---------------------------------------------------------------------------
-
-const TYPE_ERROR = { error: 'Ongeldige invoer.' };
-const text = () => z.string(TYPE_ERROR).trim().default('');
-
-/** Structural schema (types, trimming, defaults). Rules live in {@link validateBookingFields}. */
-export const publicBookingInputSchema = z.object({
-  serviceId: text(),
-  /** Empty / null = "Iedereen": the first free provider (admin order) is chosen. */
-  providerId: z.string(TYPE_ERROR).trim().nullable().default(null),
-  /** ISO instant of the chosen slot, exactly as returned by `getAvailability()`. */
-  startsAt: text(),
-  customerName: text(),
-  customerEmail: text(),
-  customerPhone: text(),
-  customerAge: z.union([z.number(), z.string(), z.null()], TYPE_ERROR).default(null),
-  guardianName: text(),
-  guardianEmail: text(),
-  guardianPhone: text(),
-  /** Required when the resolved location is of kind `customer`. */
-  customerAddress: text(),
-  bikeDetails: text(),
-  notes: text(),
-  /** Honeypot: must stay empty. */
-  website: text(),
-  locale: z.string(TYPE_ERROR).trim().default(DEFAULT_LOCALE),
-});
-
-export type PublicBookingInput = z.input<typeof publicBookingInputSchema>;
-type ParsedInput = z.output<typeof publicBookingInputSchema>;
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const PHONE_RE = /^[+0-9()./\s-]{6,25}$/;
-
-const LIMITS: Record<string, number> = {
-  customerName: 120,
-  customerEmail: 200,
-  customerPhone: 40,
-  guardianName: 120,
-  guardianEmail: 200,
-  guardianPhone: 40,
-  customerAddress: 300,
-  bikeDetails: 500,
-  notes: 2000,
-};
-
-/** Field rules with Dutch messages; returns `{ field: message }` (empty when valid). */
-export function validateBookingFields(
-  input: ParsedInput,
-  requirements: { requiresGuardian?: boolean; requiresAddress?: boolean } = {},
-): Record<string, string> {
-  const errors: Record<string, string> = {};
-  const set = (field: string, message: string) => {
-    errors[field] ??= message;
-  };
-
-  if (!input.serviceId) set('serviceId', 'Kies een dienst.');
-  if (!input.startsAt || Number.isNaN(Date.parse(input.startsAt)))
-    set('startsAt', 'Kies een tijdstip.');
-  if (input.customerName.length < 2) set('customerName', 'Vul je naam in.');
-  if (!EMAIL_RE.test(input.customerEmail)) set('customerEmail', 'Vul een geldig e-mailadres in.');
-  if (input.customerPhone && !PHONE_RE.test(input.customerPhone)) {
-    set('customerPhone', 'Vul een geldig telefoonnummer in.');
-  }
-  if (input.guardianEmail && !EMAIL_RE.test(input.guardianEmail)) {
-    set('guardianEmail', 'Vul een geldig e-mailadres in.');
-  }
-  if (input.guardianPhone && !PHONE_RE.test(input.guardianPhone)) {
-    set('guardianPhone', 'Vul een geldig telefoonnummer in.');
-  }
-
-  const age = input.customerAge;
-  if (age !== null && age !== '') {
-    const n = Number(age);
-    if (!Number.isInteger(n) || n < 1 || n > 120)
-      set('customerAge', 'Vul een geldige leeftijd in.');
-  }
-
-  if (requirements.requiresGuardian && input.guardianName.length < 2) {
-    set('guardianName', 'Vul de naam van een ouder of voogd in.');
-  }
-  if (requirements.requiresAddress && input.customerAddress.length < 5) {
-    set('customerAddress', 'Vul het adres in waar we langskomen.');
-  }
-
-  for (const [field, max] of Object.entries(LIMITS)) {
-    const value = input[field as keyof ParsedInput];
-    if (typeof value === 'string' && value.length > max) set(field, `Maximaal ${max} tekens.`);
-  }
-  return errors;
 }
 
 // ---------------------------------------------------------------------------
