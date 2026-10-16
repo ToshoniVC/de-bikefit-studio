@@ -149,6 +149,7 @@ URL prefix (`publicPathFor()` in `repo.ts` encodes that rule).
 | `drizzle/0007_cms_mfa_rate_limits.sql` | Race-free second-step limits (§4, Rate limiting): the `cms_mfa_rate_limits` table (FK to `cms_users`, two indexes) and a **unique** index `cms_mfa_challenges_user_id_unique_idx` (one challenge per user; the old non-unique index stays). Guarded and re-runnable. Its one data change: duplicate challenge rows of a user (ephemeral sign-in state, at most 10 minutes old) are deleted, the newest kept, in the same locked statement that builds the index. No DROP, no webshop table. |
 | `drizzle/0008_cms_rate_limits.sql` | Race-free public booking limit (§4, Rate limiting; `booking-architecture.md` §9): the `cms_rate_limits` table (one row per key, no FK) and its index on `updated_at`, both `IF NOT EXISTS`. No data change, no DROP, no webshop table; `cms_booking_rate_limit` untouched. Migrate **before** deploying the build that uses it: without the table every public booking attempt fails closed (`error`, `[booking] create_failed`). |
 | `drizzle/0009_cms_service_choice_label.sql` | `cms_services.choice_label` (text, not null, default `''`): a service's label under an offer with several services ("Volwassene", "Jeugd"; `booking-architecture.md` §14). One `ADD COLUMN IF NOT EXISTS`, no data change. Migrate **before** deploying the build that uses it: the app selects every `cms_services` column. |
+| `drizzle/0010_cms_offerings.sql` | Beheer → Aanbod (§15): `cms_offerings` (one row per offer page: shown, variant mode, booking mode; FK to `cms_pages` cascade, unique `page_id`) and `cms_offering_variants` (per variant: booking service, FK set null, and price in cents; PK offering + audience). Guarded `CREATE TABLE`/`INDEX IF NOT EXISTS` and `duplicate_object` FK blocks; no data change, no webshop table, nothing on `cms_services`, `cms_provider_services` or `cms_bookings`. Migrate **before** deploying: without it pages derive their settings from their blocks, but Beheer → Aanbod cannot save and the booking actions fail closed. |
 
 **Rollout order of 0004–0007.** The e-mail settings (from `staging`) and the
 security release met in one merge: the MFA and session migrations were
@@ -167,7 +168,7 @@ under their old numbers never receives 0004 from `db:migrate`: apply
 repeat) or, locally, delete `website/.pglite/`.
 
 `drizzle.config.ts` lists the schema files (`schema.ts`, `cms-schema.ts`,
-`cms-mfa-schema.ts`, `cms-rate-limit-schema.ts`) and falls back to a placeholder URL
+`cms-mfa-schema.ts`, `cms-rate-limit-schema.ts`, `cms-offering-schema.ts`) and falls back to a placeholder URL
 so `npm run db:generate` works without `DATABASE_URL`.
 
 Every schema change ships as a named migration, guarded so it can run twice:
@@ -702,6 +703,7 @@ navigation, redirects or settings**.
 | **Manage users** | `user.read`, `user.manage` | ❌ | ❌ | ✅ |
 | **Read audit log** | `audit.read` | ❌ | ❌ | ✅ |
 | **E-mail service** (`/admin/email`: key, sender, reply-to, order inbox, test mail) | `email.manage` | ❌ | ❌ | ✅ |
+| Beheer → Aanbod: shown, variants, prices, direct booking or enquiry (§15) | `offering.manage` | ❌ | ✅ | ✅ |
 | All bookings | `booking.read` | ❌ | ✅ | ✅ |
 | Own bookings | `booking.read.own` | ✅ | ❌ | ✅ |
 | Cancel / complete any booking | `booking.manage` | ❌ | ❌ | ✅ |
@@ -938,7 +940,7 @@ and sending uses the env variables alone.
   need a full re-authentication on this session within the last 5 minutes (*Bevestig je
   identiteit* on the page, §4). Reading the status and the test message need none.
 - **Afzender en ontvangers:** sender (`naam@domein` or `Naam <naam@domein>`, no quotes or
-  control characters), optional reply-to, *Ontvanger cadeaubonbestellingen* (one address;
+  control characters), optional reply-to, *Ontvanger bestellingen en aanvragen* (one address;
   never a fallback to `contact.email`, see `src/lib/gift-voucher/recipient.ts`).
 - **Testbericht:** sends one real message on an explicit click (with a confirm).
 - Per field an env variable (`RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO`,
@@ -1522,7 +1524,9 @@ company identity line, which stays on the legal pages. The edits for existing
 databases are pure data in `src/lib/studio/seed-content/page-cleanup.ts`,
 applied by `cms:patch-page-cleanup` (`staging-runbook.md` §11).
 
-**One source per offer.** Title and summary live on the offer page's `offer`
+**One source per offer.** (Since 16 Oct 2026 the settings — shown, variants,
+prices, direct booking or enquiry — are in Beheer → Aanbod, §15; this paragraph
+describes the copy and the derivation without saved settings.) Title and summary live on the offer page's `offer`
 block. For an unlinked enquiry offer, so do editorial price and duration; for
 a linked booking offer, duration comes from the active, offered `cms_services`
 rows and independent offer price is withheld pending approved variant display.
@@ -1567,3 +1571,84 @@ new block types are zod-validated `text` in `cms_blocks`, as every block type.
 are all still valid). Old code reading a page that uses `offer`,
 `offerCatalogue` or `team` treats it as unpublished (404) — so deploy the code
 before running the rollout.
+
+---
+
+## 15. Offering management: Beheer → Aanbod — 16 Oct 2026
+
+Toshoni's brief: one place in Beheer where an editor or admin decides, per offer, whether it is
+shown on the website, whether it has separate **Volwassene** and **Jeugd** variants or one option,
+the price (per variant where they differ), and whether it is **booked directly online** or
+**asked for** through a form; providers choose themselves what they offer. Booking details:
+`booking-architecture.md` §15.
+
+**One place per decision, no parallel controls.**
+
+| Decision | Where | Who |
+| --- | --- | --- |
+| Copy, image, category, order; Duur of an offer that is asked for | the offer page (`offer` block) in Pagina's; publish as before | editor, admin publishes |
+| Shown on the website; one option or Volwassene/Jeugd; price per variant; direct booking (as which service per variant) or enquiry | **Beheer → Aanbod** (`/admin/aanbod`), tables `cms_offerings` + `cms_offering_variants` (migration 0010, `src/db/cms-offering-schema.ts`). Takes effect at once (no publish step) | `offering.manage`: editor, admin |
+| Duration, buffer, location, guardian rule, active (the bookable unit) | Beheer → Diensten (`cms_services`); a service that is a variant of a saved offering shows "prijs en label via Aanbod" instead of its own price and label fields (stored values kept as hidden fields) | `service.manage`: admin |
+| Who offers a variant | *Mijn agenda → Mijn aanbod* (the provider for their own profile), grouped per offering; an admin can do it in Aanbieders | `service.subscribe.own` / `provider.manage` |
+
+The `offer` block keeps `bookingServiceSlugs`, `priceCents` and `priceLabel` in its schema (old
+content stays valid) but the block editor no longer shows them (`managedFields` in the registry,
+`field-spec.ts`); the editor keeps their stored values. They are read only to **derive** the
+settings of an offer page without a `cms_offerings` row (`deriveLegacyOffering()`,
+`src/lib/offers/offering-legacy.ts`): no linked service → asked for, one option, its editorial
+cents; one service → direct, one option; Volwassenenfit + Jeugdfit (one with the guardian rule) →
+direct, Volwassene/Jeugd; never a price copied from a service. So the site behaves the same before
+and after migration 0010 and before and after `cms:migrate-offerings` (staging-runbook §17), which
+saves exactly those derivations; anything not exact (a free-text price label, an unknown slug, a
+service that shows its own widget price) is reported and left for an editor.
+
+**Modules.** `src/lib/offers/offering.ts` (pure: modes, validation, `settingsFromRows`,
+`resolveOffering`, price/duration labels, `offeringBookingSlugs`, `withheldServiceIds`),
+`offering-legacy.ts` (pure derivation), `offer-catalogue.ts` (pure: pages + settings + who offers
+what → cards, `hiddenPageIds`, `withheldServiceIds`, `variantDisplay`), `offering-store.ts`
+(server-only cached read, tags `cms` + `cms:offerings` + `booking`; a failed read derives every
+page and logs `[aanbod] offerings_unavailable`), `repo.ts` (admin read/write, `offering.manage`,
+audit `offering.update`, bust `cms:offerings` + `booking`), `src/lib/cms/offers-content.ts`
+(`loadOfferCatalogue`, `React.cache` per request; `listPublishedOffers` unchanged in contract;
+`isServiceBookableOnline` for the booking actions), `src/lib/cms/actions/offerings.ts`,
+`src/app/admin/(dashboard)/aanbod/page.tsx` + `src/components/admin/offerings-manager.tsx`.
+
+**Public behaviour.**
+
+- *Shown* off → the offer leaves every overview (`/aanbod`, home, `/bikefit`), its page answers
+  404 (`getStudioPage`) and is left out of the sitemap; its text stays in Pagina's.
+- Status per offer: **Online te boeken** (direct, ≥ 1 active provider with an active account on
+  ≥ 1 variant's active service), **Tijdelijk niet online te boeken** (direct, nobody offers it:
+  card greyed — dashed edge and muted title, contrast kept — and the detail page's button
+  disabled, no availability shown or suggested, the phone number as the way to ask), **Op
+  aanvraag** (enquiry, on purpose: the button scrolls to the form on the page). Cards on every
+  overview name the status; prices stay `/aanbod`-only (§14).
+- Kostprijs: "Prijs op aanvraag" until a variant has a price; one amount for one option;
+  "Volwassene € 150,00 · Jeugd op aanvraag" per variant. Never € 0, never invented. JSON-LD
+  `offers` mirror it (one `Offer` per priced variant, named when there are two) and never use the
+  block's editorial fields once an offering is resolved.
+- Duur: direct → from the variants' active services ("Volwassene: 1 u 30 min · Jeugd: 1 uur");
+  enquiry → the page's Duur text.
+
+**Enquiry form** (`src/lib/offer-enquiry/`, `src/components/studio/offer-enquiry-form.tsx`).
+Name, e-mail, optional phone (normalised to one `+32`), "Voor wie?" when the offering has
+Volwassene/Jeugd, the question; honeypot; privacy link; nothing stored. The server action
+re-checks that the offer is shown and set to enquiry (`findEnquiryOffer`), so the form cannot
+mail about another page. Rate limit on `cms_rate_limits` with the shared race-free reservation
+(`aanvraag:ip:<ip>`, `aanvraag:email:<sha256>`, 5 per 15 min per key; duplicate marker
+`aanvraag-sent:<request id>` for a day). The mail goes to the existing order inbox (env
+`GIFT_VOUCHER_RECIPIENT`, else Beheer → E-mail → *Ontvanger bestellingen en aanvragen*), never
+`contact.email` and never a hardcoded address, through `sendEmail()` with the visitor as Reply-To;
+the subject carries the offer and a reference, no personal data. Success only when the provider
+accepted the mail; otherwise "niet verstuurd" with the input kept. Logs: `[aanvraag] niet
+verstuurd (<code>)`, `[aanvraag] enquiry_action_failed`.
+
+**Tests.** `offering.test.ts`, `offer-catalogue.test.ts`, `offer-enquiry/{input,delivery}.test.ts`,
+`actions/offerings.test.ts` (provider refused, editor/admin save, validation), the booking-action
+gate in `public-actions.test.ts`, JSON-LD in `jsonld.test.ts`; on PGlite self-test section 14d
+(`scripts/selftest/offerings.mts`).
+
+**Decisions to confirm (Toshoni).** Editors get `offering.manage`, as asked: their Aanbod changes
+(including prices and hiding an offer) go live without the admin's publish step — one line in
+`permissions.ts` makes it admin-only. The env name `GIFT_VOUCHER_RECIPIENT` is kept for
+compatibility although the inbox now also receives enquiries.

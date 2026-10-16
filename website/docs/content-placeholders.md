@@ -39,7 +39,13 @@ datum).
 
 ## 1. Prijzen (P)
 
-Plaats: CMS → de dienstpagina → blok *Dienst (aanbod)* → veld **Prijslabel** (vrije tekst) of
+**Sinds 16 okt 2026:** prijzen, varianten (Volwassene/Jeugd), tonen en online boeken of op aanvraag
+stel je in bij **Beheer → Aanbod** (`/admin/aanbod`), per variant een bedrag of leeg = "Prijs op
+aanvraag" (`cms-architecture.md` §15). De velden hieronder (Prijslabel, Prijs in eurocent, Online
+boeken via dienst(en)) staan niet meer in het blok; ze bepalen enkel nog wat een dienstpagina toont
+zolang haar instellingen niet in Aanbod bewaard zijn. Er is geen enkel bedrag ingevuld of verzonnen.
+
+Vroeger (en voor een dienst zonder bewaarde instellingen): CMS → de dienstpagina → blok *Dienst (aanbod)* → veld **Prijslabel** (vrije tekst) of
 **Prijs in eurocent** (bedrag, bv. `12000` = € 120,00).
 
 - Nu staat in **Prijslabel** de bewerkbare tekst "Prijs op aanvraag"; **Prijs in eurocent** is
@@ -171,6 +177,13 @@ Vervangen kan op twee manieren:
 
 ## 6. Online boeken per dienst (K)
 
+**Sinds 16 okt 2026:** rechtstreeks online boeken of enkel op aanvraag, en welke dienst per variant,
+kies je in **Beheer → Aanbod**; aanbieders vinken zelf aan wat ze aanbieden (**Mijn agenda → Mijn
+aanbod**). Zonder aanbieder staat een online te boeken aanbod grijs als "Tijdelijk niet online te
+boeken"; een aanbod op aanvraag toont een aanvraagformulier op zijn pagina (naar de ontvanger uit
+**Beheer → E-mail**, C-02). De stand hieronder is wat de pagina's vóór die instellingen afleidden,
+en wat `cms:migrate-offerings` letterlijk overneemt.
+
 Zie [`booking-architecture.md`](./booking-architecture.md) §14. Plaats: CMS → de dienstpagina →
 blok *Dienst (aanbod)* → veld **Online boeken via dienst(en)** (slug uit `/admin` → **Diensten**,
 één per regel). Leeg = de knop "Boek een afspraak voor deze dienst" leidt naar een contactvraag
@@ -179,10 +192,10 @@ blok *Dienst (aanbod)* → veld **Online boeken via dienst(en)** (slug uit `/adm
 | ID | Onderwerp | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
 | K-01 | *Bikefit – huidige fiets* | gekoppeld aan de bestaande diensten `volwassenenfit` (90 min) en `jeugdfit` (60 min). Sinds 16 okt 2026 toont `/afspraak` dit aanbod **één keer**, met daaronder "Voor wie?": **Volwassene** en **Jeugd** (veld **Keuzelabel onder een aanbod** in **Diensten**); de gekozen dienst bepaalt duur, beschikbaarheid, formulier (ouder bij Jeugd) en wat geboekt wordt | bevestigen dat dit dezelfde dienst is | te bevestigen |
-| K-02 | De andere zes diensten | veld leeg → contactvraag, niet online boekbaar | per dienst: echte duur (D-rij) en aanbieder(s) die het zelf bevestigen (K-05); dan dienst aanmaken in **Diensten** en de slug invullen | open |
+| K-02 | De andere zes diensten | op aanvraag: aanvraagformulier op de dienstpagina, niet online boekbaar | per dienst: echte duur (D-rij) en aanbieder(s) die het zelf bevestigen (K-05); dan dienst aanmaken in **Diensten** en in **Beheer → Aanbod** op *Rechtstreeks online boeken* zetten met die dienst | open |
 | K-03 | *Lactaattest* vs. bestaande dienst Inspanningstest | niet gekoppeld (niet bevestigd dat het dezelfde meting is) | beslissen: koppelen, of Inspanningstest uitzetten | open |
 | K-04 | Bestaande diensten Gezinspakket, Fit aan huis (en Inspanningstest, K-03) | actief en rechtstreeks te kiezen op `/afspraak`, naast *Bikefit – huidige fiets* (beslissing Toshoni 16 okt 2026: behouden tot Max of Toshoni anders beslist); niet in het aanbod | beslissen: behouden of uitzetten (zacht, door een beheerder; bestaande boekingen blijven). Raakt G-07 | open |
-| K-05 | Aanbieders per dienst | ongewijzigd: enkel de bestaande aanbieder op de vijf oude diensten. Sinds 16 okt 2026 maakt een aanbieder geen diensten meer aan en past ze niet aan; hij of zij schrijft zich enkel in voor actieve diensten (**Mijn agenda** → **Diensten**) | wie biedt welke nieuwe dienst aan, enkel door de persoon zelf bevestigd; een nieuwe dienst maakt een beheerder aan | open |
+| K-05 | Aanbieders per dienst | ongewijzigd: enkel de bestaande aanbieder op de vijf oude diensten. Sinds 16 okt 2026 maakt een aanbieder geen diensten meer aan en past ze niet aan; hij of zij schrijft zich enkel in voor actieve diensten (**Mijn agenda** → **Mijn aanbod**, per aanbod en variant) | wie biedt welke nieuwe dienst aan, enkel door de persoon zelf bevestigd; een nieuwe dienst maakt een beheerder aan | open |
 | K-06 | Prijzen in de boekingswidget | geen bedrag: **Prijs (euro)** leeg en **Prijs tonen op de website** uit bij alle diensten. Onder *Bikefit – huidige fiets* toont de widget per keuze "Prijs op aanvraag"; zodra een beheerder voor **die dienst** een bedrag invult en toont, staat dat bedrag er (Volwassene en Jeugd elk hun eigen prijs, nooit gekopieerd of per aanbieder) | goedgekeurde bedragen voor Volwassenenfit en Jeugdfit (vast of "vanaf"?) van Toshoni (geblokkeerd tot hij beslist); dan per dienst **Prijs (euro)** + **Prijs tonen** | open |
 
 ## 7. Bestaande hiaten in aangeraakte inhoud (G)
@@ -210,6 +223,6 @@ telefoonnummer, en blijft alles wat de bezoeker invulde staan. Uitleg en instell
 | ID | Waar (exacte plaats) | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
 | C-01 | E-mailverzending (Resend): **Beheer → E-mail** (`/admin/email`: API-sleutel en afzender), of de omgevingsvariabelen `RESEND_API_KEY` en `EMAIL_FROM` in Vercel (Arend; hebben voorrang) | niet ingesteld op staging en productie (preflight Arend, 13 okt 2026): elke bestelling meldt "niet verstuurd" | Resend-account, een afzenderdomein dat in Resend geverifieerd is (DNS), dan sleutel en afzender in `/admin/email` (of de variabelen) en een testbericht; de afzender is nooit het adres van de bezoeker | open |
-| C-02 | Ontvanger van de bestellingen: **Beheer → E-mail** (`/admin/email`) → *Ontvanger cadeaubonbestellingen*, of omgevingsvariabele `GIFT_VOUCHER_RECIPIENT` (heeft voorrang). Bewust los van het publieke adres (G-01): geen automatische terugval op `info@debikefitstudio.be` | leeg: elke bestelling meldt "niet verstuurd". Het gevraagde publieke adres `info@debikefitstudio.be` blijft in footer en contacttekst; het domein gaf op 13 okt 2026 geen DNS (NXDOMAIN), dus mail daarheen zou niet aankomen | een werkende mailbox kiezen (Toshoni) en die in de instelling of de variabele zetten | open |
+| C-02 | Ontvanger van de bestellingen: **Beheer → E-mail** (`/admin/email`) → *Ontvanger bestellingen en aanvragen*, of omgevingsvariabele `GIFT_VOUCHER_RECIPIENT` (heeft voorrang). Bewust los van het publieke adres (G-01): geen automatische terugval op `info@debikefitstudio.be` | leeg: elke bestelling meldt "niet verstuurd". Het gevraagde publieke adres `info@debikefitstudio.be` blijft in footer en contacttekst; het domein gaf op 13 okt 2026 geen DNS (NXDOMAIN), dus mail daarheen zou niet aankomen | een werkende mailbox kiezen (Toshoni) en die in de instelling of de variabele zetten | open |
 | C-03 | `/aanbod/cadeaubon` (*Cadeaubon*) → blok *Cadeaubon (bestelformulier)* → **Inleiding**, **Korte omschrijving**, **Titel boven het formulier** | neutraal geschreven door de implementatie: bedrag en boodschap naar keuze, factuur en betaallink na de bestelling | nakijken door Toshoni | te bevestigen |
 | C-04 | Voorwaarden van de bon: geldigheid, vorm (digitaal of op papier), levering, minimum- en maximumbedrag | nergens vermeld; het formulier aanvaardt technisch € 1 tot € 5.000 (daarboven: "bel ons best even") | beslissing van de studio; daarna in de **Inleiding** en zo nodig in de algemene voorwaarden | open |

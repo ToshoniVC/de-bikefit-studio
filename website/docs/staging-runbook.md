@@ -68,7 +68,7 @@ come from 1Password.
 | `GOOGLE_TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32`, staging's own | Optional (falls back to a key derived from `CMS_SESSION_SECRET`); treat as permanent. |
 | `RESEND_API_KEY` | staging key | Optional: an admin can store it in `/admin/email` instead (§13); env wins. Without a key anywhere mails are logged and skipped. |
 | `EMAIL_FROM`, `EMAIL_REPLY_TO` | sender on the verified domain, reply-to | Optional, same as above. |
-| `GIFT_VOUCHER_RECIPIENT` | **empty** until a working order inbox is chosen | Optional, same as above (`/admin/email` → *Ontvanger cadeaubonbestellingen*). Unset in both places = gift voucher orders are "niet verstuurd" (§12). |
+| `GIFT_VOUCHER_RECIPIENT` | **empty** until a working order inbox is chosen | Optional, same as above (`/admin/email` → *Ontvanger bestellingen en aanvragen*). Unset in both places = gift voucher orders are "niet verstuurd" (§12). |
 | `GA4_PROPERTY_ID`, `GA4_SERVICE_ACCOUNT_JSON` | property id, service-account key | Admin analytics panel. Optional. |
 | `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | **empty**, unless testing the cookie banner | Build-time; the tag also needs *Analytics ingeschakeld* in the admin. |
 
@@ -108,6 +108,7 @@ DATABASE_URL='<staging pooled url>' npm run db:migrate
 | `0007_cms_mfa_rate_limits.sql` | `cms_mfa_rate_limits` and the unique index `cms_mfa_challenges_user_id_unique_idx` (§16). |
 | `0008_cms_rate_limits.sql` | `cms_rate_limits`, the race-free public booking limit (`booking-architecture.md` §9). Needed **before** a build that contains it serves `/afspraak`: without the table every booking attempt answers "Er ging iets mis bij het boeken" (`[booking] create_failed`). |
 | `0009_cms_service_choice_label.sql` | `cms_services.choice_label` (text, default `''`), the label of a service under an offer ("Volwassene", "Jeugd"; `booking-architecture.md` §14). One guarded `ADD COLUMN`, no data change. Needed **before** a build that contains it: without the column `/afspraak` shows "Online boeken lukt op dit moment niet" and Admin → Diensten fails. Then run §3.2 once to fill the two labels. |
+| `0010_cms_offerings.sql` | `cms_offerings` and `cms_offering_variants`, the settings of Beheer → Aanbod (`cms-architecture.md` §15). Two guarded `CREATE TABLE`s, their FKs and indexes; no data change. Needed **before** a build that contains it: until then every offer page derives its settings from its block (as before), Beheer → Aanbod cannot save, and the booking actions refuse every service (fail closed, like 0008). Then, optionally, §17. |
 
 All additive and guarded (no `DROP`, `TRUNCATE` or webshop `ALTER`); already-applied files
 are skipped. Expect `→ driver: neon-http (<host>)` and `✓ migrations applied to Neon`. The
@@ -852,3 +853,58 @@ and `CMS_SESSION_SECRET` unchanged for a later re-deploy.
 `CMS_MFA_ENCRYPTION_KEY` in Vercel → Production, a snapshot of Neon `production`, `db:migrate`,
 deploy, and the first admin enrols immediately; CSP enforcement on production only after it was
 enforced and validated on staging.
+
+---
+
+## 17. Beheer → Aanbod (offering settings, migration 0010, 16 Oct 2026)
+
+What changes: one place in Beheer to decide per offer page whether it is shown, whether it has
+Volwassene/Jeugd variants, the price per variant and whether it is booked directly online or
+asked for through a form on its page; providers tick what they offer under *Mijn agenda → Mijn
+aanbod* (`cms-architecture.md` §15, `booking-architecture.md` §15). Arend executes; staging is
+autonomous after the release gate, production needs Toshoni's go.
+
+1. **Release gate** on the exact SHA (six steps).
+2. **Neon snapshot** of `Staging` (e.g. `staging-pre-offerings-2026-10-16`).
+3. **Migrate before the deploy** (0009 first if staging does not have it yet, then §3.2 for the
+   two labels):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run db:migrate
+   ```
+
+   Check: `cms_offerings` and `cms_offering_variants` exist and are empty. The live build is not
+   affected by the new tables.
+4. **Deploy.** Without any row every offer page derives its settings from its block, so the site
+   looks as before, with three intended differences: each card and offer page names how it is
+   booked ("Online te boeken", "Op aanvraag", or greyed "Tijdelijk niet online te boeken"); an
+   offer that is asked for shows the enquiry form on its page instead of a booking button; and a
+   directly booked offer that no active provider offers is greyed out with a disabled button.
+5. **Save the derived settings (optional, recommended):**
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:migrate-offerings                         # dry run
+   DATABASE_URL='<staging pooled url>' npm run cms:migrate-offerings -- --apply --expect-host <host>
+   ```
+
+   The dry run is read-only (no session, no audit entry) and lists per published offer page
+   `+ create` (an exact copy of what the page shows), `! manual` (not exact, e.g. a free-text price
+   label or a service that shows its own price in the widget: an editor decides in Beheer →
+   Aanbod; the page keeps its current behaviour meanwhile) or `= skip` (draft, or already saved).
+   The apply saves only the `create` rows through the repo (audit `offering.update`), checks that
+   bookings, services and provider subscriptions are unchanged, and is idempotent. Needs an admin
+   with their own password and two-step verification, like the other CLIs (§16 step 9).
+6. **Checks** (no booking or enquiry is submitted on staging):
+   - `/admin/aanbod` lists every offer page; Bikefit – huidige fiets shows *Volwassene en Jeugd
+     apart*, *Rechtstreeks online boeken*, Volwassenenfit / Jeugdfit, no prices.
+   - `/aanbod` and the detail page: same Duur ("Volwassene: 1 u 30 min · Jeugd: 1 uur") and
+     "Prijs op aanvraag" as before, no `offers` in the Service JSON-LD.
+   - `/afspraak?dienst=bikefit-huidige-fiets` opens "Voor wie?" as before;
+     `?dienst=lactaattest` names the offer and links to its form.
+   - The provider sees *Mijn aanbod* grouped by offer under *Mijn agenda*.
+   - Beheer → E-mail: *Ontvanger bestellingen en aanvragen* is the inbox the enquiry form uses
+     (empty = every enquiry says "niet verstuurd"; never `contact.email`).
+
+**Rollback.** Code first: redeploy the previous build; it ignores the two tables. To return a
+page to its derived behaviour on the new build, delete its row
+(`DELETE FROM cms_offerings WHERE page_id = '<id>'`, variants cascade). The tables stay.

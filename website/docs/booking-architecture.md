@@ -49,6 +49,8 @@ UTC (`timestamptz`).
 | `src/lib/email/ics.ts` | plain | RFC 5545 `.ics` builder |
 | `src/lib/email/templates.ts` | plain | Dutch confirmation / notification / cancellation mails |
 | `scripts/cms-seed-booking.mts` | script | first provider + hours + subscriptions |
+| `src/lib/offers/offering*.ts`, `offer-catalogue.ts`, `src/lib/offers/repo.ts` | plain / server-only | Beheer → Aanbod: which services an offering is booked as, and whether it is bookable now (§15) |
+| `src/lib/offer-enquiry/*` | plain / server-only | the enquiry form of an offering that is asked for (§15) |
 
 \* `settings.ts` imports `@/lib/cms/content` lazily inside `getBookingRules()`,
 so importing the file never pulls in `server-only`.
@@ -97,6 +99,7 @@ Closed sets are `text` validated by zod, like the CMS. The only enum change is
 | `0003_booking.sql` | 8 `CREATE TABLE IF NOT EXISTS`, FKs in `duplicate_object` guards, `CREATE [UNIQUE] INDEX IF NOT EXISTS`. |
 | `0008_cms_rate_limits.sql` | `CREATE TABLE IF NOT EXISTS "cms_rate_limits"` and `CREATE INDEX IF NOT EXISTS` on `updated_at`, nothing else: no foreign key, no data change, `cms_booking_rate_limit` untouched. **Apply before deploying the build that uses it**: until the table exists every public booking attempt fails closed (`error`, "Er ging iets mis bij het boeken", logged as `[booking] create_failed`). |
 | `0009_cms_service_choice_label.sql` | `ALTER TABLE "cms_services" ADD COLUMN IF NOT EXISTS "choice_label" text DEFAULT '' NOT NULL`, nothing else: no data change (existing rows get `''`, so they keep showing their name), no price. **Apply before deploying the build that uses it**: the app selects every `cms_services` column, so until then the widget shows its "bel ons" fallback and the service screens fail. Self-test 14c re-runs it twice. |
+| `0010_cms_offerings.sql` | `cms_offerings` + `cms_offering_variants` (§15, `cms-architecture.md` §15): guarded `CREATE TABLE`s, FKs, indexes; no data change, nothing on `cms_services`, `cms_provider_services` or `cms_bookings`. **Apply before deploying the build that uses it**: the booking actions ask it which services an offering holds back and fail closed without it (every availability and booking request answers "Deze dienst kun je niet online boeken." / the generic error). Self-test 14d re-runs it twice. |
 
 All are **additive only** and idempotent (verified by migrating a fresh
 PGlite twice). Note that drizzle's migrator runs *all pending files in one
@@ -131,6 +134,7 @@ guarded by hand; self-test 14b re-runs it twice.
 | `provider.read` / `provider.manage` | all providers | ❌ | ✅ / ❌ | ✅ |
 | `provider.self` | own profile, hours, exceptions, Google | ✅ | ❌ | ✅ |
 | `analytics.read` | GA4 dashboard panel | ❌ | ❌ | ✅ |
+| `offering.manage` | Beheer → Aanbod: shown, variants, prices, direct booking or enquiry (§15) | ❌ | ✅ | ✅ |
 
 `ROLE_PERMISSIONS` is now exported. `ROLE_RANK = { provider: 0, editor: 1,
 admin: 2 }`, so `requireCmsUser('editor')` keeps providers out of content
@@ -535,7 +539,7 @@ The gift voucher order form (`src/lib/gift-voucher/`, `booking-runbook.md` §12)
 `sendEmail()` with the opposite rule: there the mail *is* the order, so a skipped or failed send
 is reported to the visitor as "niet verstuurd" and only a provider-accepted send counts as
 success. It mails the studio's order inbox (env `GIFT_VOUCHER_RECIPIENT`, else `/admin/email` →
-*Ontvanger cadeaubonbestellingen*; never `contact.email`, `src/lib/gift-voucher/recipient.ts`)
+*Ontvanger bestellingen en aanvragen*; never `contact.email`, `src/lib/gift-voucher/recipient.ts`)
 with the visitor as Reply-To, never the visitor. Its server action logs
 `[cadeaubon] order_action_failed` and nothing else when anything throws (a failed rate-limit
 query binds the client IP); the delivery helper's own lines,
@@ -884,12 +888,14 @@ An offer slug wins over a service slug with the same name. "Opnieuw" after a boo
 the same preselection. The widget's other rules (provider choice, availability, guardian,
 address) are unchanged.
 
-**Making another offer bookable** (once its duration and the people who offer it are
-confirmed): an **admin** creates the service in Admin → Diensten with the real duration (and
-price, if it should show in the widget; and a *Keuzelabel* if the offer will link several
-services); the provider subscribes to it themself (or an admin does so on their confirmed
-behalf); then put the service's slug in the offer block's *Online boeken via dienst(en)* field
-and publish the offer page. No deploy, no migration.
+**Making another offer bookable** (since 16 Oct 2026, §15): an **admin** creates the service in
+Admin → Diensten with the real duration (one per variant when Volwassene and Jeugd differ); in
+**Beheer → Aanbod** an editor or admin sets the offer to *Rechtstreeks online boeken*, picks the
+service per variant and, once approved, the price per variant; the provider ticks it under *Mijn
+agenda → Mijn aanbod*. Until a provider does, the offer is shown greyed as "Tijdelijk niet online
+te boeken". No deploy, no migration, no page edit. (Before 16 Oct 2026 the link was the offer
+block's *Online boeken via dienst(en)* field; that field is now hidden and only read for offers
+without saved settings.)
 
 ### One offer, its services underneath (16 Oct 2026)
 
@@ -942,3 +948,55 @@ it. The server needs no offer: `createPublicBooking()` re-reads the service by i
 as that offer with its choices, nothing preselected when there are two); a service slug
 (`?dienst=jeugdfit`) preselects it, with its offer open; an offer without a bookable service
 still gets the named contact prompt; an unknown slug the normal widget and the notice.
+
+---
+
+## 15. Offerings decide what is bookable (Beheer → Aanbod, 16 Oct 2026)
+
+`cms-architecture.md` §15 has the model and the admin screen; this section is the booking side.
+
+**What is bookable.** A variant of an offering is booked as one `cms_services` row (its id is what
+availability is fetched for and what a booking references; durations, buffers, the guardian form
+and locations are unchanged). A **direct** offering is bookable through `/afspraak?dienst=<offer
+slug>` while at least one of its variants' services is active and offered by ≥ 1 active provider
+with an active account — the `listPublicServices()` rule, now per variant. Who offers it is the
+providers' own choice (`setProviderServices()`, `service.subscribe.own`: own profile, active
+services only; unchanged), shown grouped by offering under *Mijn agenda → Mijn aanbod*.
+
+**Held back services.** A service that is a variant of any saved offering is booked **only through
+that offering**, and only while it is shown and direct (`withheldServiceIds()`): otherwise the
+widget leaves it out (also as a standalone choice and for `?dienst=<service slug>`, which then
+gets the "niet teruggevonden" notice), and both booking actions refuse it before anything else
+(`isServiceBookableOnline()` in `availabilityAction` and `bookAction`: "Deze dienst kun je niet
+online boeken.", no rate-limit hit, no booking). Services no offering uses (Gezinspakket, Fit aan
+huis, Inspanningstest) stay directly bookable as before. Offer pages without saved settings derive
+them from their block and never hold anything back, so the widget is unchanged until settings are
+saved. The gate fails closed when the offering tables cannot be read.
+
+**Labels and prices in the widget.** Under a saved, shown, direct offering a service is labelled
+by its variant ("Volwassene" / "Jeugd", else its own *Keuzelabel* or name) and priced by the
+variant (empty = "Prijs op aanvraag"); its own `price_cents` / `show_price` no longer show there
+(Beheer → Diensten says so). Without saved settings the service's own price applies, as before.
+
+**`/afspraak?dienst=<offer>` without a bookable variant** names the reason: *Op aanvraag* (on
+purpose) links to the form on the offer page; *Tijdelijk niet online te boeken* (direct, nobody
+offers it now) says so, with phone and mail. Never the widget with another service, never
+invented availability.
+
+**Enquiries.** An offering set to *Enkel op aanvraag* gets a form on its page
+(`src/lib/offer-enquiry/`): validated like the booking form (raw caps, length before pattern, the
+`+32` phone rule), honeypot, race-free rate limit on `cms_rate_limits` (`aanvraag:` keys, 5 per 15
+min per IP and per hashed e-mail), duplicate marker per request id, mailed through `sendEmail()` to
+the order inbox (env `GIFT_VOUCHER_RECIPIENT`, else Beheer → E-mail → *Ontvanger bestellingen en
+aanvragen*; never `contact.email`), visitor as Reply-To. Nothing is stored; "verstuurd" only when the
+provider accepted the mail.
+
+**Existing bookings** keep their service id and name; no `cms_services`, `cms_provider_services`
+or `cms_bookings` row is created, changed or removed by migration 0010, `cms:migrate-offerings` or a
+save in Beheer → Aanbod (the migration CLI checks `guardCounts()` before and after).
+
+**Tests.** `offering.test.ts`, `offer-catalogue.test.ts` (unavailable / bookable / enquiry / hidden,
+held-back services, widget grouping and labels), `public-actions.test.ts` (the gate),
+`offer-enquiry/*.test.ts`, `actions/offerings.test.ts`; self-test 14d on PGlite (migration, CLI,
+permissions, provider self-service, the gate, `availabilityAction`, hidden page 404, enquiry on the
+real store without outbound mail).

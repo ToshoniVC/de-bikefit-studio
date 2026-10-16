@@ -110,7 +110,7 @@ its variables are missing. Names and purpose only; values never appear here.
 | `RESEND_API_KEY` | Resend API key for booking e-mails and gift voucher orders. **Optional:** an admin can instead store the key in `/admin/email` (sealed with AES-256-GCM, key derived from `CMS_SESSION_SECRET`); when set here it wins. With no key anywhere, booking mails are logged (number of recipients only, no subject or address) and skipped, and every gift voucher order shows "niet verstuurd". | yes | optional |
 | `EMAIL_FROM` | Sender on a domain verified in Resend. Also required for gift voucher orders. Overrides the sender in `/admin/email`. | no | optional |
 | `EMAIL_REPLY_TO` | Reply-To for customer mails (not used for gift voucher orders: their Reply-To is the visitor). Overrides `/admin/email`. | no | optional |
-| `GIFT_VOUCHER_RECIPIENT` | Inbox for gift voucher orders (one plain address). Overrides `/admin/email` → *Ontvanger cadeaubonbestellingen*. Never falls back to the public contact e-mail; unset in both places, or invalid, means every order shows "niet verstuurd". | no | optional |
+| `GIFT_VOUCHER_RECIPIENT` | Inbox for gift voucher orders and offer enquiries (one plain address; the name stays for compatibility). Overrides `/admin/email` → *Ontvanger bestellingen en aanvragen*. Never falls back to the public contact e-mail; unset in both places, or invalid, means every order and enquiry shows "niet verstuurd". | no | optional |
 | `CMS_PGLITE_DIR` | Local PGlite directory (default `.pglite`). | no | local only |
 | `CMS_PGLITE_AUTO_MIGRATE` | `"false"` stops PGlite auto-migrating on first use. | no | local only |
 | `NEXT_PUBLIC_APP_URL` | Webshop origin; second fallback for the canonical origin. | no | legacy webshop |

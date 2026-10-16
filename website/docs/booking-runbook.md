@@ -694,8 +694,12 @@ legal identity's 0473 95 26 33; nothing is sent):
 | --- | --- | --- |
 | API key | `/admin/email` → *API-sleutel* (stored encrypted), or Vercel env `RESEND_API_KEY` (sensitive, wins); source 1Password | § 6 |
 | Sender | `/admin/email` → *Afzender*, or env `EMAIL_FROM` (wins) | an address on a domain **verified in Resend**, e.g. `De Bikefit Studio <bestellingen@debikefitstudio.be>`; never the visitor's address |
-| Recipient | `/admin/email` → *Ontvanger cadeaubonbestellingen*, or env `GIFT_VOUCHER_RECIPIENT` (wins) | one plain address of an inbox that **really receives mail**. Deliberately separate from the public Contact → E-mail in the footer, with no fallback to it: a provider accepts mail to a dead domain and it bounces later, so the visitor would see "verstuurd" for an order nobody gets. Empty or invalid = not sent |
+| Recipient | `/admin/email` → *Ontvanger bestellingen en aanvragen*, or env `GIFT_VOUCHER_RECIPIENT` (wins) | one plain address of an inbox that **really receives mail**. Deliberately separate from the public Contact → E-mail in the footer, with no fallback to it: a provider accepts mail to a dead domain and it bounces later, so the visitor would see "verstuurd" for an order nobody gets. Empty or invalid = not sent |
 | Reply-To | not used for vouchers | the visitor's address is the Reply-To |
+
+The same inbox receives the **enquiry form** of every offer set to *Enkel op aanvraag* in Beheer →
+Aanbod (`cms-architecture.md` §15): same key, sender and recipient, the visitor as Reply-To, the
+same "niet verstuurd" rule, its own `aanvraag:` rate-limit keys on `cms_rate_limits`.
 
 `/admin/email` (**Beheer → E-mail**, admins only) shows the status of all of these (the key
 only as its source and last four characters, never the value) and can send a test message.
