@@ -19,7 +19,7 @@ is therefore not a separate Vercel environment: it is the **preview deployments 
 | Vercel | — | Preview deployment | Preview deployment of `staging` | Production deployment |
 | Vercel env scope | `.env.local` | Preview (all branches) | Preview, branch `staging` | Production |
 | URL | `http://localhost:3000` | per-deployment `*.vercel.app` | `https://de-bikefit-studio-git-staging-toshoni.vercel.app` (stable alias) | `https://de-bikefit-studio.vercel.app` until a domain is chosen |
-| Database | PGlite `website/.pglite/` | a non-production Neon branch | Neon `Qarakter` → branch `Staging` | Neon `Qarakter` → branch `production` |
+| Database | PGlite `website/.pglite/` | **currently the same Neon `Staging` branch** (isolation pending; see booking runbook §7.3) | Neon `Qarakter` → branch `Staging` | Neon `Qarakter` → branch `production` |
 | Indexing | — | off | off (`seo.allowIndexing = false`) | on only after the §8 checklist in the staging runbook |
 
 Branch flow: `feat/<topic>` → pull request → `staging` → `main`. A push to `staging` deploys
@@ -33,6 +33,14 @@ e-mail links and Google connect flow point at staging: where the Google variable
 completes on the staging deployment. The Google variables belong to Preview with branch
 `staging` only (`docs/booking-runbook.md` §7.3), so a feature preview's Google card says the
 connection is not set up there: connect on staging.
+
+As of 16 Oct 2026, generic Preview and Preview/`staging` have different
+`CMS_SESSION_SECRET` values but the **same Neon Staging database**. Scoping the
+Google secret and token key to `staging` protects token confidentiality; it does
+not prevent generic feature-preview code from writing shared booking or Google
+status rows. Before the first provider connects Google, isolate generic Preview
+onto its own Neon branch and address old immutable previews, which retain the
+environment values from when they were deployed (`docs/booking-runbook.md` §7.3).
 
 ## 2. Who deploys
 

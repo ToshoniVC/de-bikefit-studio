@@ -328,14 +328,28 @@ a token key, is the token key's source), `CMS_MFA_ENCRYPTION_KEY`, `DATABASE_URL
   is true for them.
 - Feature previews currently share the Neon Staging database (`DEPLOYMENT.md`
   §1 and the infrastructure inventory). They must not hold staging's token key:
-  arbitrary feature-branch code could then decrypt providers' tokens. With no
-  Google variables, a feature preview cannot validate connected-provider
-  availability: it treats that calendar as having no busy time and may record
-  *"Google Calendar is niet geconfigureerd op de server."* on the shared provider
-  row. The next successful sync on staging clears the error (§10). Do not use a
-  feature-preview booking flow for real appointments or Calendar acceptance;
-  validate those on the protected `staging` alias. Do not solve this by copying
-  the key into generic Preview.
+  arbitrary feature-branch code could then decrypt providers' tokens. But
+  branch-scoping the key alone is **not enough** once a provider connects:
+  without Google variables, public availability treats their calendar as having
+  no busy time and writes a configuration error on the shared provider row.
+  Bookings/cancellations can write failed Google sync state. The connected
+  provider's *Ontkoppelen* action still works without OAuth readiness and
+  clears the shared Google token/calendar fields. A later successful staging
+  sync may clear a mere error, but cannot undo a booking conflict or a
+  disconnect. Do not use a feature-preview booking flow for real appointments
+  or Calendar acceptance, and do not solve this by copying the key into generic
+  Preview.
+
+**Gate before the first staging Google connection.** Arend must move generic
+Preview's `DATABASE_URL` to a separate Neon preview branch, verify that
+Preview/`staging` still points to Neon Staging, and record the branch IDs and
+rollback. This affects only **new** feature-preview deployments: old immutable
+previews retain their former Vercel environment and can still write Staging
+when opened by an authenticated team member. Inventory and contain that legacy
+access, or record explicit residual-risk acceptance, before a provider connects
+Google. Preserve Vercel SSO; do not delete old deployments or rotate shared
+database credentials without a separate approved plan. Provider MFA may be
+deployed while Google remains disabled.
 
 **Redeploy.** Vercel applies a variable change only to new deployments: redeploy
 the latest `staging` deployment after setting them (or merge the code that needs
@@ -368,6 +382,9 @@ variables to a deployment.
 
 **Arend — Vercel:**
 
+- [ ] Before inviting the first provider Google connection, complete the
+      generic Preview database-isolation and old-deployment gate above. A
+      staging-only Google secret scope is necessary but not sufficient.
 - [ ] Names only, never values: none of the three Google variables exists for
       *Preview (all branches)* or for *Production*; `NEXT_PUBLIC_SITE_URL` for
       Preview/`staging` is exactly the alias origin.
