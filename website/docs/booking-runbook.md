@@ -221,21 +221,23 @@ delivers **only to the Resend account's own address**.
 
 Store every value in 1Password first (one vault item per environment, e.g.
 "Bikefit — staging integrations"), then add it in **Vercel → Settings →
-Environment Variables** for the **Staging** and/or **Production** scope. Mark
-the secret ones as **Sensitive**. All names come from `.env.example`.
+Environment Variables** for staging and/or **Production**. Staging is not a
+Vercel environment of its own (Hobby plan): it is **Preview with git branch
+`staging`** (`DEPLOYMENT.md` §1). Mark the secret ones as **Sensitive**. All
+names come from `.env.example`.
 
 | Value | Vercel variable | Secret | Scope |
 | --- | --- | :-: | --- |
-| OAuth client ID (§4) | `GOOGLE_OAUTH_CLIENT_ID` | no | Staging + Production |
-| OAuth client secret (§4) | `GOOGLE_OAUTH_CLIENT_SECRET` | **yes** | Staging + Production |
-| Token encryption key (§7.2) | `GOOGLE_TOKEN_ENCRYPTION_KEY` | **yes** | one key **per environment** |
+| OAuth client ID (§4) | `GOOGLE_OAUTH_CLIENT_ID` | no | Preview/`staging` (§7.3) + Production; never Preview (all branches) |
+| OAuth client secret (§4) | `GOOGLE_OAUTH_CLIENT_SECRET` | **yes** | Preview/`staging` (§7.3) + Production; never Preview (all branches) |
+| Token encryption key (§7.2) | `GOOGLE_TOKEN_ENCRYPTION_KEY` | **yes** | one key **per environment**, set before the first provider connects |
 | GA4 measurement id `G-…` (§5.1.3) | `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | no | Production (Staging only to test the banner) |
 | GA4 property id (§5.1.6) | `GA4_PROPERTY_ID` (or the admin setting) | no | Staging + Production |
 | Service-account key JSON (§5.2.2) | `GA4_SERVICE_ACCOUNT_JSON` | **yes** | Staging + Production |
 | Resend API key (§6.5) | `RESEND_API_KEY` (or `/admin/email`, §6.7) | **yes** | per environment |
 | Sender (§6.6) | `EMAIL_FROM` (or `/admin/email`) | no | Staging + Production |
 | Reply-to (§6.6) | `EMAIL_REPLY_TO` (or `/admin/email`) | no | Staging + Production |
-| Public origin | `NEXT_PUBLIC_SITE_URL` (already set) | no | must equal the origin in the redirect URI |
+| Public origin | `NEXT_PUBLIC_SITE_URL` (already set) | no | must equal the origin in the redirect URI; on a deployment the redirect URI's only source, https only |
 
 `GA4_SERVICE_ACCOUNT_JSON` accepts the raw JSON or its base64. Base64 avoids
 problems with the key's line breaks:
@@ -271,7 +273,135 @@ $b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create
 
 Leaving it empty falls back to a key derived from `CMS_SESSION_SECRET`.
 **Changing either value later makes every stored token unreadable: all
-providers must reconnect Google.** Treat it as permanent.
+providers must reconnect Google.** Treat it as permanent, and set it before the
+first provider connects: switching from the derived key to an explicit one later
+is such a change too.
+
+It must decode to exactly 32 bytes. `openssl rand -base64 48` (the recipe for
+`CMS_SESSION_SECRET`) and `openssl rand -hex 32` give a value the server
+refuses: the Google card then tells an admin, and no provider is sent to Google
+until it is fixed (§10).
+
+### 7.3 Staging: switch Google Calendar on
+
+Staging is the Preview deployment of the `staging` branch, behind Vercel's
+deployment protection, on the stable alias
+`https://de-bikefit-studio-git-staging-toshoni.vercel.app` (`DEPLOYMENT.md` §1).
+Its redirect URI, to register in the OAuth client exactly as written:
+
+```text
+https://de-bikefit-studio-git-staging-toshoni.vercel.app/api/google/oauth/callback
+```
+
+It follows from staging's `NEXT_PUBLIC_SITE_URL`
+(`https://de-bikefit-studio-git-staging-toshoni.vercel.app`): its origin plus
+`/api/google/oauth/callback` (`resolveGoogleOAuthConfig()` in
+`src/lib/booking/google-oauth-config.ts`; a trailing slash or a path on the
+variable is ignored). On a deployment nothing else is used: never `VERCEL_URL`
+(every deployment has its own `…-<hash>-toshoni.vercel.app` host, which is never
+registered, so Google would answer `redirect_uri_mismatch`) and never
+`NEXT_PUBLIC_APP_URL`. Without an https `NEXT_PUBLIC_SITE_URL` no provider is sent
+to Google at all. Once the variables are live, an admin sees the same URI under
+**Aanbieders → <provider> → Google Agenda → Gegevens voor de OAuth-client**.
+
+**Variables** (Vercel → Settings → Environment Variables → **Preview**, **git
+branch `staging`**; values come from 1Password and are pasted there only):
+
+| Variable | Value | Sensitive | Note |
+| --- | --- | :-: | --- |
+| `GOOGLE_OAUTH_CLIENT_ID` | client ID of the web client (§4) | optional | Not a secret: it is in every consent URL. |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | that client's secret | **yes** | |
+| `GOOGLE_TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32`, staging's own | **yes** | Before the first connection (§7.2). Never production's. |
+| `NEXT_PUBLIC_SITE_URL` | `https://de-bikefit-studio-git-staging-toshoni.vercel.app` | no | Already set: check only. |
+
+Leave as they are: `CMS_SESSION_SECRET` (signs the OAuth state cookie and, without
+a token key, is the token key's source), `CMS_MFA_ENCRYPTION_KEY`, `DATABASE_URL`.
+
+**Why Preview/`staging` only, not Preview (all branches).**
+
+- Least privilege: the client secret and the token key reach only deployments
+  built from the reviewed `staging` branch, not every feature branch's code.
+- Nothing is lost. Feature previews carry the staging alias as
+  `NEXT_PUBLIC_SITE_URL`, so even with the variables their start route would hop
+  to the staging alias and the connection would complete there (`DEPLOYMENT.md`
+  §1). Without them their Google card says the connection is not set up, which
+  is true for them.
+- A feature preview that uses the staging database (which database previews use
+  is not recorded in this repository) must not hold staging's token key: any
+  branch's code could then decrypt the providers' tokens. The side effect to
+  accept: when such a preview computes availability for a connected provider, it
+  records *"Google Calendar is niet geconfigureerd op de server."* on that shared
+  provider row; the next successful sync on staging clears it (§10).
+
+**Redeploy.** Vercel applies a variable change only to new deployments: redeploy
+the latest `staging` deployment after setting them (or merge the code that needs
+them). The server reads `NEXT_PUBLIC_SITE_URL` and the Google variables at request
+time (`src/lib/env.ts` looks them up by name, so Next does not inline
+`NEXT_PUBLIC_SITE_URL` into server code); the redeploy is about Vercel binding
+variables to a deployment.
+
+**Toshoni — Google Cloud (§1–§4):**
+
+- [ ] The project exists (§1) and the **Google Calendar API** is enabled (§2).
+      Without it connecting works, but every sync fails with *Laatste fout: Google
+      Agenda gaf een fout (HTTP 403).*
+- [ ] Consent screen (§3): External, the four scopes, and as **test users** your
+      own Google account and that of every provider who will connect on staging.
+- [ ] Publishing status decided (§3.7): *In production* (unverified-app warning,
+      tokens do not expire) or, for a short test only, *Testing* (only test users
+      can connect, and the calendar disconnects after 7 days).
+- [ ] OAuth client (§4, Web application): the URI above added under *Authorised
+      redirect URIs* (https, no trailing slash). JavaScript origins stay empty. No
+      per-deployment or feature-preview host.
+- [ ] Client ID and secret in 1Password, and a fresh staging
+      `GOOGLE_TOKEN_ENCRYPTION_KEY` (§7.2) in "Bikefit — staging integrations".
+      Tell Arend the item names, never the values.
+- [ ] Decided which Google account a provider connects on staging. The code always
+      uses that account's **primary** calendar, so staging test bookings become
+      real events in it; a separate test account keeps them out of a real agenda.
+
+**Arend — Vercel:**
+
+- [ ] Names only, never values: none of the three Google variables exists for
+      *Preview (all branches)* or for *Production*; `NEXT_PUBLIC_SITE_URL` for
+      Preview/`staging` is exactly the alias origin.
+- [ ] Add the three variables for **Preview, git branch `staging`**, the secret
+      and the key as *Sensitive*. With the CLI, pipe the value without a trailing
+      line break (`printf '%s'`, not `echo`); the card flags whitespace.
+- [ ] Redeploy staging and wait for READY.
+- [ ] As admin on the alias: `/admin/providers/<id>` shows **Google Agenda
+      koppelen** and no *"Google Agenda koppelen kan nog niet"* box, and *Gegevens
+      voor de OAuth-client* shows exactly the URI above. As the provider,
+      `/admin/agenda` shows the button too.
+- [ ] Record the names, the scope, the deployment and the date in the
+      infrastructure log.
+
+Then the provider connects (§8) and §9 runs on staging. Whoever connects must
+pass Vercel's deployment protection, so needs access to the Vercel team.
+
+**Do not:**
+
+- paste a value into chat, a doc, a commit, a screenshot or a log: 1Password is
+  the source, Vercel holds the runtime copy;
+- scope the Google variables to *Preview (all branches)*, or set them for
+  *Production* as part of this step;
+- register or rely on a `VERCEL_URL` / per-deployment host, a feature-preview
+  host or an `http://` URI for staging;
+- rotate or "align" `CMS_SESSION_SECRET` (it differs between Preview and
+  Preview/`staging` on purpose; changing it signs everyone out and, without a
+  token key, disconnects Google), or change `GOOGLE_TOKEN_ENCRYPTION_KEY` once
+  providers are connected;
+- reuse a token key across staging and production;
+- switch off deployment protection or put a protection-bypass token in the
+  redirect URI to make the callback work. The callback is an ordinary top-level
+  navigation in the browser that already passed Vercel's login for the alias,
+  so protection is not expected to interfere (not yet verified on staging). If
+  Vercel's login answers the callback instead of the admin, report it.
+
+**Open for Toshoni.** One OAuth client for all environments (§4) is the
+documented setup. A second client in the same project (e.g. `bikefit-staging`,
+only the staging URI) would keep staging's secret apart from production's; the
+code works with either. Decide before production.
 
 ---
 
@@ -280,10 +410,12 @@ providers must reconnect Google.** Treat it as permanent.
 Prerequisites: migrations applied, `npm run cms:bootstrap` and
 `npm run cms:seed-booking` run against the environment (the latter creates the
 provider `toshoni@gmail.com` with a temporary password printed once), the
-Google variables set and deployed.
+Google variables set and deployed (staging: §7.3). Without them the card shows
+no button but *"Google Agenda koppelen kan nog niet"* (§10).
 
 1. Sign in at `/admin/login` as the provider. The first login forces a new
-   password.
+   password and then setting up two-step verification (authenticator app and
+   ten recovery codes; `staging-runbook.md` §17).
 2. **Mijn agenda** → the Google Agenda card → **Google Agenda koppelen**
    (this opens `/api/google/oauth/start?provider=<id>`; when already connected
    the button reads **Opnieuw koppelen**).
@@ -393,23 +525,64 @@ Do this on staging after every change to the integrations.
 ### Connect-flow results
 
 The callback returns to `/admin/agenda` (or `/admin/providers/<id>`) with
-`?google=connected` or `?google=error&reason=<code>`:
+`?google=connected` or `?google=error&reason=<code>`; the start route does the
+same with `reason=config` instead of sending anyone to Google:
 
 | `reason` | Meaning | Fix |
 | --- | --- | --- |
+| `config` | This server is not ready to connect: OAuth client missing or pasted with whitespace, token key not base64 of 32 bytes, or (on a deployment) `NEXT_PUBLIC_SITE_URL` missing or not https. Only shown to a signed-in user who may connect this provider. | The Google card names the problem to an admin (below); fix it (§7.3) and redeploy. The server log has `[google-oauth] not_ready` with the problem codes, never a value. |
 | `access_denied` | The provider pressed *Cancel* on Google's screen. | Start again and allow access. |
 | `missing_scope` | Consent was given without one of the calendar checkboxes. | Start again and tick both boxes. |
 | `state` | The 10-minute window passed, the flow was finished in another browser, or it started on a different host than `NEXT_PUBLIC_SITE_URL`. | Start again from the admin on the `NEXT_PUBLIC_SITE_URL` host. |
-| `session` | Not signed in to the admin, signed in as someone else than who started, or an admin session without two-step verification. | Sign in (with the code from your authenticator) and start again. |
+| `session` | Not signed in to the admin, signed in as someone else than who started, or an admin or provider session without two-step verification. | Sign in (with the code from your authenticator) and start again. |
 | `forbidden` | The signed-in user may not manage this provider. | Use the provider's own login or an admin. |
 | `exchange` | Google refused the authorisation code (often a redirect URI or client secret mismatch). | Check §4 and the Vercel values; start again. The server log has only `[google-oauth] code_exchange_failed`; Google's description is not logged. |
 | `no_refresh_token` | Google returned no refresh token. | Remove the app at <https://myaccount.google.com/permissions>, then connect again. |
-| `store` | The tokens could not be saved (provider missing, database or key problem). | The server log has only `[google-oauth] store_refused` (the repo said no) or `store_failed` (it threw). Verify `GOOGLE_TOKEN_ENCRYPTION_KEY` is base64 of 32 bytes and that the provider still exists. |
+| `store` | The tokens could not be saved (provider missing, database or key problem). | The server log has only `[google-oauth] store_refused` (the repo said no) or `store_failed` (it threw). Check that the provider still exists and the database is reachable. A malformed `GOOGLE_TOKEN_ENCRYPTION_KEY` is caught before Google since 16 Oct 2026 (`config`). |
 | `google` | Google returned another error. | Google's `error` value is not logged; retry, then check the OAuth client and consent screen (§3–§4). |
 
-A plain-text **503 "Google Agenda is nog niet ingesteld"** means
-`GOOGLE_OAUTH_CLIENT_ID`/`GOOGLE_OAUTH_CLIENT_SECRET` are missing in this
-environment (set them and redeploy).
+### "Google Agenda koppelen kan nog niet" or "OAuth-client ontbreekt"
+
+The Google Agenda card has no **Google Agenda koppelen** button and says the
+connection is not set up on this server.
+
+- Builds before 16 Oct 2026 say *"De Google-koppeling is nog niet ingesteld op de
+  server (OAuth-client ontbreekt)"* to everyone, and their OAuth routes answer a
+  plain-text 503 that names the variables. It means `GOOGLE_OAUTH_CLIENT_ID` or
+  `GOOGLE_OAUTH_CLIENT_SECRET` is missing in that deployment's environment. On
+  16 Oct 2026 that was staging's state: Preview/`staging` had neither (§7.3).
+- Since then, an admin sees *"Google Agenda koppelen kan nog niet op deze
+  server."* with one line per problem and, when it is known, the redirect URI to
+  register. A provider sees only that it is not set up and to ask the beheerder;
+  an editor, that a beheerder can set it up. The routes no longer answer 503: a
+  signed-in user who may connect the provider is sent back with `reason=config`,
+  anyone else gets the sign-in page, the 403 or the `state` error as before.
+
+| Line on the card (admin) | Fix |
+| --- | --- |
+| `GOOGLE_OAUTH_CLIENT_ID ontbreekt.` / `GOOGLE_OAUTH_CLIENT_SECRET ontbreekt.` | Set it for this environment's scope (staging: §7.3) and redeploy. |
+| `… bevat een spatie of regeleinde.` | Paste the value again without whitespace (CLI: `printf '%s'`, not `echo`) and redeploy. |
+| `GOOGLE_TOKEN_ENCRYPTION_KEY is geen base64 van precies 32 bytes.` | A key that never worked never stored anything: make one with `openssl rand -base64 32`. If it worked before, put the old value back from 1Password instead; a new key disconnects every provider. Redeploy. |
+| `NEXT_PUBLIC_SITE_URL ontbreekt.` | Set it to the environment's fixed https origin. On a deployment the redirect URI comes from this variable only. |
+| `NEXT_PUBLIC_SITE_URL moet met https:// beginnen.` / `… is geen geldig http(s)-adres.` | Correct the value and redeploy. |
+
+Every fix needs a redeploy. On a feature preview the message is expected with
+the recommended scope (§7.3): connect on staging instead.
+
+### `Laatste fout: Google Agenda gaf een fout (HTTP 403).` right after connecting
+
+Most likely the **Google Calendar API** is not enabled in the project (§2):
+connecting needs only OAuth, every free/busy or event call needs the API. Enable
+it and wait a few minutes; the next availability check clears the error. Google's
+own reason (`accessNotConfigured`) is not stored, only the status
+(`booking-architecture.md` §7).
+
+### `Laatste fout: Google Calendar is niet geconfigureerd op de server.`
+
+The deployment that last computed availability for this provider has no OAuth
+client: the variables were removed, or a deployment without them (such as a
+feature preview) uses this database (§7.3). The connection itself is intact; the
+next successful sync on a configured deployment clears the message.
 
 ### Calendar disconnects after about 7 days
 
@@ -422,7 +595,9 @@ reconnect.
 
 ### `Error 400: redirect_uri_mismatch`
 
-The redirect URI we send is `NEXT_PUBLIC_SITE_URL` + `/api/google/oauth/callback`.
+The redirect URI we send is the origin of `NEXT_PUBLIC_SITE_URL` +
+`/api/google/oauth/callback` (on a deployment never `VERCEL_URL`). An admin sees
+it on the Google card under *Gegevens voor de OAuth-client*; staging's is in §7.3.
 It must match one entry in §4 **exactly**: `https` vs `http`, `www` or not,
 port, no trailing slash. Check `NEXT_PUBLIC_SITE_URL` for that Vercel
 environment, fix the list in the OAuth client, wait a few minutes and retry.
@@ -573,7 +748,7 @@ them:
 | Booking rate-limit counters (`cms_rate_limits`, since migration 0008: the IP and a SHA-256 hash of the e-mail address in the key, attempt times) | 1 day after the last attempt of that key | pruned on every booking attempt (`src/lib/rate-limit.ts`); the script does not touch them |
 | Older rate-limit rows (`cms_booking_rate_limit`: IP + e-mail; bookings wrote here until 0008, now only gift voucher requests, with a hashed e-mail) | 24 hours | pruned on every gift voucher request; the script is the backstop. Booking rows written before 0008 go with the next voucher request or the next `--apply` run |
 | Admin login attempts (`cms_login_attempts`) | pruned on every login | automatic (`src/lib/cms/auth.ts`); the script does not touch it |
-| Admin two-step code counters (`cms_mfa_rate_limits`: user id and IP in the key, attempt times; the older `cms_mfa_attempts` log is no longer written) and sign-in challenges (`cms_mfa_challenges`) | 1 day / 10 minutes | pruned on every code check and sign-in (`src/lib/cms/mfa/`); the script does not touch them |
+| Two-step code counters of admins and providers (`cms_mfa_rate_limits`: user id and IP in the key, attempt times; the older `cms_mfa_attempts` log is no longer written) and sign-in challenges (`cms_mfa_challenges`) | 1 day / 10 minutes | pruned on every code check and sign-in (`src/lib/cms/mfa/`); the script does not touch them |
 | Server logs (Vercel) | ≤ 30 days | Vercel's log retention for the plan |
 | GA4 | ≤ 14 months | GA4 Admin → Data retention: keep 2 or 14 months, never more |
 | Admin audit log, sessions, content | not personal customer data | never purged by the script |

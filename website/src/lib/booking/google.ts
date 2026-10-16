@@ -2,11 +2,20 @@ import 'server-only';
 import { env, features, isProduction } from '@/lib/env';
 import { seal, unseal } from '@/lib/sealed-box';
 import { derivedSecret } from '@/lib/secrets';
+import {
+  googleSetupView,
+  resolveGoogleOAuthConfig,
+  type GoogleOAuthConfig,
+  type GoogleSetupView,
+} from './google-oauth-config';
 
 /**
  * Google Calendar over plain REST (`fetch`) — no `googleapis` dependency.
  *
  * Per-provider OAuth 2.0 ("Web application" client):
+ *  - `googleOAuthConfig()` → may a connection start here, and with which
+ *    redirect URI (`./google-oauth-config.ts`: client set, token key usable,
+ *    outside development only an https `NEXT_PUBLIC_SITE_URL`);
  *  - `buildAuthUrl()` → consent screen, `access_type=offline` + `prompt=consent`
  *    so Google always returns a refresh token;
  *  - `exchangeCode()` → tokens (+ the account e-mail from the `id_token`);
@@ -55,6 +64,43 @@ export class GoogleApiError extends Error {
 /** Both OAuth client values are present. */
 export function isGoogleConfigured(): boolean {
   return features.googleCalendar;
+}
+
+/**
+ * Whether {@link encryptionKey} can build the token key here: a valid
+ * `GOOGLE_TOKEN_ENCRYPTION_KEY`, or the key derived from `CMS_SESSION_SECRET`.
+ * Never throws, and runs the same code as encrypting, so the two cannot disagree.
+ */
+export function googleTokenKeyUsable(): boolean {
+  try {
+    encryptionKey();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a NEW connection may be started here, and the redirect URI to send
+ * (rules in `./google-oauth-config.ts`). Both OAuth routes and the admin's
+ * Google card use this one result. `isGoogleConfigured()` stays the test for
+ * syncing calendars that are already connected.
+ */
+export function googleOAuthConfig(): GoogleOAuthConfig {
+  return resolveGoogleOAuthConfig({
+    clientId: env.GOOGLE_OAUTH_CLIENT_ID,
+    clientSecret: env.GOOGLE_OAUTH_CLIENT_SECRET,
+    tokenKeyUsable: googleTokenKeyUsable(),
+    siteUrl: env.NEXT_PUBLIC_SITE_URL,
+    appUrl: env.NEXT_PUBLIC_APP_URL,
+    vercelUrl: env.VERCEL_URL,
+    production: isProduction(),
+  });
+}
+
+/** {@link googleOAuthConfig} as the Google card shows it: details only with `provider.manage`. */
+export function googleConnectSetup(options: { canManage: boolean }): GoogleSetupView {
+  return googleSetupView(googleOAuthConfig(), options);
 }
 
 function clientCredentials(): { clientId: string; clientSecret: string } {

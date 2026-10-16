@@ -57,11 +57,12 @@ const envSchema = z.object({
   CMS_SESSION_SECRET: z.string().min(16).optional(),
 
   /**
-   * base64 of 32 random bytes (`openssl rand -base64 32`). Encrypts the CMS
-   * admins' TOTP secrets (AES-256-GCM, `src/lib/cms/mfa/crypto.ts`). Required
-   * on every deployment: without it admins cannot complete two-step sign-in.
-   * Only local development falls back to a derived key. Rotating it makes
-   * stored factors unreadable (admins use a recovery code and re-enrol).
+   * base64 of 32 random bytes (`openssl rand -base64 32`). Encrypts the TOTP
+   * secrets of CMS admins and providers (AES-256-GCM,
+   * `src/lib/cms/mfa/crypto.ts`). Required on every deployment: without it
+   * admins and providers cannot complete two-step sign-in. Only local
+   * development falls back to a derived key. Rotating it makes stored factors
+   * unreadable (they use a recovery code and re-enrol).
    */
   CMS_MFA_ENCRYPTION_KEY: z.string().optional(),
 
@@ -77,7 +78,12 @@ const envSchema = z.object({
   /** `'false'` skips PGlite's automatic migration on first use; local/scripts only. */
   CMS_PGLITE_AUTO_MIGRATE: z.string().optional(),
 
-  /** Canonical origin of the public site — used for canonicals, sitemap, OG. */
+  /**
+   * Canonical origin of the public site — used for canonicals, sitemap, OG.
+   * Also the Google OAuth redirect URI's origin: in production its only
+   * source, https only, without `siteUrl()`'s fallbacks
+   * (`src/lib/booking/google-oauth-config.ts`).
+   */
   NEXT_PUBLIC_SITE_URL: z.string().url().optional(),
 
   /**
@@ -211,7 +217,12 @@ export const features = {
   get ga4Configured() {
     return Boolean(env.NEXT_PUBLIC_GA4_MEASUREMENT_ID);
   },
-  /** Providers can connect Google Calendar (OAuth client configured). */
+  /**
+   * The OAuth client is configured: calendars that are connected get synced.
+   * Whether a NEW connection may start (client well-formed, token key usable,
+   * https `NEXT_PUBLIC_SITE_URL` in production) is `googleOAuthConfig()` in
+   * `src/lib/booking/google.ts`.
+   */
   get googleCalendar() {
     return Boolean(env.GOOGLE_OAUTH_CLIENT_ID && env.GOOGLE_OAUTH_CLIENT_SECRET);
   },

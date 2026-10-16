@@ -2,11 +2,14 @@ import { FLASH_TONES } from '@/components/admin/tones';
 
 /**
  * Feedback after the Google OAuth round trip. `/api/google/oauth/callback`
- * redirects back with `?google=connected` or `?google=error&reason=<code>`;
- * the code is mapped to Dutch here and never echoed raw.
+ * redirects back with `?google=connected` or `?google=error&reason=<code>`
+ * (the start route only with `reason=config`); the code is mapped to Dutch
+ * here and never echoed raw.
  */
 
 const REASONS: Record<string, string> = {
+  config:
+    'De koppeling met Google is op deze server nog niet klaar. Bij Google Agenda hieronder staat wat er nog nodig is.',
   state: 'De koppelaanvraag is verlopen of ongeldig. Start de koppeling opnieuw.',
   session: 'Je sessie is verlopen of je bent met een ander account aangemeld. Meld je opnieuw aan.',
   forbidden: 'Je mag de Google Agenda van deze aanbieder niet koppelen.',
@@ -29,7 +32,8 @@ export function GoogleFlash({ google, reason }: { google?: string; reason?: stri
     );
   }
   if (google === 'error') {
-    const detail = (reason && REASONS[reason]) || 'Er ging iets mis.';
+    const detail =
+      (reason && Object.hasOwn(REASONS, reason) && REASONS[reason]) || 'Er ging iets mis.';
     return (
       <p role="status" className={`mb-6 px-4 py-3 text-sm ${FLASH_TONES.error}`}>
         Koppelen met Google is niet gelukt. {detail}

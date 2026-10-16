@@ -9,22 +9,22 @@ import {
 } from '@/components/admin/booking-rows';
 import { BookingsTable } from '@/components/admin/bookings-table';
 import { SectionCard } from '@/components/admin/form';
+import { GoogleConnectionCard } from '@/components/admin/google-connection-card';
 import { GoogleFlash } from '@/components/admin/google-flash';
 import {
   BusinessHoursEditor,
   ExceptionsEditor,
-  GoogleConnectionCard,
   ProviderProfileForm,
   ProviderServicesForm,
 } from '@/components/admin/provider-editor';
 import { ServiceCreateForm } from '@/components/admin/services-manager';
 import { PageHeading } from '@/components/admin/shell';
+import { googleConnectSetup } from '@/lib/booking/google';
 import { getOwnProvider, listBookings, listLocations, listServices } from '@/lib/booking/repo';
 import { getBookingRules } from '@/lib/booking/settings';
 import { todayYmd } from '@/lib/booking/time';
 import { requireCmsUser } from '@/lib/cms/auth';
 import { can } from '@/lib/cms/permissions';
-import { features } from '@/lib/env';
 
 export const metadata = { title: 'Mijn agenda' };
 
@@ -110,7 +110,7 @@ export default async function AdminAgendaPage({ searchParams }: { searchParams: 
           google={editor.google}
           scope="own"
           canConnect={canEditSelf}
-          configured={features.googleCalendar}
+          setup={googleConnectSetup({ canManage: can(user.role, 'provider.manage') })}
         />
         <BusinessHoursEditor
           providerId={provider.id}
