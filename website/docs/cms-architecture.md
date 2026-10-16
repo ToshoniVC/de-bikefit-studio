@@ -536,9 +536,10 @@ would have put them on the admin limits as a side effect. `sessionPolicyFor()`
 now reads its own table, `ROLE_SESSION_POLICY` in `session-policy.ts`
 (`admin: 'admin'`, `editor` and `provider: 'standard'`, any other role
 `'admin'`, failing closed). A provider's session after the second step is a
-14-day sliding one, exactly as before; whether providers (or editors) should
-get the 15-minute idle and 8-hour absolute limits is the product owner's
-decision (below), made by changing that one entry.
+14-day sliding one, exactly as before. Max accepted this for the staging-only
+MFA test, not for production. Whether providers (or editors) should get a
+shorter lifetime before production is the product owner's decision (below),
+made by changing that one entry.
 
 **Role changes** take effect on the next request, because the guard and the
 session class read the user's current role: an editor promoted to provider (or
@@ -551,11 +552,16 @@ code). A provider promoted to admin with an MFA session continues as an admin
 session at once, held to the admin limits from its sign-in time (a session
 older than 8 hours ends). Admins are unchanged. Self-test 5g covers each case.
 
-**Open decisions for the product owner (Max)**, all left as they are:
+**Open decisions for the product owner (Max)**, except the stated staging-only
+session trade-off, all left as they are:
 
-1. **Provider session lifetime.** Standard (14 days, sliding) or the admin
-   limits (15 minutes idle, 8 hours absolute)? Providers handle customers'
-   names, e-mail addresses, phone numbers and notes in *Mijn agenda*.
+1. **Provider session lifetime before production.** Standard (14 days,
+   sliding) is accepted for the protected staging MFA test only. Providers
+   handle customers' names, e-mail addresses, phone numbers and notes in
+   *Mijn agenda*, and their Google connection. The admin limits (15 minutes
+   idle, 8 hours absolute) could interrupt an appointment; choose a
+   provider-specific policy before production. Staging acceptance is not
+   production security approval.
 2. **No grace period.** From the deploy every provider session is refused
    and each provider enrols at the next sign-in; nobody can postpone it, and
    an admin can no longer create a provider account that signs in with a
@@ -751,7 +757,7 @@ provider has never signed in). Rollout, break-glass and rollback:
   IP and IP bucket per address; the daily backstop of 50 checks per user is
   the bound that holds then.
 - *Long provider sessions.* A provider's session after the second step keeps
-  the standard 14 days, sliding (open decision 1 above): a stolen provider
+  the standard 14 days, sliding (staging-only decision 1 above): a stolen provider
   session cookie keeps working that long, where an admin's ends after 15 idle
   minutes. Its password and authenticator stay protected (step-up with the
   code; the factor cannot be removed); its own bookings and agenda do not.
@@ -1569,9 +1575,9 @@ above the fields; `offer` and `team` use it to point editors at the register.
 - **Editor and provider sessions** still last 14 days with sliding renewal;
   only admin sessions have the 15-minute idle and 8-hour absolute limits (§4).
   Providers need two-step verification since 16 Oct 2026, but their session
-  class was deliberately left alone (`ROLE_SESSION_POLICY`). Whether editors
-  and providers get limits too is an owner decision (Max), listed with the
-  other open MFA decisions in §4.
+  class was deliberately left alone (`ROLE_SESSION_POLICY`) for the staging
+  MFA test. The provider production policy is still an owner decision, listed
+  with the other open MFA decisions in §4.
 - **Draft preview gate is wider than `page.read`.** `canPreview()`
   (`src/lib/cms/actions/preview.ts`) lets any signed-in user who passes the
   guard read drafts, a provider included, although providers have no
@@ -1658,4 +1664,3 @@ new block types are zod-validated `text` in `cms_blocks`, as every block type.
 are all still valid). Old code reading a page that uses `offer`,
 `offerCatalogue` or `team` treats it as unpublished (404) — so deploy the code
 before running the rollout.
-

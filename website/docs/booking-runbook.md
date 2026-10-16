@@ -326,12 +326,16 @@ a token key, is the token key's source), `CMS_MFA_ENCRYPTION_KEY`, `DATABASE_URL
   to the staging alias and the connection would complete there (`DEPLOYMENT.md`
   §1). Without them their Google card says the connection is not set up, which
   is true for them.
-- A feature preview that uses the staging database (which database previews use
-  is not recorded in this repository) must not hold staging's token key: any
-  branch's code could then decrypt the providers' tokens. The side effect to
-  accept: when such a preview computes availability for a connected provider, it
-  records *"Google Calendar is niet geconfigureerd op de server."* on that shared
-  provider row; the next successful sync on staging clears it (§10).
+- Feature previews currently share the Neon Staging database (`DEPLOYMENT.md`
+  §1 and the infrastructure inventory). They must not hold staging's token key:
+  arbitrary feature-branch code could then decrypt providers' tokens. With no
+  Google variables, a feature preview cannot validate connected-provider
+  availability: it treats that calendar as having no busy time and may record
+  *"Google Calendar is niet geconfigureerd op de server."* on the shared provider
+  row. The next successful sync on staging clears the error (§10). Do not use a
+  feature-preview booking flow for real appointments or Calendar acceptance;
+  validate those on the protected `staging` alias. Do not solve this by copying
+  the key into generic Preview.
 
 **Redeploy.** Vercel applies a variable change only to new deployments: redeploy
 the latest `staging` deployment after setting them (or merge the code that needs
@@ -353,9 +357,11 @@ variables to a deployment.
 - [ ] OAuth client (§4, Web application): the URI above added under *Authorised
       redirect URIs* (https, no trailing slash). JavaScript origins stay empty. No
       per-deployment or feature-preview host.
-- [ ] Client ID and secret in 1Password, and a fresh staging
-      `GOOGLE_TOKEN_ENCRYPTION_KEY` (§7.2) in "Bikefit — staging integrations".
-      Tell Arend the item names, never the values.
+- [ ] Client ID and secret in the OpenClaw 1Password vault; tell Arend the item
+      name, never the values. Arend generates the fresh staging
+      `GOOGLE_TOKEN_ENCRYPTION_KEY` (§7.2), stores it in 1Password first, then
+      provisions Vercel. No provider token exists on staging yet, so this first
+      explicit key requires no reconnection.
 - [ ] Decided which Google account a provider connects on staging. The code always
       uses that account's **primary** calendar, so staging test bookings become
       real events in it; a separate test account keeps them out of a real agenda.

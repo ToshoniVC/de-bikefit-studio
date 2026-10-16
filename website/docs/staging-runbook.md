@@ -862,8 +862,8 @@ Providers ("Aanbieder") now sign in like admins: password **and** a code from an
 app, enrolled at the first sign-in after the deploy, with ten recovery codes. A provider cannot
 switch it off (only replace the authenticator), the step-up *Bevestig je identiteit* asks for
 the code, and changing the own password needs that step-up within 5 minutes. **Unchanged:**
-the provider's session lifetime (14 days, sliding; whether providers get the admin limits is
-an open decision for Max, `cms-architecture.md` §4), editors (password only, unless they kept
+the provider's session lifetime (14 days, sliding; accepted for this staging-only MFA test,
+**not** approved for production; see `cms-architecture.md` §4), editors (password only, unless they kept
 an authenticator), admins, permissions, public booking. Design and the policy per role:
 `cms-architecture.md` §4, "Two-step verification". Arend executes; staging is autonomous after
 the release gate, production needs Toshoni's go.

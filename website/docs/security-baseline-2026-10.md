@@ -85,8 +85,11 @@ The MFA scope now covers two roles: **admins and providers** ("Aanbieder") must 
 step on every session; **editors are unchanged** (asked only when they kept an authenticator).
 The rule is the table `ROLE_MFA_POLICY` in `src/lib/cms/guard.ts`; the session lifetime is a
 separate table, `ROLE_SESSION_POLICY` in `src/lib/cms/session-policy.ts`, so providers keep their
-14-day sessions until the owner decides otherwise (`docs/cms-architecture.md` §4, open
-decisions). Code only: no migration, no new secret, no new or changed dependency
+14-day sessions for the staging-only MFA test. This is a security/UX trade-off,
+not production approval: providers can access booking data and Google Calendar,
+but the admin's 15-minute idle limit could interrupt appointments. The provider
+session policy must be decided before production (`docs/cms-architecture.md` §4).
+Code only: no migration, no new secret, no new or changed dependency
 (`package.json` and the lockfile are untouched by it), so the `npm audit` picture above is
 unaffected by this change; it was not re-run in this work block (no network). Rollout:
 `docs/staging-runbook.md` §17.
