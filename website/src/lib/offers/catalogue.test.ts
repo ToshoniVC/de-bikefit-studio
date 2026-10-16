@@ -100,6 +100,16 @@ describe('parseServiceParam (query-string boundary)', () => {
 });
 
 describe('offerPriceLabel', () => {
+  it('does not leak independent editorial amounts for a service-linked offer', () => {
+    const bookingServiceSlugs = ['volwassenenfit', 'jeugdfit'];
+    expect(offerPriceLabel({ priceCents: 12000, priceLabel: '', bookingServiceSlugs })).toBe(
+      'Prijs op aanvraag',
+    );
+    expect(
+      offerPriceLabel({ priceCents: 12000, priceLabel: 'vanaf € 120', bookingServiceSlugs }),
+    ).toBe('Prijs op aanvraag');
+  });
+
   it('shows "Prijs op aanvraag" while nothing is confirmed, never € 0', () => {
     expect(offerPriceLabel({ priceCents: null, priceLabel: '' })).toBe('Prijs op aanvraag');
     expect(offerPriceLabel({ priceCents: null, priceLabel: '   ' })).toBe('Prijs op aanvraag');
@@ -145,6 +155,21 @@ describe('offerFromPage', () => {
       priceLabel: 'Prijs op aanvraag',
       durationLabel: 'Duur in overleg',
     });
+  });
+
+  it('keeps a linked Bikefit catalogue card at request-price despite editorial cents', () => {
+    const current = DEFAULT_OFFERS.find((entry) => entry.slug === 'bikefit-huidige-fiets');
+    expect(current).toBeDefined();
+    const entry = offerFromPage({
+      slug: 'aanbod/bikefit-huidige-fiets',
+      blocks: [
+        {
+          type: 'offer',
+          data: { ...offerBlockData(current!), priceCents: 12000, priceLabel: 'vanaf € 120' },
+        },
+      ],
+    });
+    expect(entry?.priceLabel).toBe('Prijs op aanvraag');
   });
 
   it('falls back to the intro when the summary is empty', () => {

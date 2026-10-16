@@ -38,9 +38,10 @@ const offerCategorySchema = z.enum(OFFER_CATEGORIES);
 /**
  * `offer` — one service. The page's `/aanbod/<slug>` path is the offer's
  * identity (booking links use that slug), so the block stores no slug of its
- * own. Price: a free-text `priceLabel` wins, then `priceCents`; with neither
- * the site shows "Prijs op aanvraag". The label "Prijs op aanvraag" itself
- * (the seeded placeholder) never hides a confirmed `priceCents`. `bookingServiceSlugs` points at
+ * own. For an unlinked enquiry offer, free-text `priceLabel` wins, then
+ * `priceCents`, else "Prijs op aanvraag". For a linked booking offer, both
+ * editorial price fields are ignored on public pages until price display is
+ * derived from its cms_services rows. `bookingServiceSlugs` points at
  * `cms_services.slug`; empty = not online bookable (contact prompt).
  */
 export const offerSchema = z.object({

@@ -20,8 +20,10 @@ import type { BlockProps } from './types';
  * path) to `/afspraak?dienst=<slug>#boeken`; the booking block decides there
  * whether the widget can take it or a contact prompt is the honest answer.
  *
- * "Duur in overleg" and "Prijs op aanvraag" are the fallbacks while nothing is
- * confirmed; an editor changes them on the block, never in code.
+ * "Duur in overleg" is the fallback while nothing is confirmed. A linked
+ * booking offer displays "Prijs op aanvraag" until its approved variant prices
+ * can be derived from cms_services; independent editorial cents/labels cannot
+ * override the service-level showPrice setting.
  */
 export function OfferBlock({ data, anchor, headingLevel, locale, page }: BlockProps<'offer'>) {
   const offerSlug = offerSlugFromPageSlug(page.slug);

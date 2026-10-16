@@ -95,12 +95,17 @@ export function offerBookingHref(offerSlug: string): string {
 }
 
 /**
- * Free-text label wins, then a confirmed amount in cents, else "Prijs op
- * aanvraag". The seed writes "Prijs op aanvraag" into the label so editors see
- * the placeholder in the CMS; that placeholder never hides a confirmed amount,
- * so filling in only the cents is enough.
+ * A linked booking offer must not publish its independent editorial amount:
+ * cms_services owns price and showPrice for each variant. Until the approved
+ * variant presentation reads those rows, show "Prijs op aanvraag". Unlinked
+ * enquiry offers retain their editorial label/cents precedence.
  */
-export function offerPriceLabel(input: { priceCents: number | null; priceLabel: string }): string {
+export function offerPriceLabel(input: {
+  priceCents: number | null;
+  priceLabel: string;
+  bookingServiceSlugs?: readonly string[];
+}): string {
+  if (input.bookingServiceSlugs?.some((slug) => slug.trim())) return OFFER_PRICE_FALLBACK;
   const label = input.priceLabel.trim();
   const isPlaceholder = label.toLowerCase() === OFFER_PRICE_FALLBACK.toLowerCase();
   if (label && !(isPlaceholder && input.priceCents != null)) return label;

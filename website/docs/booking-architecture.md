@@ -906,10 +906,17 @@ Toshoni decide otherwise.
 | Which services an offer is booked as, in order | the offer block's `bookingServiceSlugs` (*Online boeken via dienst(en)*), on the published offer page | editor / admin, in the page editor |
 | Who offers a service, with an optional location override | `cms_provider_services` (no price, no duration) | the provider for their own profile, or an admin |
 
-No price is copied to an offer or to a provider, and no new price exists: both services keep
-`price_cents = null`, `show_price = false`, so the widget says "Prijs op aanvraag" under the
-offer until an admin sets and shows an approved amount on **that service** (the offer page's
-own *Kostprijs* is a separate marketing line: `content-placeholders.md` P-02). Admin →
+No service price is copied to an offer or provider, and no new price exists:
+both services keep `price_cents = null`, `show_price = false`, so the widget
+says "Prijs op aanvraag" until an admin sets and shows an approved amount on
+**that service**. The offer block still stores legacy editorial `priceCents`
+and `priceLabel`, but for any offer linked to booking services the public
+catalogue and detail page ignore those independent fields and show "Prijs op
+aanvraag". Otherwise a CMS editor could disclose a numeric offer price while
+the linked service's `show_price` is false. Once approved prices and their
+presentation are decided, offer-page variants must be derived from the linked
+service rows; no `vanaf` amount is inferred now. Unlinked enquiry offers keep
+their editorial price behavior (`content-placeholders.md` P-02). Admin →
 Diensten shows per service which published offer links to it.
 
 *The widget.* The `booking` block always reads the published offers (cached; on failure the
