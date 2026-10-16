@@ -132,15 +132,13 @@ export default async function AdminAgendaPage({ searchParams }: { searchParams: 
           locations={locationOptions}
           scope="own"
           canEdit={can(user.role, 'service.subscribe.own') || can(user.role, 'provider.manage')}
+          description="Vink de actieve diensten aan die je aanbiedt en kies per dienst eventueel een andere locatie. Naam, duur en prijs van een dienst beheert de beheerder."
         />
-        {can(user.role, 'service.create') ? (
+        {/* The catalogue is the admin's: a provider never sees a create form here. */}
+        {can(user.role, 'service.manage') ? (
           <SectionCard
             title="Nieuwe dienst"
-            description={
-              can(user.role, 'service.manage')
-                ? 'Staat je dienst er niet bij? Maak hem aan en vink hem daarna hierboven aan.'
-                : 'Staat je dienst er niet bij? Maak hem aan; je biedt hem dan meteen zelf aan.'
-            }
+            description="Staat je dienst er niet bij? Maak hem aan en vink hem daarna hierboven aan."
           >
             <ServiceCreateForm
               locations={locationOptions}

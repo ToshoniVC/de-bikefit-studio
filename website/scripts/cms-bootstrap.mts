@@ -221,11 +221,24 @@ async function main() {
 
   for (const service of DEFAULT_SERVICES) {
     const [existing] = await db
-      .select({ id: cmsServices.id })
+      .select({ id: cmsServices.id, choiceLabel: cmsServices.choiceLabel })
       .from(cmsServices)
       .where(and(eq(cmsServices.locale, DEFAULT_LOCALE), eq(cmsServices.slug, service.slug)))
       .limit(1);
     if (existing) {
+      // Migration 0009 added `choice_label` empty. Fill the default label only
+      // while it is still empty: an admin's own label is never overwritten,
+      // and nothing else on the row (name, duration, price, active) is touched.
+      if (service.choiceLabel && !existing.choiceLabel) {
+        await db
+          .update(cmsServices)
+          .set({ choiceLabel: service.choiceLabel })
+          .where(and(eq(cmsServices.id, existing.id), eq(cmsServices.choiceLabel, '')));
+        console.log(
+          `~ service ${DEFAULT_LOCALE}/${service.slug}: empty choice label set to “${service.choiceLabel}”`,
+        );
+        continue;
+      }
       console.log(`= service ${DEFAULT_LOCALE}/${service.slug} already exists — left untouched`);
       continue;
     }
@@ -233,6 +246,7 @@ async function main() {
       locale: DEFAULT_LOCALE,
       slug: service.slug,
       name: service.name,
+      choiceLabel: service.choiceLabel,
       description: service.description,
       durationMinutes: service.durationMinutes,
       bufferAfterMinutes: 15,

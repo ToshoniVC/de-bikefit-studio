@@ -5,8 +5,11 @@ import type { CmsRole } from '@/db/cms-schema';
  *
  * Three roles:
  *  - **provider** (Aanbieder) — a bookable person: sees and manages their own
- *                 bookings, hours, Google connection and service subscriptions.
- *                 No access to pages, media or settings.
+ *                 bookings, hours, Google connection and service subscriptions
+ *                 (to existing, active services). The service catalogue itself
+ *                 (create, edit, price, deactivate) is the admin's: no
+ *                 `service.create`, no `service.manage` (16 Oct 2026). No access
+ *                 to pages, media or settings.
  *  - **editor** — day-to-day content work: pages, blocks, media, navigation,
  *                 plus read-only access to bookings, services, locations and
  *                 providers.
@@ -98,7 +101,6 @@ const PROVIDER_PERMISSIONS = new Set<CmsPermission>([
   'booking.read.own',
   'booking.manage.own',
   'service.read',
-  'service.create',
   'service.subscribe.own',
   'location.read',
   'provider.self',

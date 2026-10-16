@@ -65,7 +65,10 @@ Plaats: CMS → de dienstpagina → blok *Dienst (aanbod)* → veld **Prijslabel
 | P-06 | `/aanbod/lactaattest` (*Lactaattest*) | Prijs op aanvraag | idem | open |
 | P-07 | `/aanbod/coaching` (*Coaching*) | Prijs op aanvraag | idem; per sessie, per maand of per traject? | open |
 
-Een prijs in het aanbod verandert **niets** aan de online boeking (zie K-06).
+Een prijs in het aanbod verandert **niets** aan de online boeking (zie K-06): de boeking toont
+enkel de prijs van de gekozen dienst zelf (Volwassene of Jeugd), uit `/admin` → **Diensten**. Wie
+P-02 invult, zet dus ook dezelfde bevestigde bedragen per dienst (K-06), of laat beide op "Prijs
+op aanvraag"; nooit één gedeelde prijs voor beide.
 
 ## 2. Duur (D)
 
@@ -166,12 +169,12 @@ blok *Dienst (aanbod)* → veld **Online boeken via dienst(en)** (slug uit `/adm
 
 | ID | Onderwerp | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
-| K-01 | *Bikefit – huidige fiets* | gekoppeld aan de bestaande diensten `volwassenenfit` (90 min) en `jeugdfit` (60 min); de widget toont hun naam en beschrijving ("Reken op 90 minuten …") | bevestigen dat dit dezelfde dienst is | te bevestigen |
+| K-01 | *Bikefit – huidige fiets* | gekoppeld aan de bestaande diensten `volwassenenfit` (90 min) en `jeugdfit` (60 min). Sinds 16 okt 2026 toont `/afspraak` dit aanbod **één keer**, met daaronder "Voor wie?": **Volwassene** en **Jeugd** (veld **Keuzelabel onder een aanbod** in **Diensten**); de gekozen dienst bepaalt duur, beschikbaarheid, formulier (ouder bij Jeugd) en wat geboekt wordt | bevestigen dat dit dezelfde dienst is | te bevestigen |
 | K-02 | De andere zes diensten | veld leeg → contactvraag, niet online boekbaar | per dienst: echte duur (D-rij) en aanbieder(s) die het zelf bevestigen (K-05); dan dienst aanmaken in **Diensten** en de slug invullen | open |
 | K-03 | *Lactaattest* vs. bestaande dienst Inspanningstest | niet gekoppeld (niet bevestigd dat het dezelfde meting is) | beslissen: koppelen, of Inspanningstest uitzetten | open |
-| K-04 | Bestaande diensten Gezinspakket en Fit aan huis | actief en boekbaar via `/afspraak` zonder dienstkeuze; niet meer in het aanbod | beslissen: behouden of uitzetten (zacht; bestaande boekingen blijven). Raakt G-07 | open |
-| K-05 | Aanbieders per dienst | ongewijzigd: enkel de bestaande aanbieder op de vijf oude diensten | wie biedt welke nieuwe dienst aan, enkel door de persoon zelf bevestigd (`/admin` → **Aanbieders**) | open |
-| K-06 | Prijzen in de boekingswidget | verborgen (beslissing Toshoni, 24 sep 2026): **Diensten** → **Prijs tonen op de website** uit | na P-02 en de andere prijzen beslissen of de widget ook prijzen toont; dan **Prijs (euro)** en **Prijs tonen** per dienst invullen | open |
+| K-04 | Bestaande diensten Gezinspakket, Fit aan huis (en Inspanningstest, K-03) | actief en rechtstreeks te kiezen op `/afspraak`, naast *Bikefit – huidige fiets* (beslissing Toshoni 16 okt 2026: behouden tot Max of Toshoni anders beslist); niet in het aanbod | beslissen: behouden of uitzetten (zacht, door een beheerder; bestaande boekingen blijven). Raakt G-07 | open |
+| K-05 | Aanbieders per dienst | ongewijzigd: enkel de bestaande aanbieder op de vijf oude diensten. Sinds 16 okt 2026 maakt een aanbieder geen diensten meer aan en past ze niet aan; hij of zij schrijft zich enkel in voor actieve diensten (**Mijn agenda** → **Diensten**) | wie biedt welke nieuwe dienst aan, enkel door de persoon zelf bevestigd; een nieuwe dienst maakt een beheerder aan | open |
+| K-06 | Prijzen in de boekingswidget | geen bedrag: **Prijs (euro)** leeg en **Prijs tonen op de website** uit bij alle diensten. Onder *Bikefit – huidige fiets* toont de widget per keuze "Prijs op aanvraag"; zodra een beheerder voor **die dienst** een bedrag invult en toont, staat dat bedrag er (Volwassene en Jeugd elk hun eigen prijs, nooit gekopieerd of per aanbieder) | goedgekeurde bedragen voor Volwassenenfit en Jeugdfit (vast of "vanaf"?) van Toshoni (geblokkeerd tot hij beslist); dan per dienst **Prijs (euro)** + **Prijs tonen** | open |
 
 ## 7. Bestaande hiaten in aangeraakte inhoud (G)
 

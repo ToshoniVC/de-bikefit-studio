@@ -1,6 +1,7 @@
 import { getSiteSettings } from '@/lib/cms/content';
 import { listPublishedOffers } from '@/lib/cms/offers-content';
 import {
+  groupBookingChoices,
   resolveBookingSelection,
   type BookingSelection,
   type CatalogueOffer,
@@ -30,6 +31,12 @@ import type { BlockProps } from './types';
  *  - a booking-service slug → the widget with that service preselected;
  *  - an unknown slug → the normal widget with a short notice.
  *
+ * Offers are the public vocabulary on the plain widget too: services that a
+ * published offer links to appear once, under that offer, as a sub-selection
+ * (`groupBookingChoices()`: "Bikefit – huidige fiets" → Volwassene / Jeugd);
+ * services no offer links to stay directly selectable. The chosen SERVICE is
+ * what is booked, with its own duration, availability, guardian rule and price.
+ *
  * It never breaks the page: when the booking tables are unreachable (e.g. the
  * migration has not run yet) or nothing is bookable, the section shows a short
  * "bel ons" fallback with the studio's phone number instead.
@@ -54,13 +61,12 @@ export async function BookingBlock({
     console.error('[booking] widget_data_unavailable');
   }
 
+  // Cached reader; without it the widget simply lists every service on its own.
   let offers: CatalogueOffer[] = [];
-  if (page.requestedService) {
-    try {
-      offers = await listPublishedOffers(locale);
-    } catch {
-      console.error('[booking] offer_catalogue_unavailable');
-    }
+  try {
+    offers = await listPublishedOffers(locale);
+  } catch {
+    console.error('[booking] offer_catalogue_unavailable');
   }
   const selection: BookingSelection = resolveBookingSelection({
     requested: page.requestedService,
@@ -115,8 +121,15 @@ export async function BookingBlock({
     }
 
     const offered = new Set(services.map((service) => service.id));
+    // Behind an offer link, only that offer groups: a service another offer
+    // also links must not appear under that other offer's title here.
+    const grouping =
+      selection.kind === 'offer'
+        ? offers.filter((offer) => offer.slug === selection.offer.slug)
+        : offers;
     props = {
       services,
+      choices: groupBookingChoices({ offers: grouping, services }),
       providers: options.providers.filter((provider) =>
         provider.services.some((entry) => offered.has(entry.serviceId)),
       ),

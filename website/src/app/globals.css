@@ -3,6 +3,8 @@
 @import 'shadcn/tailwind.css';
 /* Offer, catalogue and team components (split out; this file is over the size limit). */
 @import './studio-aanbod.css';
+/* Booking step 1: an offer with its services underneath (split out, same reason). */
+@import './studio-booking-choice.css';
 
 @plugin "@tailwindcss/typography";
 

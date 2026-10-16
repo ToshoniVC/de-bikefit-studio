@@ -148,6 +148,7 @@ URL prefix (`publicPathFor()` in `repo.ts` encodes that rule).
 | `drizzle/0006_cms_session_limits.sql` | Admin session limits and step-up (§4, Sessions): two nullable columns, `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at`. Additive and guarded (`ADD COLUMN IF NOT EXISTS`); existing rows get `NULL`, so an existing admin session ends at `created_at` + 8 h at the latest and has no recent step-up. |
 | `drizzle/0007_cms_mfa_rate_limits.sql` | Race-free second-step limits (§4, Rate limiting): the `cms_mfa_rate_limits` table (FK to `cms_users`, two indexes) and a **unique** index `cms_mfa_challenges_user_id_unique_idx` (one challenge per user; the old non-unique index stays). Guarded and re-runnable. Its one data change: duplicate challenge rows of a user (ephemeral sign-in state, at most 10 minutes old) are deleted, the newest kept, in the same locked statement that builds the index. No DROP, no webshop table. |
 | `drizzle/0008_cms_rate_limits.sql` | Race-free public booking limit (§4, Rate limiting; `booking-architecture.md` §9): the `cms_rate_limits` table (one row per key, no FK) and its index on `updated_at`, both `IF NOT EXISTS`. No data change, no DROP, no webshop table; `cms_booking_rate_limit` untouched. Migrate **before** deploying the build that uses it: without the table every public booking attempt fails closed (`error`, `[booking] create_failed`). |
+| `drizzle/0009_cms_service_choice_label.sql` | `cms_services.choice_label` (text, not null, default `''`): a service's label under an offer with several services ("Volwassene", "Jeugd"; `booking-architecture.md` §14). One `ADD COLUMN IF NOT EXISTS`, no data change. Migrate **before** deploying the build that uses it: the app selects every `cms_services` column. |
 
 **Rollout order of 0004–0007.** The e-mail settings (from `staging`) and the
 security release met in one merge: the MFA and session migrations were
@@ -706,9 +707,9 @@ navigation, redirects or settings**.
 | Cancel / complete any booking | `booking.manage` | ❌ | ❌ | ✅ |
 | Cancel / complete own bookings | `booking.manage.own` | ✅ | ❌ | ✅ |
 | List services | `service.read` | ✅ | ✅ | ✅ |
-| Create a service | `service.create` | ✅ | ❌ | ✅ |
-| Edit / deactivate any service | `service.manage` | ❌ | ❌ | ✅ |
-| Choose own services | `service.subscribe.own` | ✅ | ❌ | ✅ |
+| Create a service | `service.create` (repo: `service.manage`) | ❌ | ❌ | ✅ |
+| Create, edit, price, deactivate any service | `service.manage` | ❌ | ❌ | ✅ |
+| Subscribe own profile to active services | `service.subscribe.own` | ✅ | ❌ | ✅ |
 | View locations | `location.read` | ✅ | ✅ | ✅ |
 | Manage locations | `location.manage` | ❌ | ❌ | ✅ |
 | View all providers | `provider.read` | ❌ | ✅ | ✅ |
@@ -717,11 +718,14 @@ navigation, redirects or settings**.
 | GA4 dashboard panel | `analytics.read` | ❌ | ❌ | ✅ |
 
 The provider set is exactly `booking.read.own`, `booking.manage.own`,
-`service.read`, `service.create`, `service.subscribe.own`, `location.read`,
-`provider.self` (the self-test checks this). `*.own` is resolved server-side
-from the signed-in user's `cms_providers` row; a provider may also edit or
-deactivate services they created themselves. Details:
-[`booking-architecture.md`](./booking-architecture.md) §3.
+`service.read`, `service.subscribe.own`, `location.read`, `provider.self` (the
+self-test checks this). `*.own` is resolved server-side from the signed-in
+user's `cms_providers` row. Since 16 Oct 2026 the service catalogue is
+admin-only: a provider no longer has `service.create`, and a service they
+created earlier (`created_by`) gives them no right to edit, price or deactivate
+it; they only subscribe their own profile to active services. The *Diensten*
+menu item is hidden for providers (`notFor` in `shell.tsx`). Details:
+[`booking-architecture.md`](./booking-architecture.md) §3 and §14.
 
 `ROLE_RANK = { provider: 0, editor: 1, admin: 2 }`, so
 `requireCmsUser('editor')` keeps providers out of the content screens. Gate
@@ -1221,7 +1225,7 @@ git checkout webshop-baseline-2026-09-23 -- website
 git clone .winston/repos/de-bikefit-studio/baselines/webshop-baseline-2026-09-23.bundle restored
 ```
 
-Database rollback: nothing needs undoing. All migrations (0000–0008) are
+Database rollback: nothing needs undoing. All migrations (0000–0009) are
 additive, so the webshop tables and data are byte-identical before and after.
 If you want the CMS gone from a database, drop the twenty-six `cms_*` tables
 and the two `cms_*` enum types — no webshop object references them.

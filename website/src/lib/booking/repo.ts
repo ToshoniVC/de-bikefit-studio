@@ -11,7 +11,6 @@ import {
   cmsProviders,
   cmsServices,
   cmsUsers,
-  DEFAULT_LOCALE,
   type CmsAvailabilityException,
   type CmsBooking,
   type CmsBookingCancelledBy,
@@ -21,19 +20,17 @@ import {
   type CmsLocationKind,
   type CmsProvider,
   type CmsRole,
-  type CmsService,
   type CmsUserPublic,
 } from '@/db/cms-schema';
-import { CmsAuthError, recordAudit, requireCmsUser, requirePermission } from '@/lib/cms/auth';
+import { recordAudit, requireCmsUser, requirePermission } from '@/lib/cms/auth';
 import { createUser } from '@/lib/cms/users';
 import { can, type CmsPermission } from '@/lib/cms/permissions';
-import { revalidateContent, type RepoResult } from '@/lib/cms/repo';
+import type { RepoResult } from '@/lib/cms/repo';
 import { logBookingFailure } from './booking-log';
-import { BOOKING_TAG } from './content';
-import { slugify } from './format';
 import { decryptSecret, encryptSecret, revokeToken } from './google';
 import { sendBookingCancelledEmails } from './notifications';
 import { cancelProviderEvent } from './provider-calendar';
+import { bust, defined, err, forbidden, issuesToMessage, locationExists, ok } from './repo-shared';
 import {
   BOOKING_TIMEZONE,
   addDaysYmd,
@@ -61,28 +58,6 @@ import {
  */
 
 export type { RepoResult };
-
-const ok = <T>(data: T) => ({ ok: true as const, data });
-const err = (message: string) => ({ ok: false as const, message });
-
-function forbidden(): never {
-  throw new CmsAuthError('forbidden', 'Je hebt geen toestemming voor deze actie.');
-}
-
-function issuesToMessage(error: z.ZodError): string {
-  return error.issues.map((issue) => issue.message).join(' ');
-}
-
-/** Drops keys whose value is `undefined`, so partial updates can be merged. */
-function defined<T extends object>(input: T): Partial<T> {
-  return Object.fromEntries(
-    Object.entries(input).filter(([, value]) => value !== undefined),
-  ) as Partial<T>;
-}
-
-function bust(): void {
-  revalidateContent({ tags: [BOOKING_TAG] });
-}
 
 async function ownProviderRow(userId: string): Promise<CmsProvider | null> {
   const db = await getCmsDb();
@@ -118,254 +93,19 @@ async function requireProviderScope(
 }
 
 // ===========================================================================
-// Services
+// Services — the catalogue lives in `./repo-services.ts`
 // ===========================================================================
 
-export const serviceInputSchema = z.object({
-  locale: z.string().trim().min(2, 'Ongeldige taal.').default(DEFAULT_LOCALE),
-  name: z.string().trim().max(120, 'De naam is te lang (max. 120 tekens).').default(''),
-  /** Empty → derived from the name. */
-  slug: z.string().trim().max(80, 'De slug is te lang.').default(''),
-  description: z
-    .string()
-    .trim()
-    .max(2000, 'De beschrijving is te lang (max. 2000 tekens).')
-    .default(''),
-  durationMinutes: z
-    .number()
-    .int('De duur moet een geheel aantal minuten zijn.')
-    .min(5, 'De duur is minstens 5 minuten.')
-    .max(720, 'De duur is maximaal 12 uur.')
-    .default(60),
-  /** `null` → the `booking` setting's default buffer. */
-  bufferAfterMinutes: z
-    .number()
-    .int('De buffer moet een geheel aantal minuten zijn.')
-    .min(0, 'De buffer kan niet negatief zijn.')
-    .max(240, 'De buffer is maximaal 4 uur.')
-    .nullable()
-    .default(15),
-  priceCents: z
-    .number()
-    .int('Ongeldige prijs.')
-    .min(0, 'De prijs kan niet negatief zijn.')
-    .nullable()
-    .default(null),
-  showPrice: z.boolean().default(false),
-  /** `null` → the provider's default location. */
-  locationId: z.string().trim().min(1).nullable().default(null),
-  requiresGuardian: z.boolean().default(false),
-  isActive: z.boolean().default(true),
-  sortOrder: z.number().int().default(0),
-  color: z.string().trim().max(32, 'Ongeldige kleur.').nullable().default(null),
-});
-
-export type ServiceInput = z.input<typeof serviceInputSchema>;
-
-export type ServiceListItem = CmsService & {
-  locationName: string | null;
-  providerCount: number;
-};
-
-function serviceToInput(service: CmsService): z.output<typeof serviceInputSchema> {
-  return {
-    locale: service.locale,
-    name: service.name,
-    slug: service.slug,
-    description: service.description,
-    durationMinutes: service.durationMinutes,
-    bufferAfterMinutes: service.bufferAfterMinutes,
-    priceCents: service.priceCents,
-    showPrice: service.showPrice,
-    locationId: service.locationId,
-    requiresGuardian: service.requiresGuardian,
-    isActive: service.isActive,
-    sortOrder: service.sortOrder,
-    color: service.color,
-  };
-}
-
-async function locationExists(locationId: string | null): Promise<boolean> {
-  if (!locationId) return true;
-  const db = await getCmsDb();
-  const [row] = await db
-    .select({ id: cmsLocations.id })
-    .from(cmsLocations)
-    .where(eq(cmsLocations.id, locationId))
-    .limit(1);
-  return Boolean(row);
-}
-
-export async function listServices(
-  options: { includeInactive?: boolean; locale?: string } = {},
-): Promise<ServiceListItem[]> {
-  await requirePermission('service.read');
-  const db = await getCmsDb();
-  const conditions: SQL[] = [eq(cmsServices.locale, options.locale ?? DEFAULT_LOCALE)];
-  if (!options.includeInactive) conditions.push(eq(cmsServices.isActive, true));
-
-  const rows = await db
-    .select({ service: cmsServices, locationName: cmsLocations.name })
-    .from(cmsServices)
-    .leftJoin(cmsLocations, eq(cmsLocations.id, cmsServices.locationId))
-    .where(and(...conditions))
-    .orderBy(asc(cmsServices.sortOrder), asc(cmsServices.name));
-
-  const counts = await db
-    .select({ serviceId: cmsProviderServices.serviceId, count: sql<number>`count(*)::int` })
-    .from(cmsProviderServices)
-    .innerJoin(cmsProviders, eq(cmsProviders.id, cmsProviderServices.providerId))
-    .where(eq(cmsProviders.isActive, true))
-    .groupBy(cmsProviderServices.serviceId);
-  const countBy = new Map(counts.map((c) => [c.serviceId, Number(c.count)]));
-
-  return rows.map((row) => ({
-    ...row.service,
-    locationName: row.locationName ?? null,
-    providerCount: countBy.get(row.service.id) ?? 0,
-  }));
-}
-
-export async function getService(serviceId: string): Promise<CmsService | null> {
-  await requirePermission('service.read');
-  const db = await getCmsDb();
-  const [row] = await db.select().from(cmsServices).where(eq(cmsServices.id, serviceId)).limit(1);
-  return row ?? null;
-}
-
-/**
- * `service.create`. A provider (no `service.manage`) who creates a service is
- * subscribed to it straight away.
- */
-export async function createService(input: ServiceInput): Promise<RepoResult<CmsService>> {
-  const actor = await requirePermission('service.create');
-  const parsed = serviceInputSchema.safeParse(input);
-  if (!parsed.success) return err(issuesToMessage(parsed.error));
-  const data = parsed.data;
-  if (!data.name) return err('Geef de dienst een naam.');
-
-  const slug = slugify(data.slug || data.name);
-  if (!slug) return err('Kies een geldige slug (letters en cijfers).');
-  if (!(await locationExists(data.locationId))) return err('Deze locatie bestaat niet.');
-
-  const db = await getCmsDb();
-  const [clash] = await db
-    .select({ id: cmsServices.id })
-    .from(cmsServices)
-    .where(and(eq(cmsServices.locale, data.locale), eq(cmsServices.slug, slug)))
-    .limit(1);
-  if (clash) return err(`Er bestaat al een dienst met de slug “${slug}”.`);
-
-  const [service] = await db
-    .insert(cmsServices)
-    .values({ ...data, slug, createdBy: actor.id })
-    .returning();
-
-  if (!can(actor.role, 'service.manage')) {
-    const own = await ownProviderRow(actor.id);
-    if (own) {
-      await db
-        .insert(cmsProviderServices)
-        .values({ providerId: own.id, serviceId: service.id })
-        .onConflictDoNothing();
-    }
-  }
-
-  await recordAudit(db, actor, {
-    action: 'service.create',
-    entityType: 'cms_service',
-    entityId: service.id,
-    summary: service.name,
-  });
-  bust();
-  return ok(service);
-}
-
-async function requireServiceEdit(
-  serviceId: string,
-): Promise<{ actor: CmsUserPublic; existing: CmsService | null }> {
-  const actor = await requireCmsUser();
-  const db = await getCmsDb();
-  const [existing] = await db
-    .select()
-    .from(cmsServices)
-    .where(eq(cmsServices.id, serviceId))
-    .limit(1);
-  if (can(actor.role, 'service.manage')) return { actor, existing: existing ?? null };
-  // Providers may edit the services they created themselves.
-  if (can(actor.role, 'service.create') && existing && existing.createdBy === actor.id) {
-    return { actor, existing };
-  }
-  return forbidden();
-}
-
-/** `service.manage`, or the creator of the service (with `service.create`). */
-export async function updateService(
-  serviceId: string,
-  input: Partial<ServiceInput>,
-): Promise<RepoResult<CmsService>> {
-  const { actor, existing } = await requireServiceEdit(serviceId);
-  if (!existing) return err('Dienst niet gevonden.');
-
-  const parsed = serviceInputSchema.safeParse({ ...serviceToInput(existing), ...defined(input) });
-  if (!parsed.success) return err(issuesToMessage(parsed.error));
-  const data = parsed.data;
-  if (!data.name) return err('Geef de dienst een naam.');
-
-  const slug = slugify(data.slug || data.name);
-  if (!slug) return err('Kies een geldige slug (letters en cijfers).');
-  if (!(await locationExists(data.locationId))) return err('Deze locatie bestaat niet.');
-
-  const db = await getCmsDb();
-  if (slug !== existing.slug || data.locale !== existing.locale) {
-    const [clash] = await db
-      .select({ id: cmsServices.id })
-      .from(cmsServices)
-      .where(
-        and(
-          eq(cmsServices.locale, data.locale),
-          eq(cmsServices.slug, slug),
-          ne(cmsServices.id, serviceId),
-        ),
-      )
-      .limit(1);
-    if (clash) return err(`Er bestaat al een dienst met de slug “${slug}”.`);
-  }
-
-  const [service] = await db
-    .update(cmsServices)
-    .set({ ...data, slug, updatedAt: new Date() })
-    .where(eq(cmsServices.id, serviceId))
-    .returning();
-
-  await recordAudit(db, actor, {
-    action: 'service.update',
-    entityType: 'cms_service',
-    entityId: serviceId,
-    summary: service.name,
-  });
-  bust();
-  return ok(service);
-}
-
-/** Soft delete: `is_active = false`. Existing bookings keep their service. */
-export async function deleteService(serviceId: string): Promise<RepoResult<true>> {
-  const { actor, existing } = await requireServiceEdit(serviceId);
-  if (!existing) return err('Dienst niet gevonden.');
-  const db = await getCmsDb();
-  await db
-    .update(cmsServices)
-    .set({ isActive: false, updatedAt: new Date() })
-    .where(eq(cmsServices.id, serviceId));
-  await recordAudit(db, actor, {
-    action: 'service.delete',
-    entityType: 'cms_service',
-    entityId: serviceId,
-    summary: `${existing.name} (gedeactiveerd)`,
-  });
-  bust();
-  return ok(true);
-}
+export {
+  createService,
+  deleteService,
+  getService,
+  listServices,
+  serviceInputSchema,
+  updateService,
+  type ServiceInput,
+  type ServiceListItem,
+} from './repo-services';
 
 // ===========================================================================
 // Locations
@@ -818,13 +558,15 @@ export type ProviderServiceRow = { serviceId: string; locationId?: string | null
 /**
  * Replaces the provider's service subscriptions (with optional per-service
  * location override). `provider.manage`, or `service.subscribe.own` for one's
- * own profile.
+ * own profile. Through `own`, a provider may add only **active** services; a
+ * subscription to a service that has since been deactivated may be kept or
+ * removed, never added again. Nothing here changes a service itself.
  */
 export async function setProviderServices(
   providerId: string,
   rows: ProviderServiceRow[],
 ): Promise<RepoResult<true>> {
-  const { actor, provider } = await requireProviderScope(
+  const { actor, provider, viaOwn } = await requireProviderScope(
     providerId,
     'provider.manage',
     'service.subscribe.own',
@@ -840,10 +582,26 @@ export async function setProviderServices(
   const db = await getCmsDb();
   if (serviceIds.length) {
     const found = await db
-      .select({ id: cmsServices.id })
+      .select({ id: cmsServices.id, isActive: cmsServices.isActive })
       .from(cmsServices)
       .where(inArray(cmsServices.id, serviceIds));
     if (found.length !== serviceIds.length) return err('Een of meer diensten bestaan niet.');
+    const inactive = found.filter((service) => !service.isActive).map((service) => service.id);
+    if (viaOwn && inactive.length) {
+      const current = await db
+        .select({ serviceId: cmsProviderServices.serviceId })
+        .from(cmsProviderServices)
+        .where(
+          and(
+            eq(cmsProviderServices.providerId, providerId),
+            inArray(cmsProviderServices.serviceId, inactive),
+          ),
+        );
+      const kept = new Set(current.map((row) => row.serviceId));
+      if (inactive.some((id) => !kept.has(id))) {
+        return err('Je kunt je enkel inschrijven voor actieve diensten.');
+      }
+    }
   }
   const locationIds = [...new Set([...unique.values()].filter((id): id is string => Boolean(id)))];
   if (locationIds.length) {

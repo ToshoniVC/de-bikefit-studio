@@ -107,6 +107,7 @@ DATABASE_URL='<staging pooled url>' npm run db:migrate
 | `0006_cms_session_limits.sql` | `cms_sessions.absolute_expires_at` and `cms_sessions.reauthenticated_at` (§15). |
 | `0007_cms_mfa_rate_limits.sql` | `cms_mfa_rate_limits` and the unique index `cms_mfa_challenges_user_id_unique_idx` (§16). |
 | `0008_cms_rate_limits.sql` | `cms_rate_limits`, the race-free public booking limit (`booking-architecture.md` §9). Needed **before** a build that contains it serves `/afspraak`: without the table every booking attempt answers "Er ging iets mis bij het boeken" (`[booking] create_failed`). |
+| `0009_cms_service_choice_label.sql` | `cms_services.choice_label` (text, default `''`), the label of a service under an offer ("Volwassene", "Jeugd"; `booking-architecture.md` §14). One guarded `ADD COLUMN`, no data change. Needed **before** a build that contains it: without the column `/afspraak` shows "Online boeken lukt op dit moment niet" and Admin → Diensten fails. Then run §3.2 once to fill the two labels. |
 
 All additive and guarded (no `DROP`, `TRUNCATE` or webshop `ALTER`); already-applied files
 are skipped. Expect `→ driver: neon-http (<host>)` and `✓ migrations applied to Neon`. The
@@ -123,7 +124,10 @@ npm run cms:bootstrap
 Creates only what is missing: the admin `contact@toshoni.be` (`must_change_password =
 true`), the six `nl` site settings (including `seo.allowIndexing = false` and the `booking`
 rules), empty `main` and `footer` menus, the locations "De Bikefit Studio, Ninove" and "Bij
-jou thuis", and the five services. Never overwrites anything.
+jou thuis", and the five services. Never overwrites anything. On a database that already has
+the services, the only change it makes is to fill an **empty** `choice_label` of
+`volwassenenfit` ("Volwassene") and `jeugdfit` ("Jeugd") after migration 0009 (printed as
+`~ service nl/… : empty choice label set to …`); a label an admin typed is left alone.
 
 ### 3.3 Seed content and the first provider
 

@@ -8,6 +8,10 @@
  * the booking time zone (`Europe/Brussels`).
  */
 
+import type { BookingChoice } from '@/lib/offers/catalogue';
+
+export type { BookingChoice };
+
 export type BookingLocationKind = 'studio' | 'customer';
 
 export type BookingServiceOption = {
@@ -15,6 +19,8 @@ export type BookingServiceOption = {
   /** `cms_services.slug` — what `?dienst=` and an offer's `bookingServiceSlugs` match. */
   slug: string;
   name: string;
+  /** Its label under an offer with several services ("Volwassene"); '' = `name`. */
+  choiceLabel: string;
   description: string;
   durationMinutes: number;
   /** Jeugdfit: contact details move to a parent, child name + age become separate fields. */
@@ -24,7 +30,7 @@ export type BookingServiceOption = {
    * means it depends on the provider (their default or per-service override).
    */
   location: BookingLocationOption | null;
-  /** Empty unless the admin chose to show a price. */
+  /** The service's own price ("€ 45,00"), empty unless the admin chose to show it. Never an offer's price. */
   priceLabel: string;
 };
 
@@ -67,6 +73,11 @@ export type BookingWidgetContext = {
 
 export type BookingWidgetProps = {
   services: BookingServiceOption[];
+  /**
+   * The first step: one entry per offer with its services underneath, or a
+   * service on its own (`groupBookingChoices()`). Absent = one per service.
+   */
+  choices?: BookingChoice[];
   providers: BookingProviderOption[];
   rules: BookingWidgetRules;
   copy: BookingWidgetCopy;

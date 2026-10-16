@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import { BELGIAN_PREFIX, formatPhoneForInput, isBarePrefix } from '@/lib/booking/phone';
 import { LEGAL_LINKS } from '@/lib/studio/legal';
 import {
   BIKE_TYPES,
@@ -85,12 +86,7 @@ export function DetailsForm({
                 autoComplete="email"
                 hint="Hier komt de bevestiging naartoe."
               />
-              <TextField
-                {...field('guardianPhone')}
-                label="Telefoon"
-                type="tel"
-                autoComplete="tel"
-              />
+              <PhoneField {...field('guardianPhone')} />
             </div>
           </fieldset>
         </>
@@ -106,7 +102,7 @@ export function DetailsForm({
               autoComplete="email"
               hint="Hier komt de bevestiging naartoe."
             />
-            <TextField {...field('phone')} label="Telefoon" type="tel" autoComplete="tel" />
+            <PhoneField {...field('phone')} />
           </div>
           <div className="studio-booking__row">
             <TextField
@@ -286,12 +282,18 @@ function TextField({
   inputMode,
   autoComplete,
   maxLength,
+  placeholder,
+  onFocus,
+  onBlur,
 }: BaseFieldProps & {
   type?: 'text' | 'email' | 'tel';
   multiline?: boolean;
   inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'];
   autoComplete?: string;
   maxLength?: number;
+  placeholder?: string;
+  onFocus?: () => void;
+  onBlur?: () => void;
 }) {
   const common = {
     id,
@@ -314,10 +316,41 @@ function TextField({
           type={type}
           inputMode={inputMode}
           autoComplete={autoComplete}
+          placeholder={placeholder}
           onChange={(event) => onChange(event.target.value)}
+          onFocus={onFocus}
+          onBlur={onBlur}
         />
       )}
     </FieldShell>
+  );
+}
+
+/**
+ * Phone, written with the Belgian prefix: an empty field starts with "+32 "
+ * when it takes focus, and on blur the number is shown normalized
+ * (`0470 12 34 56` → `+32 470 12 34 56`, never a second +32). A lone prefix
+ * is cleared again, so "required" still means a number was typed. The server
+ * normalizes once more (`@/lib/booking/phone`).
+ */
+function PhoneField(props: Omit<BaseFieldProps, 'label'>) {
+  const { value, onChange } = props;
+  return (
+    <TextField
+      {...props}
+      label="Telefoon"
+      type="tel"
+      autoComplete="tel"
+      placeholder={`${BELGIAN_PREFIX} 470 12 34 56`}
+      hint="Belgisch nummer: begin gerust met 0, wij zetten er +32 voor. Een buitenlands nummer begin je met + en de landcode."
+      onFocus={() => {
+        if (!value.trim()) onChange(`${BELGIAN_PREFIX} `);
+      }}
+      onBlur={() => {
+        const next = isBarePrefix(value) ? '' : formatPhoneForInput(value);
+        if (next !== value) onChange(next);
+      }}
+    />
   );
 }
 

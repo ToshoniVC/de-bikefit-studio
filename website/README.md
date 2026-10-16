@@ -110,7 +110,7 @@ Run inside `website/`. Scripts that touch a database use PGlite unless `DATABASE
 | `npm run db:migrate` | Apply pending migrations (PGlite, or Neon when `DATABASE_URL` is set) |
 | `npm run db:push` | Push the schema without a migration: throwaway local database only, **never Neon** |
 | `npm run db:studio` | Drizzle Studio |
-| `npm run cms:bootstrap` | Idempotent: first admin, site settings, menus, locations, services (`CMS_BOOTSTRAP_PASSWORD` inline) |
+| `npm run cms:bootstrap` | Idempotent: first admin, site settings, menus, locations, services; fills only an empty service choice label ("Volwassene", "Jeugd", after migration 0009) (`CMS_BOOTSTRAP_PASSWORD` inline) |
 | `npm run cms:seed` | Idempotent Dutch content, published. `-- --only-missing` leaves existing pages/menus alone; `-- --refresh-slug <slug>` re-seeds and republishes one page |
 | `npm run cms:seed-booking` | Idempotent first provider, hours and service subscriptions (`PROVIDER_EMAIL` / `PROVIDER_NAME` for another) |
 | `npm run cms:rollout-aanbod` | Offer redesign onto an existing database: dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §9 |

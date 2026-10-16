@@ -303,3 +303,94 @@ export function resolveBookingSelection(input: {
 
   return { kind: 'unknown', requested };
 }
+
+// ---------------------------------------------------------------------------
+// The service step: one choice per offer, the offer's services underneath
+// ---------------------------------------------------------------------------
+
+/**
+ * One entry of the booking widget's first step (work block 2026-10-16):
+ *  - `service`: a bookable service no published offer links to (Gezinspakket,
+ *    Fit aan huis, Inspanningstest), chosen directly as before;
+ *  - `offer`: an offer linked to bookable services ("Bikefit – huidige fiets"),
+ *    shown ONCE, with its services as a sub-selection ("Volwassene", "Jeugd").
+ *    The chosen service, never the offer, is what is booked: its id, duration,
+ *    guardian rule, availability and price (`cms_services`) apply.
+ */
+export type BookingChoice =
+  | { kind: 'service'; serviceId: string }
+  | {
+      kind: 'offer';
+      offer: { slug: string; title: string; path: string };
+      /** In the offer's order (`bookingServiceSlugs`); at least one. */
+      serviceIds: string[];
+    };
+
+/**
+ * Groups the bookable `services` (already in display order) under the
+ * published offers that link to them. An offer takes the place of its first
+ * service in the list; a service claimed by an earlier offer (category, sort
+ * order, title) is not repeated under a later one. Offers without a bookable
+ * service and the gift voucher add nothing. Pure: a missing or empty offer list
+ * gives one `service` entry per service, the widget as it was before.
+ */
+export function groupBookingChoices(input: {
+  offers: ReadonlyArray<
+    Pick<
+      CatalogueOffer,
+      'slug' | 'title' | 'path' | 'bookingServiceSlugs' | 'category' | 'sortOrder'
+    > & {
+      kind?: CatalogueOffer['kind'];
+    }
+  >;
+  services: readonly BookableService[];
+}): BookingChoice[] {
+  const { services } = input;
+  const offers = [...input.offers]
+    .filter((offer) => offer.kind !== 'giftVoucher')
+    .sort(
+      (a, b) =>
+        OFFER_CATEGORIES.indexOf(a.category) - OFFER_CATEGORIES.indexOf(b.category) ||
+        a.sortOrder - b.sortOrder ||
+        a.title.localeCompare(b.title, 'nl'),
+    );
+
+  const claimedBy = new Map<string, number>();
+  const groups: Array<{ offer: (typeof offers)[number]; serviceIds: string[] }> = [];
+  for (const offer of offers) {
+    const serviceIds: string[] = [];
+    for (const slug of offer.bookingServiceSlugs) {
+      const service = services.find((entry) => entry.slug === slug.trim());
+      if (service && !claimedBy.has(service.id) && !serviceIds.includes(service.id)) {
+        serviceIds.push(service.id);
+      }
+    }
+    if (serviceIds.length === 0) continue;
+    for (const id of serviceIds) claimedBy.set(id, groups.length);
+    groups.push({ offer, serviceIds });
+  }
+
+  const choices: BookingChoice[] = [];
+  const placed = new Set<number>();
+  for (const service of services) {
+    const group = claimedBy.get(service.id);
+    if (group === undefined) {
+      choices.push({ kind: 'service', serviceId: service.id });
+      continue;
+    }
+    if (placed.has(group)) continue;
+    placed.add(group);
+    const { offer, serviceIds } = groups[group];
+    choices.push({
+      kind: 'offer',
+      offer: { slug: offer.slug, title: offer.title, path: offer.path },
+      serviceIds,
+    });
+  }
+  return choices;
+}
+
+/** The label of a service under its offer: the catalogue's choice label, else its name. */
+export function bookingChoiceLabel(service: { name: string; choiceLabel: string }): string {
+  return service.choiceLabel.trim() || service.name;
+}

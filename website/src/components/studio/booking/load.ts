@@ -39,6 +39,7 @@ function toService(service: PublicService): BookingServiceOption {
     id: service.id,
     slug: service.slug,
     name: service.name,
+    choiceLabel: service.choiceLabel,
     description: service.description,
     durationMinutes: service.durationMinutes,
     requiresGuardian: service.requiresGuardian,

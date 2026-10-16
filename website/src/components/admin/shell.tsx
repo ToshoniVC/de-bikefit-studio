@@ -7,7 +7,7 @@ import { AdminNav, type AdminNavItem } from '@/components/admin/nav';
 import { logoutAction } from '@/lib/cms/actions/auth';
 import { can, ROLE_LABELS, type CmsPermission } from '@/lib/cms/permissions';
 import { cn } from '@/lib/utils';
-import type { CmsUserPublic } from '@/db/cms-schema';
+import type { CmsRole, CmsUserPublic } from '@/db/cms-schema';
 
 /**
  * Admin chrome: sidebar, role badge, sign-out.
@@ -23,12 +23,19 @@ import type { CmsUserPublic } from '@/db/cms-schema';
  * first visible control top left at every width.
  */
 
-/** `permission` must be held; `anyOf` needs at least one of the listed permissions. */
-const NAV: Array<AdminNavItem & { permission?: CmsPermission; anyOf?: CmsPermission[] }> = [
+/**
+ * `permission` must be held; `anyOf` needs at least one of the listed permissions;
+ * `notFor` hides an entry from roles that reach the same data another way.
+ */
+const NAV: Array<
+  AdminNavItem & { permission?: CmsPermission; anyOf?: CmsPermission[]; notFor?: CmsRole[] }
+> = [
   { href: '/admin', label: 'Overzicht' },
   { href: '/admin/bookings', label: 'Afspraken', anyOf: ['booking.read', 'booking.read.own'] },
   { href: '/admin/agenda', label: 'Mijn agenda', permission: 'provider.self' },
-  { href: '/admin/services', label: 'Diensten', permission: 'service.read' },
+  // The catalogue is the admin's (read-only for editors). A provider chooses
+  // their services under Mijn agenda and never edits the catalogue.
+  { href: '/admin/services', label: 'Diensten', permission: 'service.read', notFor: ['provider'] },
   { href: '/admin/locations', label: 'Locaties', permission: 'location.read' },
   { href: '/admin/providers', label: 'Aanbieders', permission: 'provider.read' },
   { href: '/admin/pages', label: 'Pagina’s', permission: 'page.read' },
@@ -46,7 +53,8 @@ export function AdminShell({ user, children }: { user: CmsUserPublic; children: 
   const items = NAV.filter(
     (item) =>
       (!item.permission || can(user.role, item.permission)) &&
-      (!item.anyOf || item.anyOf.some((permission) => can(user.role, permission))),
+      (!item.anyOf || item.anyOf.some((permission) => can(user.role, permission))) &&
+      !item.notFor?.includes(user.role),
   ).map(({ href, label }) => ({ href, label }));
 
   return (

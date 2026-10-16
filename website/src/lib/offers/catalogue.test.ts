@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SERVICES } from '@/lib/booking/defaults';
 import {
+  bookingChoiceLabel,
   GIFT_VOUCHER_PRICE_LABEL,
+  groupBookingChoices,
   OFFER_CTA_LABEL,
   OFFER_PRICE_FALLBACK,
   offerBookingHref,
@@ -350,5 +352,134 @@ describe('default offers and booking reconciliation', () => {
     expect(adult?.durationMinutes).toBe(90);
     expect(youth?.durationMinutes).toBe(60);
     expect(youth?.requiresGuardian).toBe(true);
+  });
+});
+
+describe("groupBookingChoices (the widget's first step, 16 Oct 2026)", () => {
+  // The five bootstrap services in their admin order, all bookable.
+  const services = DEFAULT_SERVICES.map((service) => ({
+    id: `id-${service.slug}`,
+    slug: service.slug,
+  }));
+  const seeded = DEFAULT_OFFERS.map((entry) =>
+    offer({
+      slug: entry.slug,
+      title: entry.title,
+      category: entry.category,
+      sortOrder: entry.sortOrder,
+      bookingServiceSlugs: entry.bookingServiceSlugs,
+    }),
+  );
+
+  it('shows "Bikefit – huidige fiets" once, Volwassene and Jeugd under it, the rest directly', () => {
+    expect(groupBookingChoices({ offers: seeded, services })).toEqual([
+      {
+        kind: 'offer',
+        offer: {
+          slug: 'bikefit-huidige-fiets',
+          title: 'Bikefit – huidige fiets',
+          path: '/aanbod/bikefit-huidige-fiets',
+        },
+        serviceIds: ['id-volwassenenfit', 'id-jeugdfit'],
+      },
+      { kind: 'service', serviceId: 'id-gezinspakket' },
+      { kind: 'service', serviceId: 'id-fit-aan-huis' },
+      { kind: 'service', serviceId: 'id-inspanningstest' },
+    ]);
+  });
+
+  it('never lists a linked service twice, and keeps every bookable service reachable', () => {
+    const choices = groupBookingChoices({ offers: seeded, services });
+    const ids = choices.flatMap((choice) =>
+      choice.kind === 'service' ? [choice.serviceId] : choice.serviceIds,
+    );
+    expect([...ids].sort()).toEqual(services.map((service) => service.id).sort());
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('without offers (catalogue unavailable) the widget is the flat list it was', () => {
+    expect(groupBookingChoices({ offers: [], services })).toEqual(
+      services.map((service) => ({ kind: 'service', serviceId: service.id })),
+    );
+  });
+
+  it("takes the place of its first service and keeps the offer's own order", () => {
+    const choices = groupBookingChoices({
+      offers: [offer({ slug: 'combi', bookingServiceSlugs: ['inspanningstest', 'gezinspakket'] })],
+      services,
+    });
+    expect(
+      choices.map((choice) => (choice.kind === 'offer' ? choice.offer.slug : choice.serviceId)),
+    ).toEqual(['id-volwassenenfit', 'id-jeugdfit', 'combi', 'id-fit-aan-huis']);
+    expect(choices[2]).toMatchObject({ serviceIds: ['id-inspanningstest', 'id-gezinspakket'] });
+  });
+
+  it('skips unbookable slugs; an offer with none adds nothing (its page shows the contact prompt)', () => {
+    const choices = groupBookingChoices({
+      offers: [
+        offer({ slug: 'lactaattest', bookingServiceSlugs: [] }),
+        offer({ slug: 'kapot', bookingServiceSlugs: ['bestaat-niet'] }),
+        offer({ slug: 'half', bookingServiceSlugs: ['bestaat-niet', ' jeugdfit '] }),
+      ],
+      services,
+    });
+    expect(choices.filter((choice) => choice.kind === 'offer')).toEqual([
+      {
+        kind: 'offer',
+        offer: { slug: 'half', title: 'half', path: '/aanbod/half' },
+        serviceIds: ['id-jeugdfit'],
+      },
+    ]);
+  });
+
+  it('a service two offers link belongs to the first offer in catalogue order only', () => {
+    const choices = groupBookingChoices({
+      offers: [
+        offer({
+          slug: 'later',
+          sortOrder: 50,
+          bookingServiceSlugs: ['volwassenenfit', 'gezinspakket'],
+        }),
+        offer({ slug: 'eerst', sortOrder: 10, bookingServiceSlugs: ['volwassenenfit'] }),
+      ],
+      services,
+    });
+    expect(choices.filter((choice) => choice.kind === 'offer')).toEqual([
+      expect.objectContaining({
+        offer: expect.objectContaining({ slug: 'eerst' }),
+        serviceIds: ['id-volwassenenfit'],
+      }),
+      expect.objectContaining({
+        offer: expect.objectContaining({ slug: 'later' }),
+        serviceIds: ['id-gezinspakket'],
+      }),
+    ]);
+  });
+
+  it('ignores the gift voucher', () => {
+    const choices = groupBookingChoices({
+      offers: [
+        offer({ slug: 'cadeaubon', kind: 'giftVoucher', bookingServiceSlugs: ['jeugdfit'] }),
+      ],
+      services,
+    });
+    expect(choices.every((choice) => choice.kind === 'service')).toBe(true);
+  });
+
+  it("labels a choice with the catalogue's choice label, else the service name", () => {
+    expect(bookingChoiceLabel({ name: 'Jeugdfit', choiceLabel: 'Jeugd' })).toBe('Jeugd');
+    expect(bookingChoiceLabel({ name: 'Jeugdfit', choiceLabel: '  ' })).toBe('Jeugdfit');
+  });
+
+  it('the bootstrap labels the two linked services Volwassene and Jeugd, nothing else', () => {
+    expect(
+      DEFAULT_SERVICES.filter((service) => service.choiceLabel).map((service) => [
+        service.slug,
+        service.choiceLabel,
+      ]),
+    ).toEqual([
+      ['volwassenenfit', 'Volwassene'],
+      ['jeugdfit', 'Jeugd'],
+    ]);
   });
 });

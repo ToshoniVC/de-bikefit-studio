@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DEFAULT_LOCALE } from '@/db/cms-schema';
+import { normalizePhone } from './phone';
 
 /**
  * Public booking input, the pure half of `./public-booking.ts`: the request
@@ -118,6 +119,23 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 /** Linear (one bounded quantifier), and likewise only tested within its limit (40). */
 const PHONE_RE = /^[+0-9()./\s-]{6,25}$/;
 
+/**
+ * A phone number we can call: the old character pattern, then a Belgian (or
+ * explicitly international) number per `normalizePhone()` (`./phone.ts`).
+ * Only ever called within the field's limit.
+ */
+const isCallable = (value: string) => PHONE_RE.test(value) && normalizePhone(value) !== null;
+
+/**
+ * The stored form of an optional phone number: `+32 470 12 34 56` (one `+32`,
+ * never two), `null` when empty. Call only on input that passed
+ * {@link validateBookingFields}; anything else is kept as typed.
+ */
+export function storedPhone(value: string): string | null {
+  if (!value) return null;
+  return normalizePhone(value)?.display ?? value;
+}
+
 /** Field rules with Dutch messages; returns `{ field: message }` (empty when valid). */
 export function validateBookingFields(
   input: ParsedInput,
@@ -139,19 +157,13 @@ export function validateBookingFields(
   if (withinLimit('customerEmail') && !EMAIL_RE.test(input.customerEmail)) {
     set('customerEmail', EMAIL_MESSAGE);
   }
-  if (
-    input.customerPhone &&
-    (!withinLimit('customerPhone') || !PHONE_RE.test(input.customerPhone))
-  ) {
+  if (input.customerPhone && (!withinLimit('customerPhone') || !isCallable(input.customerPhone))) {
     set('customerPhone', PHONE_MESSAGE);
   }
   if (input.guardianEmail && withinLimit('guardianEmail') && !EMAIL_RE.test(input.guardianEmail)) {
     set('guardianEmail', EMAIL_MESSAGE);
   }
-  if (
-    input.guardianPhone &&
-    (!withinLimit('guardianPhone') || !PHONE_RE.test(input.guardianPhone))
-  ) {
+  if (input.guardianPhone && (!withinLimit('guardianPhone') || !isCallable(input.guardianPhone))) {
     set('guardianPhone', PHONE_MESSAGE);
   }
 

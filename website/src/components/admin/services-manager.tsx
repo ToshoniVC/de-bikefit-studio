@@ -29,6 +29,7 @@ import type { CmsLocationKind } from '@/db/cms-schema';
 export type ServiceRow = {
   id: string;
   name: string;
+  choiceLabel: string;
   slug: string;
   description: string;
   durationMinutes: number;
@@ -42,8 +43,10 @@ export type ServiceRow = {
   color: string | null;
   /** Active providers offering it. */
   providerCount: number;
-  /** `service.manage`, or the provider who created it. */
+  /** `service.manage` only: the catalogue is the admin's (providers subscribe, never edit). */
   editable: boolean;
+  /** Published offers that link to it (`bookingServiceSlugs`), by title. */
+  offers: string[];
 };
 
 export type LocationOption = {
@@ -76,6 +79,18 @@ export function ServiceFields({
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Naam" htmlFor={id('name')}>
           <Input id={id('name')} name="name" defaultValue={service?.name} required />
+        </Field>
+        <Field
+          label="Keuzelabel onder een aanbod"
+          htmlFor={id('choiceLabel')}
+          hint="Bv. Volwassene of Jeugd: zo heet deze keuze als een aanbod meerdere diensten koppelt. Leeg = de naam."
+        >
+          <Input
+            id={id('choiceLabel')}
+            name="choiceLabel"
+            defaultValue={service?.choiceLabel}
+            maxLength={40}
+          />
         </Field>
         <Field
           label="Slug"
@@ -200,10 +215,7 @@ export function ServiceFields({
   );
 }
 
-/**
- * Create form. When a provider (no `service.manage`) creates a service,
- * `repo.createService` subscribes them to it straight away.
- */
+/** Create form (admin only: `repo.createService` needs `service.manage`). */
 export function ServiceCreateForm({
   locations,
   defaultBuffer,
@@ -266,6 +278,11 @@ export function ServicesManager({
                     />
                   ) : null}
                   <span className="font-medium">{service.name}</span>
+                  {service.choiceLabel ? (
+                    <span className="text-xs text-muted-foreground">
+                      keuze “{service.choiceLabel}”
+                    </span>
+                  ) : null}
                   <code className="bg-muted px-1 text-xs">{service.slug}</code>
                   <Badge variant="outline">{service.durationMinutes} min</Badge>
                   {service.showPrice && service.priceCents !== null ? (
@@ -285,6 +302,11 @@ export function ServicesManager({
                       : `${service.providerCount} aanbieders`}
                   </span>
                 </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {service.offers.length > 0
+                    ? `Online te boeken via het aanbod: ${service.offers.join(', ')}.`
+                    : 'Aan geen gepubliceerd aanbod gekoppeld: enkel rechtstreeks te kiezen op /afspraak.'}
+                </p>
 
                 {service.editable ? (
                   <details className="mt-2">

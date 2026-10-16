@@ -6,7 +6,6 @@ import { Confirmation } from './confirmation';
 import {
   addDays,
   addMonths,
-  durationLabel,
   firstDayOfMonth,
   instantToTime,
   instantToYmd,
@@ -33,9 +32,11 @@ import {
 import { DetailsForm } from './details-form';
 import { MonthCalendar } from './month-calendar';
 import { ProviderPicker, type ProviderChoice } from './provider-picker';
+import { serviceSummary } from './service-choice';
 import { ServicePicker } from './service-picker';
 import { SlotList, slotKey } from './slot-list';
 import { StepItem, type BookingStep as Step, type StepState } from './step-item';
+import { useServiceChoice } from './use-service-choice';
 import type {
   AvailabilityActionResult,
   BookActionResult,
@@ -57,7 +58,9 @@ import type {
  * in a small in-memory cache for the lifetime of the page.
  *
  * `initialServiceId` preselects a service (from `/afspraak?dienst=…`, resolved
- * on the server); `context` names the offer the visitor came from.
+ * on the server); `context` names the offer the visitor came from. `choices`
+ * puts the services an offer links to under that offer (Volwassene / Jeugd
+ * under "Bikefit – huidige fiets"); `serviceId` stays the one thing booked.
  *
  * Accessibility: every choice is a real `<button>` with `aria-pressed`; each
  * step heading takes focus when that step opens (only after the visitor has
@@ -93,6 +96,7 @@ function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T
 
 export function BookingWidget({
   services,
+  choices: givenChoices,
   providers,
   rules,
   copy,
@@ -106,13 +110,17 @@ export function BookingWidget({
   /** Where the widget lived before the confirmation URL replaced it. */
   const returnPath = useRef<string | null>(null);
 
-  const startServiceId =
-    initialServiceId && services.some((item) => item.id === initialServiceId)
-      ? initialServiceId
-      : services.length === 1
-        ? services[0].id
-        : null;
-  const [serviceId, setServiceId] = useState<string | null>(startServiceId);
+  const choice = useServiceChoice({
+    services,
+    choices: givenChoices,
+    initialServiceId,
+    onChange: () => {
+      interacted.current = true;
+      setProviderChoice(undefined);
+      resetWhen();
+    },
+  });
+  const { serviceId } = choice;
   const [providerChoice, setProviderChoice] = useState<ProviderChoice | undefined>(undefined);
   const [month, setMonth] = useState<Ym>(monthOf(todayYmd));
   const [months, setMonths] = useState<Record<string, MonthState>>({});
@@ -252,13 +260,6 @@ export function BookingWidget({
     setNotice('');
   }
 
-  function chooseService(id: string) {
-    interacted.current = true;
-    setServiceId(id);
-    setProviderChoice(undefined);
-    resetWhen();
-  }
-
   function chooseProvider(choice: ProviderChoice) {
     interacted.current = true;
     setProviderChoice(choice);
@@ -288,13 +289,6 @@ export function BookingWidget({
     if (key) setMonths((previous) => withoutKey(previous, key));
   }
 
-  function editService() {
-    interacted.current = true;
-    setServiceId(null);
-    setProviderChoice(undefined);
-    resetWhen();
-  }
-
   function editProvider() {
     interacted.current = true;
     setProviderChoice(undefined);
@@ -319,7 +313,7 @@ export function BookingWidget({
     }
     setConfirmed(null);
     setMonths({});
-    setServiceId(startServiceId);
+    choice.reset();
     setProviderChoice(undefined);
     resetWhen();
     setValues((previous) => ({ ...previous, notes: '', bikeType: '', bikeModel: '' }));
@@ -364,6 +358,7 @@ export function BookingWidget({
       // the customer's own address is only echoed back from this form.
       const booked = result.booking;
       setConfirmed({
+        // The booked catalogue service as the server stored it (e.g. "Jeugdfit").
         serviceName: booked.serviceName || service.name,
         durationMinutes: service.durationMinutes,
         providerName: booked.providerName || (providerNames[slot.providerId] ?? ''),
@@ -471,10 +466,20 @@ export function BookingWidget({
           number={numberOf('service')}
           title="Kies je fit"
           state={stateOf('service')}
-          summary={service ? `${service.name} · ${durationLabel(service.durationMinutes)}` : ''}
-          onEdit={services.length > 1 ? editService : undefined}
+          summary={serviceSummary(service, choice.offer)}
+          onEdit={services.length > 1 ? choice.clear : undefined}
         >
-          <ServicePicker services={services} selectedId={serviceId} onSelect={chooseService} />
+          <ServicePicker
+            services={services}
+            choices={choice.choices}
+            selectedId={serviceId}
+            openOffer={choice.openOffer}
+            onSelect={choice.choose}
+            onOpenOffer={(slug) => {
+              interacted.current = true;
+              choice.open(slug);
+            }}
+          />
         </StepItem>
 
         {providerStep ? (

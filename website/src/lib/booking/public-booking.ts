@@ -26,7 +26,11 @@ import {
   sendBookingCreatedEmails,
 } from './notifications';
 import { cancelProviderEvent, createProviderEvent } from './provider-calendar';
-import { publicBookingInputSchema, validateBookingFields } from './public-booking-input';
+import {
+  publicBookingInputSchema,
+  storedPhone,
+  validateBookingFields,
+} from './public-booking-input';
 import { bookingRateLimitScopes } from './rate-limit-policy';
 import { getBookingRules } from './settings';
 import { formatSlot, instantToLocal } from './time';
@@ -333,11 +337,11 @@ export async function createPublicBooking(
           status: 'confirmed',
           customerName: input.customerName,
           customerEmail: email,
-          customerPhone: input.customerPhone || null,
+          customerPhone: storedPhone(input.customerPhone),
           customerAge: age,
           guardianName: input.guardianName || null,
           guardianEmail: input.guardianEmail.toLowerCase() || null,
-          guardianPhone: input.guardianPhone || null,
+          guardianPhone: storedPhone(input.guardianPhone),
           bikeDetails: input.bikeDetails || null,
           notes: input.notes || null,
           customerAddress: location?.kind === 'customer' ? input.customerAddress || null : null,

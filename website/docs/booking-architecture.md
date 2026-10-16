@@ -34,7 +34,10 @@ UTC (`timestamptz`).
 | `src/lib/booking/provider-calendar.ts` | server-only | a provider's busy times and events, degrading gracefully |
 | `src/lib/booking/provider-calendar-errors.ts` | plain | `describeProviderError()`: the fixed text stored as `google_sync_error` |
 | `src/lib/booking/content.ts` | server-only | public read API (cached lists, live availability) |
-| `src/lib/booking/repo.ts` | server-only | admin write API (`RepoResult<T>`) |
+| `src/lib/booking/repo.ts` | server-only | admin write API (`RepoResult<T>`); re-exports the catalogue |
+| `src/lib/booking/repo-services.ts` | server-only | the service catalogue: list/get/create/update/deactivate, all writes `service.manage` (§3, §14) |
+| `src/lib/booking/repo-shared.ts` | server-only | `ok`/`err`/`forbidden`/`bust`/`locationExists`, shared by the two repo files |
+| `src/lib/booking/phone.ts` | plain | `normalizePhone()`: Belgian numbers with one `+32`, used by the widget and the server (§9) |
 | `src/lib/booking/public-booking.ts` | server-only | anonymous create / look up / cancel by token |
 | `src/lib/booking/public-booking-input.ts` | plain | `publicBookingInputSchema` (raw caps) and `validateBookingFields()` (field rules, length before pattern), re-exported by `public-booking.ts` (§5) |
 | `src/lib/booking/rate-limit-policy.ts` | plain | `bookingRateLimitScopes()`: the keys and limits of the public booking limit (§9 step 3) |
@@ -62,7 +65,7 @@ Worker C; the admin actions under `src/lib/cms/actions/*` belong to Worker B.
 | Table | Purpose / notable columns |
 | --- | --- |
 | `cms_locations` | `name`, `kind` (`studio`\|`customer`), `address_lines` jsonb, `postal_code`, `city`, `country` (`BE`), `notes`, `is_default`, `is_active`, `sort_order`. `kind = 'customer'` means "at the customer's address": the booking form asks for an address. |
-| `cms_services` | `locale` (`nl`), `slug` (unique per locale), `name`, `description`, `duration_minutes`, `buffer_after_minutes` (default 15, **null = setting default**), `price_cents` (null), `show_price` (false), `location_id` (null = provider default), `requires_guardian`, `is_active`, `sort_order`, `color`, `created_by`. |
+| `cms_services` | The canonical catalogue (§14). `locale` (`nl`), `slug` (unique per locale), `name`, `choice_label` (0009, default `''` = the name: its label under an offer, e.g. "Volwassene"), `description`, `duration_minutes`, `buffer_after_minutes` (default 15, **null = setting default**), `price_cents` (null), `show_price` (false), `location_id` (null = provider default), `requires_guardian`, `is_active`, `sort_order`, `color`, `created_by`. |
 | `cms_providers` | 1:1 with `cms_users` (`user_id` unique, cascade). `display_name`, `bio`, `phone`, `email` (public), `timezone`, `default_location_id`, Google: `google_calendar_id` (`primary` once connected), `google_refresh_token_enc`, `google_access_token` (**also encrypted**), `google_access_expires_at`, `google_email`, `google_connected_at`, `google_sync_error`; `is_active`, `sort_order`. |
 | `cms_provider_services` | PK (`provider_id`, `service_id`), `location_id` = per-provider override. |
 | `cms_business_hours` | `weekday` 0–6 (0 = Sunday), `start_minute`/`end_minute` = minutes since local midnight, end exclusive. Several rows per weekday. |
@@ -93,6 +96,7 @@ Closed sets are `text` validated by zod, like the CMS. The only enum change is
 | `0002_role_provider.sql` | `ALTER TYPE "public"."cms_role" ADD VALUE IF NOT EXISTS 'provider';`, and nothing else. |
 | `0003_booking.sql` | 8 `CREATE TABLE IF NOT EXISTS`, FKs in `duplicate_object` guards, `CREATE [UNIQUE] INDEX IF NOT EXISTS`. |
 | `0008_cms_rate_limits.sql` | `CREATE TABLE IF NOT EXISTS "cms_rate_limits"` and `CREATE INDEX IF NOT EXISTS` on `updated_at`, nothing else: no foreign key, no data change, `cms_booking_rate_limit` untouched. **Apply before deploying the build that uses it**: until the table exists every public booking attempt fails closed (`error`, "Er ging iets mis bij het boeken", logged as `[booking] create_failed`). |
+| `0009_cms_service_choice_label.sql` | `ALTER TABLE "cms_services" ADD COLUMN IF NOT EXISTS "choice_label" text DEFAULT '' NOT NULL`, nothing else: no data change (existing rows get `''`, so they keep showing their name), no price. **Apply before deploying the build that uses it**: the app selects every `cms_services` column, so until then the widget shows its "bel ons" fallback and the service screens fail. Self-test 14c re-runs it twice. |
 
 All are **additive only** and idempotent (verified by migrating a fresh
 PGlite twice). Note that drizzle's migrator runs *all pending files in one
@@ -120,9 +124,9 @@ guarded by hand; self-test 14b re-runs it twice.
 | `booking.manage` | cancel / complete any booking | ❌ | ❌ | ✅ |
 | `booking.manage.own` | cancel / complete own bookings | ✅ | ❌ | ✅ |
 | `service.read` | list services | ✅ | ✅ | ✅ |
-| `service.create` | create a service | ✅ | ❌ | ✅ |
-| `service.manage` | edit / deactivate any service | ❌ | ❌ | ✅ |
-| `service.subscribe.own` | choose own services | ✅ | ❌ | ✅ |
+| `service.create` | create a service (the repo asks `service.manage`) | ❌ (until 16 Oct 2026: ✅) | ❌ | ✅ |
+| `service.manage` | create, edit, price, deactivate, reactivate any service | ❌ | ❌ | ✅ |
+| `service.subscribe.own` | subscribe the own profile to active services | ✅ | ❌ | ✅ |
 | `location.read` / `location.manage` | locations | ✅ / ❌ | ✅ / ❌ | ✅ |
 | `provider.read` / `provider.manage` | all providers | ❌ | ✅ / ❌ | ✅ |
 | `provider.self` | own profile, hours, exceptions, Google | ✅ | ❌ | ✅ |
@@ -134,9 +138,21 @@ screens. Gate booking screens on permissions, not on rank.
 `ROLE_LABELS.provider = 'Aanbieder'`.
 
 "Own" is resolved server-side: the repo looks up the `cms_providers` row whose
-`user_id` is the signed-in user (`getCurrentCmsUser()`). A provider may also edit or
-deactivate **services they created themselves** (`created_by`); everything
-else needs `service.manage`.
+`user_id` is the signed-in user (`getCurrentCmsUser()`).
+
+**The service catalogue is the admin's (16 Oct 2026, Toshoni).** Creating, editing, pricing,
+deactivating and reactivating a service all need `service.manage`, checked before the row is
+read (`repo-services.ts`). `created_by` grants nothing any more: a provider who created a
+service before this date cannot edit it either (until then providers had `service.create` and
+could edit or deactivate their own services). A provider only subscribes and unsubscribes
+their **own** profile (`setProviderServices()`, `service.subscribe.own`): to active services;
+a subscription to a service an admin deactivated since may be kept or dropped, never added
+("Je kunt je enkel inschrijven voor actieve diensten."); their hours, exceptions, per-service
+location override and Google connection are unchanged (`provider.self`). The UI follows but is
+not the boundary: no "Nieuwe dienst" form under *Mijn agenda* and no *Diensten* menu item for
+providers (the page itself is read-only for anyone without `service.manage`). Tested by
+calling the server actions directly (`src/lib/cms/actions/services.test.ts`) and on PGlite
+(self-test 14c), including the legacy `created_by` case.
 
 ---
 
@@ -274,6 +290,19 @@ the self-tests call it directly, and a server action accepts a body of up to 6 M
    `Vul een geldig telefoonnummer in.`, as before.
 4. Only then the reservation, the service, and the fresh slot re-check (§9 steps 3–5).
 
+**Phone numbers (16 Oct 2026).** Within its 40 characters, a phone number must also be one we
+can call (`normalizePhone()`, `phone.ts`): a Belgian number of 8 (landline) or 9 (mobile,
+starting with 4) digits after the trunk `0`, typed national (`0470 12 34 56`, `054/12.34.56`)
+or international (`+32 470 12 34 56`, `0032…`, `32470…`, `+32 0470…`, also a full number pasted
+after the field's `+32 `), or a foreign number written with `+` or `00` (8–15 digits). A
+foreign mobile typed without its country code (`06 12345678`) is refused, not stored as a
+Belgian number that does not exist. Otherwise `Vul een geldig telefoonnummer in.` The booking stores the
+normalized form, **one** `+32` and never two: `+32 470 12 34 56` (`storedPhone()`), for the
+customer and for a Jeugdfit guardian alike; a foreign number as `+<digits>`. The widget does
+the same before sending: an empty phone field starts with `+32 ` when it takes focus, a lone
+prefix counts as empty, and on blur the number is shown normalized. Bookings stored before
+this keep what was typed.
+
 `getBookingByCancelToken()` is for the `/afspraak/annuleren/[token]` page:
 show what would be cancelled on GET, cancel only on a POST/server action.
 
@@ -303,10 +332,10 @@ pruneRateLimits(db): Promise<void>                 // rows untouched for a day; 
 ### `repo.ts` (server-only, admin)
 
 ```ts
-// Services — service.read / service.create / service.manage (or creator)
+// Services (repo-services.ts, re-exported) — service.read; every write service.manage
 listServices({ includeInactive?, locale? }): Promise<ServiceListItem[]>   // + locationName, providerCount
 getService(id): Promise<CmsService | null>
-createService(input: ServiceInput): Promise<RepoResult<CmsService>>       // provider creator auto-subscribed
+createService(input: ServiceInput): Promise<RepoResult<CmsService>>       // input incl. choiceLabel (≤ 40)
 updateService(id, input: Partial<ServiceInput>): Promise<RepoResult<CmsService>>
 deleteService(id): Promise<RepoResult<true>>                              // soft: is_active = false
 
@@ -320,7 +349,7 @@ getOwnProvider(): Promise<ProviderDetail | null>
 createProvider({ userId } | { newUser: { email, name } } & Partial<ProviderProfileInput>)
   : Promise<RepoResult<{ provider: ProviderSummary; temporaryPassword: string | null }>>
 updateProvider(id, input: Partial<ProviderProfileInput>)                   // isActive/sortOrder ignored for self
-setProviderServices(providerId, [{ serviceId, locationId? }]): Promise<RepoResult<true>>
+setProviderServices(providerId, [{ serviceId, locationId? }]): Promise<RepoResult<true>>   // own: active services only
 setBusinessHours(providerId, [{ weekday, startMinute, endMinute }]): Promise<RepoResult<CmsBusinessHours[]>>
 setAvailabilityExceptions(providerId, [{ date, kind, startMinute?, endMinute?, note? }])
   : Promise<RepoResult<CmsAvailabilityException[]>>                        // replaces today-and-later rows
@@ -648,7 +677,10 @@ default location **"De Bikefit Studio, Ninove"** (studio, no street address,
 `is_default`), a second location **"Bij jou thuis"** (kind `customer`, which
 the Fit aan huis service needs) and the five services (Volwassenenfit 90,
 Jeugdfit 60 + guardian, Gezinspakket 150, Fit aan huis 120 → "Bij jou thuis",
-Inspanningstest 60; prices null and hidden, buffer 15).
+Inspanningstest 60; prices null and hidden, buffer 15). Choice labels "Volwassene" and
+"Jeugd" go on the first two; on a database that already has them (migration 0009 added the
+column empty), bootstrap fills only a label that is still empty and touches nothing else on
+the row (`~ service nl/jeugdfit: empty choice label set to “Jeugd”`).
 
 `cms:seed-booking` (idempotent): user with role `provider` and
 `must_change_password`, temporary password **printed once**; profile at the
@@ -665,7 +697,8 @@ npm run cms:selftest
 ```
 
 Sections 10–14 cover: the 8 booking tables + `provider` enum value; the
-permission matrix (provider has exactly the 7 contract permissions, rank 0,
+permission matrix (provider has exactly the 6 contract permissions, no `service.create` since
+16 Oct 2026, rank 0,
 label); `computeSlots` (hours incl. several ranges per day, busy overlap
 edges, buffer incl. null fallback and past-closing, min notice, horizon,
 closed/partial/open exceptions, step grid, DST 2026-10-25 and 2027-03-28,
@@ -677,6 +710,16 @@ on PGlite with a provider without Google: repo CRUD as admin and as provider
 token hash, `google_sync_status = 'none'`, audit, re-check → `slot_taken`,
 the partial unique index, rate limit, admin/provider lists and stats,
 look-up / too late / cancel / already cancelled, provider cancel, no revival.
+
+Section **14c** (`scripts/selftest/service-catalogue.mts`): migration 0009 (column, one guarded
+statement, re-run twice); as the provider, `createService()` and `createServiceAction` refused
+(no row); on a service whose `created_by` is that provider, `updateService()`,
+`deleteService()` and the update / deactivate / reactivate actions refused, the row unchanged,
+nothing audited; subscribing the own profile to an active service, never to an inactive one
+(repo and action), keeping a since-deactivated subscription, unsubscribing, another
+provider's profile forbidden; the admin edits, prices, deactivates and reactivates, and
+`choice_label` round-trips. Section 14 also checks that `0470 12 34 56` is stored as
+`+32 470 12 34 56`.
 
 Section **14b** (`scripts/selftest/booking-rate-limit.mts`) tests the rate limit under
 parallel requests through the real `createPublicBooking()` (a throwaway service, a start in
@@ -727,6 +770,19 @@ a field's limit, even when the rules get a value the schema would have refused;
 just over the raw cap, 1000 characters) through `createPublicBooking()`: each is answered
 `invalid` with the field's message, no pattern beyond the limit, zero queries, nothing logged.
 
+For the offer step and the phone (16 Oct 2026): `phone.test.ts` (national, international,
+`0032`, `+32 0…`, landlines, never a second prefix, idempotent, foreign, rejects);
+`public-booking-input.test.ts` (both phones accepted and refused, `storedPhone()`);
+`src/components/studio/booking/details.test.ts` (adult and Jeugdfit guardian phone sent
+normalized, the lone `+32 ` counts as empty); `catalogue.test.ts` (`groupBookingChoices()`:
+the seeded offers give "Bikefit – huidige fiets" once with Volwassenenfit and Jeugdfit and the
+other three services directly, every service reachable exactly once, order, unbookable slugs,
+two offers on one service, gift voucher, labels); `service-choice.test.ts` (open offer, meta
+and summary lines, "Prijs op aanvraag"); `src/lib/cms/actions/services.test.ts` (the four
+service actions called directly as a provider, also on a service with their `created_by`, and
+as an editor: refused before the row is read, nothing written; the admin succeeds; the
+subscription action: active only, kept inactive, other provider refused).
+
 ---
 
 ## 13. Decisions and open points
@@ -743,8 +799,9 @@ just over the raw cap, 1000 characters) through `createPublicBooking()`: each is
   `notifications.ts` maps the booking.
 - **`insertEvent` defaults to `sendUpdates: 'none'`**. With no attendees the
   value has no effect.
-- **Providers can edit and deactivate services they created** (`created_by`),
-  in addition to `service.manage`.
+- **The service catalogue is admin-only** (16 Oct 2026, replacing "providers can edit and
+  deactivate services they created"): §3. `created_by` stays as a record of who created a
+  row, nothing more.
 - `listPublicServices()` hides services nobody offers. After bootstrap and
   before `cms:seed-booking`, the public list is empty.
 - `setAvailabilityExceptions()` replaces only today-and-later rows. Past rows
@@ -828,7 +885,49 @@ the same preselection. The widget's other rules (provider choice, availability, 
 address) are unchanged.
 
 **Making another offer bookable** (once its duration and the people who offer it are
-confirmed): create the service in Admin → Diensten with the real duration (and price, if it
-should show in the widget); the provider subscribes to it themself (or an admin does so on
-their confirmed behalf); then put the service's slug in the offer block's *Online boeken via
-dienst(en)* field and publish the offer page. No deploy, no migration.
+confirmed): an **admin** creates the service in Admin → Diensten with the real duration (and
+price, if it should show in the widget; and a *Keuzelabel* if the offer will link several
+services); the provider subscribes to it themself (or an admin does so on their confirmed
+behalf); then put the service's slug in the offer block's *Online boeken via dienst(en)* field
+and publish the offer page. No deploy, no migration.
+
+### One offer, its services underneath (16 Oct 2026)
+
+Toshoni's decision for `/afspraak`: **one** "Bikefit – huidige fiets" choice with
+**Volwassene / Jeugd** underneath, not two top-level fits; every other active, bookable
+service stays directly selectable (Gezinspakket, Fit aan huis, Inspanningstest), until Max or
+Toshoni decide otherwise.
+
+*Data model, no duplication.* Three things, each kept in one place:
+
+| What | Where | Managed by |
+| --- | --- | --- |
+| The canonical service: name, **choice label**, duration, buffer, **price** (`price_cents` + `show_price`), location, guardian rule, active | `cms_services` (0009 added `choice_label`) | admin only (§3) |
+| Which services an offer is booked as, in order | the offer block's `bookingServiceSlugs` (*Online boeken via dienst(en)*), on the published offer page | editor / admin, in the page editor |
+| Who offers a service, with an optional location override | `cms_provider_services` (no price, no duration) | the provider for their own profile, or an admin |
+
+No price is copied to an offer or to a provider, and no new price exists: both services keep
+`price_cents = null`, `show_price = false`, so the widget says "Prijs op aanvraag" under the
+offer until an admin sets and shows an approved amount on **that service** (the offer page's
+own *Kostprijs* is a separate marketing line: `content-placeholders.md` P-02). Admin →
+Diensten shows per service which published offer links to it.
+
+*The widget.* The `booking` block always reads the published offers (cached; on failure the
+widget is the flat list it was) and passes `groupBookingChoices({ offers, services })`
+(`src/lib/offers/catalogue.ts`) to the widget: a service a published offer links to appears
+once, under that offer, in the offer's order; the offer takes the place of its first service;
+an offer with one bookable service selects it straight away; a service two offers link
+belongs to the first offer in catalogue order. Step 1 then shows the offer's button
+(`aria-expanded`), and under it "Voor wie?" with one button per service, labelled with its
+choice label (else its name), its own duration, "met ouder of voogd" for Jeugdfit and its own
+price or "Prijs op aanvraag". **Only a service is ever selected**: its id is what availability
+is fetched for and what `bookAction` books, so its duration, buffer, guardian form, location
+and booking row follow; the done-line reads "Bikefit – huidige fiets · Jeugd · 60 minuten ·
+met ouder of voogd · Prijs op aanvraag"; *Wijzigen* reopens the offer so switching is one tap;
+the confirmation and the e-mails name the booked service ("Jeugdfit"), as the server stores
+it. The server needs no offer: `createPublicBooking()` re-reads the service by id (§9).
+
+*`?dienst=`, unchanged in meaning.* An offer slug narrows to its bookable services (now shown
+as that offer with its choices, nothing preselected when there are two); a service slug
+(`?dienst=jeugdfit`) preselects it, with its offer open; an offer without a bookable service
+still gets the named contact prompt; an unknown slug the normal widget and the notice.

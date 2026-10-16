@@ -38,6 +38,8 @@ export const CUSTOMER_LOCATION = {
 export type DefaultService = {
   slug: string;
   name: string;
+  /** Short label under an offer with several services; '' = the name (`cms_services.choice_label`). */
+  choiceLabel: string;
   description: string;
   durationMinutes: number;
   requiresGuardian: boolean;
@@ -50,6 +52,7 @@ export const DEFAULT_SERVICES: DefaultService[] = [
   {
     slug: 'volwassenenfit',
     name: 'Volwassenenfit',
+    choiceLabel: 'Volwassene',
     description:
       'De standaard bikefit. Reken op 90 minuten; complexe gevallen, eerste keren of fits na een blessure kunnen tot twee uur duren.',
     durationMinutes: 90,
@@ -60,6 +63,7 @@ export const DEFAULT_SERVICES: DefaultService[] = [
   {
     slug: 'jeugdfit',
     name: 'Jeugdfit',
+    choiceLabel: 'Jeugd',
     description:
       'Korter, ongeveer 60 minuten, en afgestemd op een lichaam in groei. Betaalbaar, duidelijk, op hun tempo.',
     durationMinutes: 60,
@@ -70,6 +74,7 @@ export const DEFAULT_SERVICES: DefaultService[] = [
   {
     slug: 'gezinspakket',
     name: 'Gezinspakket',
+    choiceLabel: '',
     description:
       'Mama, papa, kinderen — één sessie in de studio, alle fietsen gepast. Iedereen rijdt beter naar huis.',
     durationMinutes: 150,
@@ -80,6 +85,7 @@ export const DEFAULT_SERVICES: DefaultService[] = [
   {
     slug: 'fit-aan-huis',
     name: 'Fit aan huis',
+    choiceLabel: '',
     description: 'Voor groepen, clubs en gezinnen komen we op locatie.',
     durationMinutes: 120,
     requiresGuardian: false,
@@ -89,6 +95,7 @@ export const DEFAULT_SERVICES: DefaultService[] = [
   {
     slug: 'inspanningstest',
     name: 'Inspanningstest',
+    choiceLabel: '',
     description: '',
     durationMinutes: 60,
     requiresGuardian: false,

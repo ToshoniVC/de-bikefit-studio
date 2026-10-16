@@ -1,0 +1,42 @@
+/* ============================================================================
+   BOOKING — ONE OFFER, ITS SERVICES UNDERNEATH (16 Oct 2026) — additive
+   ----------------------------------------------------------------------------
+   Imported by `globals.css` (kept apart: that file is past the size limit).
+   Step 1 of the widget shows "Bikefit – huidige fiets" once; choosing it opens
+   "Voor wie?" with Volwassene and Jeugd (`service-picker.tsx`). Only
+   `--ds-*` tokens, every class prefixed `studio-booking__`, square corners.
+   ========================================================================== */
+@layer components {
+  .studio-booking__offer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-xs);
+  }
+  /* Open: the offer and its choices take the whole row, so both fit on a phone. */
+  .studio-booking__offer:has(> .studio-booking__suboptions:not([hidden])) {
+    grid-column: 1 / -1;
+  }
+  .studio-booking__suboptions {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+    gap: var(--ds-space-xs);
+    padding-left: var(--ds-space-md);
+    border-left: 2px solid var(--ds-color-accent);
+  }
+  /* `display: grid` would otherwise beat the `hidden` attribute. */
+  .studio-booking__suboptions[hidden] {
+    display: none;
+  }
+  .studio-booking__suboptions-title {
+    grid-column: 1 / -1;
+    margin: 0;
+    font-family: var(--ds-font-display);
+    font-size: var(--ds-text-micro);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ds-color-fg-subtle);
+  }
+  .studio-booking__option--sub .studio-booking__option-title {
+    font-size: var(--ds-text-small);
+  }
+}

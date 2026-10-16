@@ -1,3 +1,4 @@
+import { formatPhoneForInput, isBarePrefix, normalizePhone } from '@/lib/booking/phone';
 import type { BookActionInput } from './types';
 
 /**
@@ -68,8 +69,12 @@ export const NOTES_MAX = 2000;
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+/** The server's limit for a phone number (`PUBLIC_BOOKING_LIMITS`). */
+const PHONE_MAX = 40;
+
+/** Belgian (or explicitly international) and callable; the same rule as the server. */
 function isPhone(value: string): boolean {
-  return /^[+\d\s()./-]+$/.test(value) && value.replace(/\D/g, '').length >= 8;
+  return value.length <= PHONE_MAX && normalizePhone(value) !== null;
 }
 
 function isAge(value: string): boolean {
@@ -103,7 +108,8 @@ export function validateDetails(
     else if (!EMAIL.test(value)) errors[field] = 'Dit e-mailadres lijkt niet te kloppen.';
   };
   const phone = (field: DetailsField, value: string) => {
-    if (!value) errors[field] = 'Vul je telefoonnummer in.';
+    // "+32 " alone is the prefix the field starts with, not a number.
+    if (isBarePrefix(value)) errors[field] = 'Vul je telefoonnummer in.';
     else if (!isPhone(value)) errors[field] = 'Dit telefoonnummer lijkt niet te kloppen.';
   };
 
@@ -159,10 +165,10 @@ export function toBookInput(
       name: v.childName,
       age: v.childAge ? Number(v.childAge) : null,
       email: v.guardianEmail,
-      phone: v.guardianPhone,
+      phone: formatPhoneForInput(v.guardianPhone),
       guardianName: v.guardianName,
       guardianEmail: v.guardianEmail,
-      guardianPhone: v.guardianPhone,
+      guardianPhone: formatPhoneForInput(v.guardianPhone),
     };
   }
 
@@ -171,7 +177,7 @@ export function toBookInput(
     name: v.name,
     age: v.age ? Number(v.age) : null,
     email: v.email,
-    phone: v.phone,
+    phone: formatPhoneForInput(v.phone),
     guardianName: '',
     guardianEmail: '',
     guardianPhone: '',

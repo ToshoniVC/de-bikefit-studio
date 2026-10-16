@@ -1,0 +1,18 @@
+-- The booking catalogue names a service's choice under an offer —
+-- docs/booking-architecture.md §14 (one offer, several services).
+--
+-- ADDITIVE. Adds ONE column, `cms_services.choice_label` (text, NOT NULL,
+-- default ''): the short label of the service when an offer with several
+-- services shows them as a sub-selection ("Volwassene", "Jeugd" under "Bikefit –
+-- huidige fiets"). '' means "use the service's name", so every existing row
+-- keeps its current look until an admin fills it in (Beheer → Diensten) or
+-- `cms:bootstrap` fills the two defaults (only where still empty). No data
+-- change here, no price, no DROP; nothing touches `cms_provider_services`,
+-- `cms_bookings` or a webshop table.
+--
+-- Guarded (IF NOT EXISTS) so the file is safe to re-run.
+--
+-- Apply BEFORE deploying a build that contains it: the app selects every
+-- `cms_services` column, so until the column exists the booking widget shows
+-- its "bel ons" fallback and the admin service screens fail.
+ALTER TABLE "cms_services" ADD COLUMN IF NOT EXISTS "choice_label" text DEFAULT '' NOT NULL;

@@ -426,8 +426,11 @@ export const cmsLocations = pgTable(
 );
 
 /**
- * A bookable service. `location_id` null means "the provider's default
- * location" (or the per-provider override in `cms_provider_services`).
+ * A bookable service: the canonical catalogue entry (admin-managed, migration
+ * 0009 for `choice_label`). Duration, buffer, price and guardian rule live
+ * here and nowhere else: offers point at a service by slug, providers only
+ * subscribe to it. `location_id` null means "the provider's default location"
+ * (or the per-provider override in `cms_provider_services`).
  * `buffer_after_minutes` null falls back to the `booking` setting's default.
  */
 export const cmsServices = pgTable(
@@ -437,6 +440,11 @@ export const cmsServices = pgTable(
     locale: text('locale').default(DEFAULT_LOCALE).notNull(),
     slug: text('slug').notNull(),
     name: text('name').notNull(),
+    /**
+     * The short name of this choice under an offer with several services
+     * ("Volwassene", "Jeugd" under "Bikefit – huidige fiets"); '' = `name`.
+     */
+    choiceLabel: text('choice_label').default('').notNull(),
     description: text('description').default('').notNull(),
     durationMinutes: integer('duration_minutes').notNull(),
     bufferAfterMinutes: integer('buffer_after_minutes').default(15),

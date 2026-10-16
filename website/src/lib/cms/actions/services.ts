@@ -7,8 +7,10 @@ import { runAction } from './run';
 import { actionError, actionOk, boolField, field, type ActionState } from './state';
 
 /**
- * Service server actions. `repo.ts` enforces `service.create` (providers may
- * create) and `service.manage` (edit / deactivate any service).
+ * Service server actions. Every one of them is admin-only: `repo-services.ts`
+ * requires `service.manage` for create, edit, price, deactivate and reactivate,
+ * whoever created the service (`services.test.ts` calls them directly as a provider).
+ * Providers subscribe through `setProviderServicesAction` instead.
  */
 
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -29,6 +31,7 @@ function euroToCents(raw: string): number | null | undefined {
 
 type ServiceFormValues = {
   name: string;
+  choiceLabel: string;
   slug: string;
   description: string;
   durationMinutes: number;
@@ -85,6 +88,7 @@ function parseServiceForm(
     ok: true,
     data: {
       name,
+      choiceLabel: field(form, 'choiceLabel'),
       slug,
       description: field(form, 'description'),
       durationMinutes,

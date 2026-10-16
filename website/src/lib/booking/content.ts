@@ -64,6 +64,8 @@ export type PublicService = {
   id: string;
   slug: string;
   name: string;
+  /** Short label under an offer with several services; '' = use `name`. */
+  choiceLabel: string;
   description: string;
   durationMinutes: number;
   /** e.g. "1 u 30 min". */
@@ -213,6 +215,7 @@ export async function listPublicServices(
           id: service.id,
           slug: service.slug,
           name: service.name,
+          choiceLabel: service.choiceLabel,
           description: service.description,
           durationMinutes: service.durationMinutes,
           durationLabel: formatDuration(service.durationMinutes),

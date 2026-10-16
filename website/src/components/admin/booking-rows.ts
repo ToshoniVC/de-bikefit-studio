@@ -78,10 +78,15 @@ export function toLocationOption(location: CmsLocation): LocationOption {
   };
 }
 
-export function toServiceRow(service: ServiceListItem, user: CmsUserPublic): ServiceRow {
+export function toServiceRow(
+  service: ServiceListItem,
+  user: CmsUserPublic,
+  offers: readonly { title: string; bookingServiceSlugs: readonly string[] }[] = [],
+): ServiceRow {
   return {
     id: service.id,
     name: service.name,
+    choiceLabel: service.choiceLabel,
     slug: service.slug,
     description: service.description,
     durationMinutes: service.durationMinutes,
@@ -94,10 +99,13 @@ export function toServiceRow(service: ServiceListItem, user: CmsUserPublic): Ser
     sortOrder: service.sortOrder,
     color: service.color,
     providerCount: service.providerCount,
-    // Mirrors `requireServiceEdit()` in the repo, which is the real check.
-    editable:
-      can(user.role, 'service.manage') ||
-      (can(user.role, 'service.create') && service.createdBy === user.id),
+    // Mirrors `requireServiceManage()` in the repo, which is the real check.
+    // `created_by` grants nothing: a provider who once created a service
+    // cannot edit, price or deactivate it.
+    editable: can(user.role, 'service.manage'),
+    offers: offers
+      .filter((offer) => offer.bookingServiceSlugs.includes(service.slug))
+      .map((offer) => offer.title),
   };
 }
 

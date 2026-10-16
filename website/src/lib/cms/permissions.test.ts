@@ -43,7 +43,8 @@ const MATRIX: Record<CmsPermission, [provider: boolean, editor: boolean, admin: 
   'booking.manage': [false, false, true],
   'booking.manage.own': [true, false, true],
   'service.read': [true, true, true],
-  'service.create': [true, false, true],
+  // The catalogue is the admin's (16 Oct 2026): providers only subscribe.
+  'service.create': [false, false, true],
   'service.manage': [false, false, true],
   'service.subscribe.own': [true, false, true],
   'location.read': [true, true, true],
@@ -93,20 +94,22 @@ describe('CMS role matrix', () => {
     expect(can('editor', 'booking.read')).toBe(true);
   });
 
-  it('limits providers to own-scoped permissions plus reading/creating services and reading locations', () => {
+  it('limits providers to own-scoped permissions plus reading services and locations', () => {
     expect(permissionsFor('provider').sort()).toEqual(
       [
         'booking.manage.own',
         'booking.read.own',
         'location.read',
         'provider.self',
-        'service.create',
         'service.read',
         'service.subscribe.own',
       ].sort(),
     );
     const scoped = CMS_PERMISSIONS.filter((p) => p.endsWith('.own') || p.endsWith('.self'));
     for (const permission of scoped) expect(can('provider', permission), permission).toBe(true);
+    // Never the catalogue: no creating, editing, pricing or deactivating a service.
+    expect(can('provider', 'service.create')).toBe(false);
+    expect(can('provider', 'service.manage')).toBe(false);
     const contentAreas = [
       'page.',
       'block.',

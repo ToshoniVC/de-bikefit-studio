@@ -3,6 +3,7 @@ import {
   PUBLIC_BOOKING_LIMITS,
   PUBLIC_BOOKING_RAW_LIMITS,
   publicBookingInputSchema,
+  storedPhone,
   validateBookingFields,
 } from './public-booking-input';
 
@@ -297,5 +298,40 @@ describe('publicBookingInputSchema: raw caps', () => {
       }),
     );
     expect(seen).toEqual([]);
+  });
+});
+
+describe('phone numbers: Belgian by default, stored with one +32 (16 Oct 2026)', () => {
+  const rulesFor = (fields: Partial<typeof VALID>) =>
+    validateBookingFields(publicBookingInputSchema.parse({ ...VALID, ...fields }));
+
+  it('accepts a local and an international Belgian number for customer and guardian', () => {
+    for (const phone of [
+      '0470 12 34 56',
+      '+32 470 12 34 56',
+      '0032 470 12 34 56',
+      '054 12 34 56',
+    ]) {
+      expect(rulesFor({ customerPhone: phone, guardianPhone: phone }), phone).toEqual({});
+    }
+  });
+
+  it('refuses a number that is too short or too long once the prefix is accounted for', () => {
+    for (const phone of ['0470 12 34', '+32 470 12 34 56 78', '+32 32']) {
+      expect(rulesFor({ customerPhone: phone }), phone).toEqual({
+        customerPhone: 'Vul een geldig telefoonnummer in.',
+      });
+      expect(rulesFor({ guardianPhone: phone }), phone).toEqual({
+        guardianPhone: 'Vul een geldig telefoonnummer in.',
+      });
+    }
+  });
+
+  it('stores the normalized form, never a second prefix, null when empty', () => {
+    expect(storedPhone('0470 12 34 56')).toBe('+32 470 12 34 56');
+    expect(storedPhone('+32 470 12 34 56')).toBe('+32 470 12 34 56');
+    expect(storedPhone('0032470123456')).toBe('+32 470 12 34 56');
+    expect(storedPhone('+31 6 12345678')).toBe('+31612345678');
+    expect(storedPhone('')).toBeNull();
   });
 });

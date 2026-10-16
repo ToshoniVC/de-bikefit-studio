@@ -54,6 +54,10 @@
  *      usable IP and for one guardian e-mail (exactly 5 pass each), hashed
  *      keys, partial reservations given back, fail closed without the table
  *      (`scripts/selftest/booking-rate-limit.mts`)
+ *  14c. the service catalogue is admin-only: a provider (also one whose old
+ *      service has `created_by` = them) cannot create, edit, price, deactivate
+ *      or reactivate, through the repo or the server actions; subscriptions on
+ *      the own profile to active services only (`scripts/selftest/service-catalogue.mts`)
  *  15. aanbod rollout + service preselection: the CLI dry run and the plan
  *      write nothing (no session, no audit, read-only db), draft guard,
  *      apply/backup, booking tables untouched, catalogue, menus, /over-ons
@@ -613,7 +617,6 @@ async function bookingSections(
     'booking.read.own',
     'booking.manage.own',
     'service.read',
-    'service.create',
     'service.subscribe.own',
     'location.read',
     'provider.self',
@@ -627,6 +630,7 @@ async function bookingSections(
   check('provider may NOT read all bookings', !can('provider', 'booking.read'));
   check('provider may NOT edit pages', !can('provider', 'page.read'));
   check('provider may NOT manage services', !can('provider', 'service.manage'));
+  check('provider may NOT create services', !can('provider', 'service.create'));
   check(
     'editor may read bookings/services/locations/providers',
     ['booking.read', 'service.read', 'location.read', 'provider.read'].every((p) =>
@@ -1224,13 +1228,18 @@ async function bookingSections(
     forbiddenLocation = error instanceof CmsAuthError;
   }
   check('provider: createLocation is forbidden', forbiddenLocation);
-  const ownService = await repo.createService({ name: 'Inspanningstest', durationMinutes: 60 });
-  check(
-    'provider: createService auto-subscribes the creator',
-    ownService.ok &&
-      (await repo.getOwnProvider())?.services.some((s) => s.serviceId === ownService.data.id) ===
-        true,
-  );
+  // The catalogue is the admin's (16 Oct 2026): no service creation, no edit
+  // of a service the provider once created; subscriptions only (section 14c).
+  const { serviceCatalogueSection } = await import('./selftest/service-catalogue.mjs');
+  await serviceCatalogueSection({
+    db,
+    check,
+    section,
+    signInAs,
+    admin,
+    provider: { id: providerId, userId: providerUserId },
+  });
+  await signInAs(providerUserId);
   const closure = await repo.setAvailabilityExceptions(providerId, [
     { date: addDaysYmd(todayYmd(new Date(), TZ), 30), kind: 'closed' },
   ]);
@@ -1329,6 +1338,11 @@ async function bookingSections(
     .select()
     .from(schema.cmsBookings)
     .where(eq(schema.cmsBookings.id, booked1.bookingId));
+  check(
+    'db: a local phone number is stored with one +32 prefix',
+    row?.customerPhone === '+32 470 12 34 56',
+    row?.customerPhone ?? '',
+  );
   check(
     'db: only the SHA-256 of the token is stored',
     row?.cancelTokenHash === createHash('sha256').update(booked1.cancelToken).digest('hex') &&
