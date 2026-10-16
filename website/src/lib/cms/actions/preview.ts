@@ -7,8 +7,8 @@ import { cmsAccessDenial } from '@/lib/cms/guard';
  *
  * The public page may only read draft content (`?preview=1`) when this returns
  * true — i.e. the request carries a valid, active CMS session cookie whose user
- * no longer has a temporary password and, for an admin, whose session passed
- * two-step verification (drafts are CMS data). It hits
+ * no longer has a temporary password and, for an admin or provider, whose
+ * session passed two-step verification (drafts are CMS data). It hits
  * the database through `getCurrentCmsUser()`, which is `React.cache`d per
  * request, so calling it in a layout and a page costs one lookup.
  *

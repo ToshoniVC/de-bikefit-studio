@@ -18,9 +18,10 @@ export const metadata: Metadata = {
  * Blocking gate for `must_change_password`. It lives outside the `(dashboard)`
  * group on purpose: the dashboard layout redirects here, so putting it inside
  * would loop. It is the one admin screen a temporary-password session may
- * render, hence the explicit `allowMustChangePassword`. For an admin the
- * change also needs a recent full authentication: right after signing in it
- * is there; later the step-up form above the password form renews it.
+ * render, hence the explicit `allowMustChangePassword`. For an admin or a
+ * provider (roles that require MFA) the change also needs a recent full
+ * authentication: right after signing in it is there; later the step-up form
+ * above the password form renews it.
  */
 export default async function ForcedPasswordChangePage() {
   let user;

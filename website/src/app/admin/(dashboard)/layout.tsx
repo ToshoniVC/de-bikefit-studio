@@ -16,9 +16,9 @@ export const metadata: Metadata = {
  * cookie sails past it and is rejected here, where `requireCmsUser()` resolves
  * the session against the database. A session whose password is still
  * temporary (`password_change_required`) is sent to `/admin/password`; an
- * admin session that did not pass two-step verification (`mfa_required`, e.g.
- * one from before MFA existed) is sent back to sign in, which leads through
- * `/admin/mfa`.
+ * admin or provider session that did not pass two-step verification
+ * (`mfa_required`, e.g. one from before MFA existed for the role) is sent back
+ * to sign in, which leads through `/admin/mfa`.
  *
  * Not the only gate: a layout does not stop a server action and does not
  * re-run on every navigation, so every page, action and repo call checks

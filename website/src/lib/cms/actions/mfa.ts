@@ -246,8 +246,11 @@ export async function adminResetUserMfaAction(
     const result = await adminResetUserMfa(userId, { password, code }, await requestContext());
     if (!result.ok) return actionError(result.message);
     revalidatePath('/admin/users');
+    const afterwards = result.data.mustEnrol
+      ? 'bij de volgende aanmelding kiest de gebruiker een eigen wachtwoord en stelt een nieuwe authenticator in.'
+      : 'bij de volgende aanmelding kiest de gebruiker een eigen wachtwoord; voor deze rol is tweestapsverificatie niet verplicht.';
     return actionOk(
-      `Tweestapsverificatie van ${result.data.email} is gereset en alle sessies zijn afgemeld. Geef dit tijdelijke wachtwoord één keer door; bij de volgende aanmelding stelt de gebruiker een nieuwe authenticator in.`,
+      `Tweestapsverificatie van ${result.data.email} is gereset en alle sessies zijn afgemeld. Geef dit tijdelijke wachtwoord één keer door; ${afterwards}`,
       { temporaryPassword: result.data.temporaryPassword },
     );
   });

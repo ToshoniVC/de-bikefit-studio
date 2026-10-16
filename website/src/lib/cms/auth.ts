@@ -175,7 +175,7 @@ export type LoginOutcome = {
 
 /**
  * Whether a password sign-in must be followed by the second step: always for
- * roles that require MFA (admins), and for anyone else who has an
+ * roles that require MFA (admins, providers), and for an editor who has an
  * authenticator (e.g. a former admin), so a factor once set is always asked.
  */
 export async function requiresSecondStep(
@@ -187,11 +187,11 @@ export async function requiresSecondStep(
 
 /**
  * Verifies credentials and records the attempt. Then either:
- *  - second step required (admins): creates an MFA challenge and writes the
- *    `cms_mfa` cookie. **No session is created.** Any session this browser
- *    still had is revoked, so a pre-MFA session cannot linger next to it;
- *  - otherwise (editors, providers, unchanged): creates a session and writes
- *    the `cms_session` cookie.
+ *  - second step required (admins, providers): creates an MFA challenge and
+ *    writes the `cms_mfa` cookie. **No session is created.** Any session this
+ *    browser still had is revoked, so a pre-MFA session cannot linger;
+ *  - otherwise (editors without an authenticator, unchanged): creates a
+ *    session and writes the `cms_session` cookie.
  * Safe to call from a server action.
  *
  * Rate limited to {@link LOGIN_MAX_ATTEMPTS} failures per
@@ -373,8 +373,8 @@ export type RequireCmsUserOptions = {
 
 /**
  * Returns the signed-in user, or throws `CmsAuthError`: `unauthenticated`
- * without a session, `mfa_required` for an admin session that did not pass
- * the second step, `password_change_required` while the password is still
+ * without a session, `mfa_required` for an admin or provider session that did
+ * not pass the second step, `password_change_required` while the password is still
  * temporary, `forbidden` when the role ranks too low, `reauth_required` for a
  * sensitive change without a recent step-up. The decision is
  * `assertCmsAccess()` in `./guard`.
@@ -436,10 +436,10 @@ export type ChangePasswordInput = {
  * of the one it replaces, never more.
  *
  * The one write a temporary-password session may make: it is how such a user
- * gets out of that state, hence `allowMustChangePassword`. For roles with a
- * second step (admins) it is a sensitive change: besides the current password
- * it needs a recent full authentication (sign-in or step-up, password plus
- * code), so a hijacked session plus a phished password is not enough.
+ * gets out of that state, hence `allowMustChangePassword`. For roles that
+ * require MFA (admins, providers) it is a sensitive change: besides the current
+ * password it needs a recent full authentication (sign-in or step-up, password
+ * plus code), so a hijacked session plus a phished password is not enough.
  */
 export async function changePassword(input: ChangePasswordInput): Promise<AuthResult<true>> {
   const signedIn = await getCurrentCmsSession();

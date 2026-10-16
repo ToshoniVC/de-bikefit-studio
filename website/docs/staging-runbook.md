@@ -15,6 +15,7 @@ gift voucher §12, the e-mail service in the admin §13 (migration 0004), admin 
 verification §14 (migration 0005 and a new secret) and admin session limits, step-up and the
 admin CSP §15 (migration 0006); 0007 (race-free second-step rate limits) has no section of its
 own. Rolling 0004–0007 out together, as the security release does: the combined order in §16.
+Two-step verification for providers (16 Oct 2026, no migration, no new secret): §17.
 
 Environments, the Hobby-plan staging setup and the full env var contract:
 [`../DEPLOYMENT.md`](../DEPLOYMENT.md). Google, GA4 and Resend setup, GDPR and retention:
@@ -62,10 +63,10 @@ come from 1Password.
 | --- | --- | --- |
 | `DATABASE_URL` | pooled URL of Neon `Staging` (§1) | Without it the app tries PGlite, which `src/db/cms.ts` refuses on any deployment (`NODE_ENV=production`). |
 | `CMS_SESSION_SECRET` | `openssl rand -base64 48`, staging's own | Rotating it signs every CMS user out, makes an e-mail API key stored in `/admin/email` unreadable (§13) and, without a token key, disconnects Google. Never reuse production's. |
-| `CMS_MFA_ENCRYPTION_KEY` | `openssl rand -base64 32`, staging's own | **Required** for admin sign-in (two-step verification, §14); set it before the deploy that brings it (§16). Treat as permanent: rotating it forces every admin to re-enrol with a recovery code. Never reuse production's. |
+| `CMS_MFA_ENCRYPTION_KEY` | `openssl rand -base64 32`, staging's own | **Required** for admin and provider sign-in (two-step verification, §14, §17); set it before the deploy that brings it (§16). Treat as permanent: rotating it forces every admin and provider to re-enrol with a recovery code. Never reuse production's. |
 | `NEXT_PUBLIC_SITE_URL` | `https://de-bikefit-studio-git-staging-toshoni.vercel.app` | Canonicals, sitemap, OG, e-mail links, OAuth redirect URI. |
-| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | the shared web client | Staging redirect URI must be registered on the client (`booking-runbook.md` §4). |
-| `GOOGLE_TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32`, staging's own | Optional (falls back to a key derived from `CMS_SESSION_SECRET`); treat as permanent. |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | the shared web client | Register exactly `https://de-bikefit-studio-git-staging-toshoni.vercel.app/api/google/oauth/callback` on the client; scope Preview, branch `staging` only (`booking-runbook.md` §7.3). |
+| `GOOGLE_TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32`, staging's own | Set before the first connection: base64 of exactly 32 bytes (`booking-runbook.md` §7.3). Without it a key is derived from `CMS_SESSION_SECRET`; treat as permanent. |
 | `RESEND_API_KEY` | staging key | Optional: an admin can store it in `/admin/email` instead (§13); env wins. Without a key anywhere mails are logged and skipped. |
 | `EMAIL_FROM`, `EMAIL_REPLY_TO` | sender on the verified domain, reply-to | Optional, same as above. |
 | `GIFT_VOUCHER_RECIPIENT` | **empty** until a working order inbox is chosen | Optional, same as above (`/admin/email` → *Ontvanger cadeaubonbestellingen*). Unset in both places = gift voucher orders are "niet verstuurd" (§12). |
@@ -148,9 +149,11 @@ editing has started use `-- --only-missing` or `-- --refresh-slug <slug>` instea
 run: a full run overwrites the draft blocks of every seeded page.
 
 `cms:seed-booking` creates the provider `toshoni@gmail.com` (role `provider`, forced password
-change; the temporary password is **printed once** — hand it over directly, never through a
-log or chat transcript), its profile, hours Mon–Fri 09–18 and Sat 09–13, and subscriptions
-to the five services. The public booking widget lists no services until a provider exists.
+change and, at the same first sign-in, two-step verification (§17); the temporary password is
+**printed once** — hand it over directly, never through a log or chat transcript: whoever holds
+it can enrol the authenticator), its profile, hours Mon–Fri 09–18 and Sat 09–13, and
+subscriptions to the five services. The public booking widget lists no services until a
+provider exists.
 
 ---
 
@@ -222,9 +225,9 @@ Production (`main`) deploys the same way, only after an explicit go.
    - `/afspraak` shows the booking widget; `/privacy` and `/algemene-voorwaarden` load and
      are linked from the footer.
 4. Create editor accounts under **Gebruikers** (role `editor`); they get a forced password
-   change on first login too.
-5. The provider signs in, changes the password and connects Google under **Mijn agenda**
-   (`booking-runbook.md` §8).
+   change on first login too (no two-step verification for editors).
+5. The provider signs in, changes the password, sets up two-step verification exactly as in
+   step 2 (§17) and connects Google under **Mijn agenda** (`booking-runbook.md` §8).
 
 **Keep `seo.allowIndexing` off for the entire life of staging.**
 
@@ -296,7 +299,8 @@ production step (database, env vars, DNS, deploy) needs an explicit go; Arend ex
 
 - [ ] `db:migrate` (0000–0007, before the deploy that needs them, §16), then `cms:bootstrap`
       (change the admin password and set up two-step verification immediately), `cms:seed`,
-      `cms:seed-booking` — or, if production already has content,
+      `cms:seed-booking` (the provider changes the password and sets up two-step verification
+      at the first sign-in, §17) — or, if production already has content,
       `cms:seed -- --refresh-slug` for **`afspraak`**, **`privacy`** and
       **`algemene-voorwaarden`**.
 - [ ] **Retention** scheduled: `npm run cms:retention` monthly against production, dry run
@@ -606,7 +610,8 @@ was stored and must go: **Opgeslagen sleutel verwijderen** in `/admin/email` fir
 
 Admins now sign in with a password **and** a code from an authenticator app (1Password or a
 free app such as Aegis, Ente Auth or Google Authenticator); recovery codes cover a lost
-phone. Editors and providers are unchanged. Design: `cms-architecture.md` §4, "Two-step
+phone. Editors and providers were unchanged by this step; providers followed on 16 Oct 2026
+(§17), editors stay as they are. Design: `cms-architecture.md` §4, "Two-step
 verification". It needs one migration and one new secret, in this order. Arend executes;
 staging is autonomous after the release gate, production needs Toshoni's go. It ships together
 with §15 (same branch, `feat/security-baseline-20261013`); rolling both out after §13: the
@@ -615,7 +620,7 @@ combined order in §16. The steps below are the detail of that order.
 1. **Secret first.** Generate a staging-only key (`openssl rand -base64 32`), store it in
    1Password, then set `CMS_MFA_ENCRYPTION_KEY` in Vercel → Preview (branch `staging`) as
    *Sensitive*. Preview deployments of other branches that use the staging database need it
-   too, or admins cannot sign in there. Never print, paste or log the value.
+   too, or admins (and, since §17, providers) cannot sign in there. Never print, paste or log the value.
 2. **Snapshot**, then migrate (additive, guarded; the running build keeps working on the
    extended schema):
 
@@ -848,3 +853,95 @@ and `CMS_SESSION_SECRET` unchanged for a later re-deploy.
 `CMS_MFA_ENCRYPTION_KEY` in Vercel → Production, a snapshot of Neon `production`, `db:migrate`,
 deploy, and the first admin enrols immediately; CSP enforcement on production only after it was
 enforced and validated on staging.
+
+---
+
+## 17. Provider two-step verification (16 Oct 2026, no migration)
+
+Providers ("Aanbieder") now sign in like admins: password **and** a code from an authenticator
+app, enrolled at the first sign-in after the deploy, with ten recovery codes. A provider cannot
+switch it off (only replace the authenticator), the step-up *Bevestig je identiteit* asks for
+the code, and changing the own password needs that step-up within 5 minutes. **Unchanged:**
+the provider's session lifetime (14 days, sliding; whether providers get the admin limits is
+an open decision for Max, `cms-architecture.md` §4), editors (password only, unless they kept
+an authenticator), admins, permissions, public booking. Design and the policy per role:
+`cms-architecture.md` §4, "Two-step verification". Arend executes; staging is autonomous after
+the release gate, production needs Toshoni's go.
+
+**No migration, no new secret.** The `provider` role exists since 0002 and the `cms_mfa_*`
+tables and `cms_sessions.mfa_verified_at` since 0005; the change is code only. `db:migrate`
+has nothing to apply for it. It needs what §16 already set up: `CMS_MFA_ENCRYPTION_KEY` on the
+deployment and migrations 0005–0007 applied. If staging's admin signs in with a code today, both
+are in place.
+
+Steps:
+
+1. **Release gate** on the exact SHA (six steps).
+2. **Precondition:** `<staging alias>/admin/login` does **not** say "Tweestapsverificatie is op
+   deze server niet geconfigureerd". If it does, stop: the key is missing (§14 step 1), and
+   after the deploy no provider could sign in.
+3. **The staging provider's temporary password.** `toshoni@gmail.com` (role provider) has never
+   signed in: it still has the temporary password `cms:seed-booking` printed once. Whoever holds
+   that password can set up the authenticator first. If it may have travelled (chat, log,
+   screenshot) or is lost, an admin replaces it right before the first sign-in: *Gebruikers* →
+   *Bevestig je identiteit* → *Wachtwoord resetten* for `toshoni@gmail.com`, and hands the new
+   temporary password over directly, never through a log or chat transcript.
+4. **Deploy** (merge to `staging`, wait for READY). From now on every provider session is
+   refused (`mfa_required`): the dashboard sends the provider to `/admin/login?mfa=1` ("Je account
+   vraagt naast je wachtwoord ook een code …"), and the Google connect and callback routes refuse
+   it with the same guard check (`cmsAccessDenial()`). Public booking and the calendar sync of an
+   already connected provider need no provider session and are unaffected.
+5. **First provider sign-in** (Toshoni, as `toshoni@gmail.com`), in this order: `/admin/login` →
+   e-mail and temporary password → `/admin/mfa` *Kies een nieuw wachtwoord* (≥ 12 characters,
+   lower case, upper case, a digit) → *Tweestapsverificatie instellen* → *Authenticator
+   instellen* → scan the QR code (or type the key) in 1Password or an authenticator app → the
+   six-digit code → *Bevestigen en aanmelden* → the **ten recovery codes, shown once**: store them
+   in 1Password with the provider account → *Ik heb ze bewaard, naar het beheer* → *Mijn agenda*.
+   The provider login is a separate entry in the authenticator ("De Bikefit Studio (test)" with
+   `toshoni@gmail.com`), next to the admin's.
+6. **Checks** (Arend: release gate, site-health, logs; Toshoni or Winston: the browser):
+   - before the code, the provider has no session: opening `/admin/agenda` leads back to the
+     code step, never to the agenda; a wrong code answers "Die code klopt niet …";
+   - after enrolment: *Mijn agenda* loads; as admin, *Gebruikers* shows the provider with
+     "Tweestapsverificatie aan" (before: "Geen authenticator: moet tweestapsverificatie
+     instellen");
+   - as provider, *Mijn account*: authenticator active, ten recovery codes, **no**
+     *Tweestapsverificatie uitschakelen*; more than 5 minutes after signing in, *Wachtwoord
+     wijzigen* first asks *Bevestig je identiteit* with password **and** code;
+   - the provider is still signed in after 16 minutes without a click (standard session; an admin
+     would be signed out);
+   - an editor still signs in with a password only; an admin is unchanged (password + code);
+   - audit log: `auth.login`, `auth.password_change` and `auth.mfa_enrol` for
+     `toshoni@gmail.com`; Vercel logs: no `[cms] action_failed` during the sign-in.
+7. **Nothing for the CLIs:** they act as an enrolled admin, as before.
+
+**Lost device (provider).** With the recovery codes: sign in with one, then *Mijn account →
+Tweestapsverificatie → Authenticator vervangen*. Authenticator **and** codes lost: an admin
+signs in, *Gebruikers* → *Bevestig je identiteit* → *Tweestapsverificatie resetten* → the
+provider → own password and code. The provider gets a temporary password (shown once to the
+admin; hand it over out of band, after checking it is really that person) and at the next
+sign-in replaces it and enrols anew. A provider can never reset anyone (*Gebruikers* is
+admin-only, the server refuses with `forbidden`). No admin available: the break-glass CLI of §14
+works for providers too, dry run first:
+
+```bash
+DATABASE_URL='<staging pooled url>' npm run cms:mfa-reset -- --email <provider address>
+DATABASE_URL='<staging pooled url>' CMS_BREAK_GLASS_PASSWORD='<new temporary password>' \
+  npm run cms:mfa-reset -- --email <provider address> --apply \
+  --expect-host '<host part of the staging DATABASE_URL>'
+```
+
+The dry run prints `<address> (provider): …` with the counts; `--apply` removes the factor,
+recovery codes, challenges and sessions and writes `auth.mfa_break_glass`.
+
+**Rollback.** Code only: redeploy the previous build; there is no migration to undo and no
+variable to remove. Effect: providers without an authenticator sign in with a password alone
+again and provider sessions without the second step are accepted again. A provider who already
+enrolled keeps the authenticator and is still asked for it at sign-in (the previous build asks
+anyone who has one) and could switch it off there under *Mijn account*. A refresh of staging from
+production empties the `cms_mfa_*` tables (`scripts/anonymize-staging.sql`): providers then
+enrol anew, like admins.
+
+**Production** (after Toshoni's go): the same steps; `CMS_MFA_ENCRYPTION_KEY` is already required
+there since §16. Each production provider enrols at the next sign-in after the deploy, so tell
+them beforehand to have their phone or 1Password at hand.

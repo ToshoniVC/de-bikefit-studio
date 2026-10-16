@@ -3,10 +3,10 @@
  * use `/admin/email`. Every call goes straight to the repo
  * (`src/lib/email/repo.ts`), as a forged server-action POST would.
  *
- *  - no session, an editor, a provider: every read and write is refused
- *    (`email.manage` is admin-only);
- *  - an admin session that did not pass two-step verification: refused
- *    (`mfa_required`), even with a fresh sign-in stamp;
+ *  - no session, an editor, a provider who passed two-step verification:
+ *    every read and write is refused (`email.manage` is admin-only);
+ *  - an admin or provider session that did not pass two-step verification:
+ *    refused (`mfa_required`), even with a fresh sign-in stamp;
  *  - an MFA-verified admin without a recent step-up, or with one older than
  *    5 minutes: the key, sender, reply-to and order inbox cannot be changed
  *    (`reauth_required`);
@@ -127,7 +127,13 @@ export async function emailAccessChecks(ctx: {
   for (const [who, userId, options, code] of [
     ['no session', null, {}, 'unauthenticated'],
     ['editor', editor.id, { reauthenticated: true }, 'forbidden'],
-    ['provider', provider.id, { reauthenticated: true }, 'forbidden'],
+    ['provider', provider.id, { mfaVerified: true, reauthenticated: true }, 'forbidden'],
+    [
+      'provider without two-step verification',
+      provider.id,
+      { reauthenticated: true },
+      'mfa_required',
+    ],
     ['admin without two-step verification', admin.id, { reauthenticated: true }, 'mfa_required'],
   ] as const) {
     let wrong: string[] = [];

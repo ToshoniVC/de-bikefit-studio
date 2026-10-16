@@ -42,7 +42,7 @@ layout redirect. Details in `docs/cms-architecture.md` (auth section).
 Shipped in the same branch: mandatory TOTP two-step verification for CMS admins, migration
 `0005_cms_admin_mfa` (design in `docs/cms-architecture.md` §4, rollout in
 `docs/staging-runbook.md` §14; together with the e-mail settings from `staging` and block 3:
-§16). It adds exactly one runtime package:
+§16). Extended to providers on 16 Oct 2026 (below). It adds exactly one runtime package:
 
 | Package | Version | Why | Supply-chain notes |
 | --- | --- | --- | --- |
@@ -62,7 +62,8 @@ Shipped in the same branch, no new dependency (`node:crypto`, Web Crypto and Nex
 - **Admin sessions** end after 15 minutes without a request and 8 hours after sign-in at the
   latest, enforced on the server (`src/lib/cms/session-policy.ts`); editors and providers keep
   14 days, sliding. Migration `0006_cms_session_limits` (two nullable columns).
-- **Step-up**: user management, an admin's own password change and, since the merge with
+- **Step-up**: user management, an admin's own password change (since 16 Oct 2026 also a
+  provider's) and, since the merge with
   `staging`, changes to the e-mail service settings in `/admin/email` need a full
   re-authentication (password + code) within 5 minutes, checked inside the library functions
   (`recentReauthentication` in `src/lib/cms/guard.ts`).
@@ -77,3 +78,15 @@ order with 0004, 0005 and 0007: §16). After the change `npm audit` is unchanged
 (0 critical / 9 high / 6 moderate)**, the same three accepted root causes (`braces`, `esbuild`
 via drizzle-kit, `postcss-selector-parser`); `npm audit --omit=dev` reports **0 findings**.
 The merge with `staging` (site content, `/admin/email`, gift voucher) added no dependency.
+
+## Provider two-step verification (16 Oct 2026)
+
+The MFA scope now covers two roles: **admins and providers** ("Aanbieder") must pass the second
+step on every session; **editors are unchanged** (asked only when they kept an authenticator).
+The rule is the table `ROLE_MFA_POLICY` in `src/lib/cms/guard.ts`; the session lifetime is a
+separate table, `ROLE_SESSION_POLICY` in `src/lib/cms/session-policy.ts`, so providers keep their
+14-day sessions until the owner decides otherwise (`docs/cms-architecture.md` §4, open
+decisions). Code only: no migration, no new secret, no new or changed dependency
+(`package.json` and the lockfile are untouched by it), so the `npm audit` picture above is
+unaffected by this change; it was not re-run in this work block (no network). Rollout:
+`docs/staging-runbook.md` §17.

@@ -20,9 +20,10 @@ export const metadata: Metadata = {
  * besides the second step at `/admin/mfa`. It sits outside the `(dashboard)`
  * route group, so the gated layout never runs here.
  *
- * Only a session the guard would accept is sent on: an admin session without
- * two-step verification (`mfa_required`) stays here and signs in again,
- * otherwise layout and login page would bounce it back and forth.
+ * Only a session the guard would accept is sent on: an admin or provider
+ * session without two-step verification (`mfa_required`) stays here and signs
+ * in again, otherwise layout and login page would bounce it back and forth.
+ * The copy is role-neutral: admins and providers both see it.
  */
 export default async function AdminLoginPage({
   searchParams,
@@ -39,19 +40,20 @@ export default async function AdminLoginPage({
   if (await getCurrentMfaChallenge()) redirect(`/admin/mfa?next=${encodeURIComponent(safeNext)}`);
 
   return (
-    <AdminAuthFrame title="Beheer" description="Meld je aan om de website te beheren.">
+    <AdminAuthFrame title="Beheer" description="Meld je aan om de website of je agenda te beheren.">
       {mfaConfigured() ? null : (
-        // Operational signal (CMS_MFA_ENCRYPTION_KEY missing or malformed): admins
-        // cannot finish signing in. Visible before anyone types a password.
+        // Operational signal (CMS_MFA_ENCRYPTION_KEY missing or malformed):
+        // admins and providers cannot finish signing in. Visible before anyone
+        // types a password.
         <p role="alert" className={`mb-4 px-3 py-2 text-sm ${FLASH_TONES.error}`}>
-          Tweestapsverificatie is op deze server niet geconfigureerd. Beheerders kunnen zich nu niet
-          aanmelden; neem contact op met de technische beheerder.
+          Tweestapsverificatie is op deze server niet geconfigureerd. Beheerders en aanbieders
+          kunnen zich nu niet aanmelden; neem contact op met de technische beheerder.
         </p>
       )}
       {mfa || denial === 'mfa_required' ? (
         <p role="status" className={`mb-4 px-3 py-2 text-sm ${FLASH_TONES.info}`}>
-          Beheerders melden zich aan met wachtwoord én tweestapsverificatie. Meld je opnieuw aan om
-          verder te gaan.
+          Je account vraagt naast je wachtwoord ook een code uit je authenticator-app
+          (tweestapsverificatie). Meld je opnieuw aan om verder te gaan.
         </p>
       ) : null}
       <LoginForm next={safeNext} />

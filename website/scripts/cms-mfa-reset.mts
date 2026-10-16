@@ -17,9 +17,13 @@
  * sign-in). Without it the password stays as it was and whoever knows it can
  * enrol first: then run it only when that person is ready to sign in.
  *
+ * Works for any role (admins, providers, an editor who kept an authenticator);
+ * the dry run prints the role next to the address.
+ *
  * The operator's database credentials are the authorisation, as for every
  * CMS CLI; --expect-host must equal the DATABASE_URL host for a Neon write.
- * Logic: `scripts/lib/mfa-reset.mts`. Runbook: docs/staging-runbook.md §14.
+ * Logic: `scripts/lib/mfa-reset.mts`. Runbook: docs/staging-runbook.md §14
+ * (a provider: §17).
  */
 import { config } from 'dotenv';
 import {

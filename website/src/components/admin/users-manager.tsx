@@ -31,13 +31,16 @@ export type UserRow = {
   isActive: boolean;
   mustChangePassword: boolean;
   mfaEnrolled: boolean;
+  /** The role requires two-step verification (admins, providers); decided on the server. */
+  mfaRequired: boolean;
   lastLoginAt: string | null;
 };
 
 /**
  * User management. Temporary passwords are shown once, in the action result —
  * they are never stored in plaintext and password hashes never leave the
- * server.
+ * server. A user whose role requires two-step verification but who has no
+ * authenticator yet is flagged; they enrol at their next sign-in.
  */
 export function UsersManager({
   users,
@@ -52,7 +55,7 @@ export function UsersManager({
     <div className="flex flex-col gap-4">
       <SectionCard
         title="Nieuwe gebruiker"
-        description="De gebruiker krijgt een tijdelijk wachtwoord en moet dat bij de eerste aanmelding wijzigen."
+        description="De gebruiker krijgt een tijdelijk wachtwoord en moet dat bij de eerste aanmelding wijzigen. Beheerders en aanbieders stellen daarna ook tweestapsverificatie in."
       >
         <form action={formAction} className="flex flex-col gap-3">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -109,9 +112,9 @@ export function UsersManager({
                   <Badge variant="success" className={badgeTone('success')}>
                     Tweestapsverificatie aan
                   </Badge>
-                ) : user.role === 'admin' ? (
+                ) : user.mfaRequired ? (
                   <Badge variant="warning" className={badgeTone('warning')}>
-                    Moet tweestapsverificatie instellen
+                    Geen authenticator: moet tweestapsverificatie instellen
                   </Badge>
                 ) : null}
                 {user.id === currentUserId ? <Badge variant="outline">Jijzelf</Badge> : null}

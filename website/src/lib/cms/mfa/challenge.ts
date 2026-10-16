@@ -11,8 +11,8 @@ import {
 } from '../session';
 
 /**
- * The pre-MFA state: what a correct password buys an admin. It is NOT a
- * session. It lives in its own table and its own `cms_mfa` cookie, no auth
+ * The pre-MFA state: what a correct password buys an admin, a provider or an
+ * editor with an authenticator. It is NOT a session. It lives in its own table and its own `cms_mfa` cookie, no auth
  * guard ever reads it, and it grants no CMS access: the only things it can do
  * are the steps of `/admin/mfa` (`./flow.ts`): change a temporary password,
  * enrol an authenticator, enter a code. A full session is created only after

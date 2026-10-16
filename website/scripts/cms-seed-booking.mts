@@ -145,7 +145,9 @@ async function main() {
   console.log('✓ booking seed complete');
   if (temporaryPassword) {
     console.log('');
-    console.log(`  Temporary password for ${PROVIDER_EMAIL} (shown once, change on first login):`);
+    console.log(
+      `  Temporary password for ${PROVIDER_EMAIL} (shown once; first sign-in changes it and sets up two-step verification, so hand it over just before):`,
+    );
     console.log(`    ${temporaryPassword}`);
   }
   console.log('  Google Calendar is connected by the provider under /admin/agenda.');

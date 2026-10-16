@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import type { CmsRole } from '@/db/cms-schema';
 import { requireCmsUser } from '@/lib/cms/auth';
+import { roleRequiresMfa } from '@/lib/cms/guard';
 import { createUser, resetUserPassword, setUserActive, setUserRole } from '@/lib/cms/users';
 import { runAction } from './run';
 import { actionError, actionOk, field, type ActionState } from './state';
@@ -15,6 +16,10 @@ import { actionError, actionOk, field, type ActionState } from './state';
  * Temporary passwords are returned once, in `payload`, so the admin can hand
  * them over. Hashes never leave the database layer.
  */
+
+/** For roles that require it (admins, providers): what the admin should tell the user. */
+const MFA_NOTICE =
+  ' Voor deze rol is tweestapsverificatie verplicht: bij de eerste aanmelding stelt de gebruiker een authenticator-app in.';
 
 function roleFrom(form: FormData): CmsRole | null {
   const role = field(form, 'role');
@@ -45,7 +50,7 @@ export async function createUserAction(
 
     revalidatePath('/admin/users');
     return actionOk(
-      `Gebruiker ${result.data.user.email} aangemaakt. Het wachtwoord moet bij de eerste aanmelding gewijzigd worden.`,
+      `Gebruiker ${result.data.user.email} aangemaakt. Het wachtwoord moet bij de eerste aanmelding gewijzigd worden.${roleRequiresMfa(role) ? MFA_NOTICE : ''}`,
       result.data.temporaryPassword
         ? { temporaryPassword: result.data.temporaryPassword }
         : undefined,
@@ -71,7 +76,13 @@ export async function setUserRoleAction(
     if (!result.ok) return actionError(result.message);
 
     revalidatePath('/admin/users');
-    return actionOk('Rol aangepast.');
+    // A session without the second step is refused from the next request on;
+    // the user signs in again (and enrols if no authenticator exists yet).
+    return actionOk(
+      roleRequiresMfa(role)
+        ? 'Rol aangepast. Voor deze rol is tweestapsverificatie verplicht: zonder die bevestiging moet de gebruiker zich opnieuw aanmelden.'
+        : 'Rol aangepast.',
+    );
   });
 }
 

@@ -25,8 +25,9 @@ export async function loginAction(_prevState: ActionState, form: FormData): Prom
     // account exists, and rate limiting has its own message.
     if (!result.ok) return actionError(result.message);
 
-    // Admins: the password only opened a short-lived challenge; the second
-    // step happens on /admin/mfa (no session exists yet).
+    // Admins, providers and anyone with an authenticator: the password only
+    // opened a short-lived challenge; the second step happens on /admin/mfa
+    // (no session exists yet).
     if (result.data.secondStep) redirect(`/admin/mfa?next=${encodeURIComponent(next)}`);
     redirect(result.data.user.mustChangePassword ? '/admin/password' : next);
   });

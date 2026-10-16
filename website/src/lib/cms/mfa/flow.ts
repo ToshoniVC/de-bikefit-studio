@@ -43,7 +43,7 @@ import { confirmEnrolment, hasConfirmedFactor, verifySecondFactor } from './repo
  *   verify (only with one). Success consumes the challenge and creates the
  *   first and only session, with `mfaVerified`.
  * - **Signed-in management** needs a full session (`requireCmsUser()`, so an
- *   admin's session must itself have passed MFA) plus re-authentication in
+ *   admin's or provider's session must itself have passed MFA) plus re-authentication in
  *   the same request: the current password AND a current code or a recovery
  *   code. Replacing the authenticator and new recovery codes work this way.
  * - **Break-glass**: another admin, re-authenticated the same way, resets a
@@ -105,7 +105,7 @@ export const getCurrentMfaChallenge = cache(async (): Promise<ChallengeView | nu
   };
 });
 
-/** Step 1 for a new admin: replace the temporary password. Revokes any session the user still had. */
+/** Step 1 for a new admin or provider: replace the temporary password. Revokes any session the user still had. */
 export async function challengeChangePassword(input: {
   currentPassword: string;
   newPassword: string;
