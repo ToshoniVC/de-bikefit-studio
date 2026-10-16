@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { offerPagePath, offerPriceLabel } from '@/lib/offers/catalogue';
+import { DEFAULT_SERVICES } from '@/lib/booking/defaults';
+import { linkedOfferDurationLabel, offerPagePath, offerPriceLabel } from '@/lib/offers/catalogue';
 import { DEFAULT_OFFERS, offerBlockData } from '@/lib/offers/defaults';
 import { EDITORIAL_SLOTS, editorialImage } from '@/lib/studio/editorial-images';
 import { AANBOD_PAGES, TEAM_MEMBERS } from './aanbod';
@@ -93,7 +94,9 @@ describe('content placeholder register', () => {
       const price = rowMentioning('P', path);
       expect(price.cells[2]).toBe(offerPriceLabel(data));
       const duration = rowMentioning('D', path);
-      expect(duration.cells[2]).toBe(offer.duration);
+      const linkedDuration = linkedOfferDurationLabel(offer.bookingServiceSlugs, DEFAULT_SERVICES);
+      if (linkedDuration) expect(duration.cells[2]).toContain(linkedDuration);
+      else expect(duration.cells[2]).toBe(offer.duration);
       rowMentioning('E', path);
     }
   });

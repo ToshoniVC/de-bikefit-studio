@@ -4,6 +4,7 @@ import {
   bookingChoiceLabel,
   GIFT_VOUCHER_PRICE_LABEL,
   groupBookingChoices,
+  linkedOfferDurationLabel,
   OFFER_CTA_LABEL,
   OFFER_PRICE_FALLBACK,
   offerBookingHref,
@@ -130,6 +131,35 @@ describe('offerPriceLabel', () => {
     expect(offerPriceLabel({ priceCents: 12000, priceLabel: ' prijs op aanvraag ' })).toMatch(
       /120,00/,
     );
+  });
+});
+
+describe('linkedOfferDurationLabel', () => {
+  it('names the linked CMS variants in offer order and follows changed service durations', () => {
+    const services = [
+      { slug: 'jeugdfit', name: 'Jeugdfit', choiceLabel: 'Jeugd', durationMinutes: 75 },
+      {
+        slug: 'volwassenenfit',
+        name: 'Volwassenenfit',
+        choiceLabel: 'Volwassene',
+        durationMinutes: 90,
+      },
+    ];
+    expect(linkedOfferDurationLabel(['volwassenenfit', 'jeugdfit'], services)).toBe(
+      'Volwassene: 1 u 30 min · Jeugd: 1 u 15 min',
+    );
+    services[0].durationMinutes = 60;
+    expect(linkedOfferDurationLabel(['volwassenenfit', 'jeugdfit'], services)).toBe(
+      'Volwassene: 1 u 30 min · Jeugd: 1 uur',
+    );
+  });
+
+  it('omits missing and repeated services; never invents a linked duration', () => {
+    const services = [{ slug: 'jeugdfit', name: 'Jeugdfit', choiceLabel: '', durationMinutes: 60 }];
+    expect(linkedOfferDurationLabel(['missing', ' jeugdfit ', 'jeugdfit'], services)).toBe(
+      'Jeugdfit: 1 uur',
+    );
+    expect(linkedOfferDurationLabel(['missing'], services)).toBeNull();
   });
 });
 

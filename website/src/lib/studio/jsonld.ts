@@ -215,8 +215,10 @@ export function servicesJsonLd(
 
 /**
  * One `Service` node for an offer page (`offer` block): name, intro and the
- * category as `serviceType`. A price is emitted only once `priceCents` holds a
- * confirmed amount — "Prijs op aanvraag" is not a price.
+ * category as `serviceType`. An unlinked offer emits its editorial price only
+ * when `priceCents` is set. A service-linked offer must not leak that
+ * independent amount through JSON-LD while its visible price is withheld;
+ * future variant prices must come from the linked CMS services.
  */
 export function offerServiceJsonLd(
   blocks: readonly BlockInstance[],
@@ -237,7 +239,7 @@ export function offerServiceJsonLd(
     provider: { '@id': organizationId(origin) },
     areaServed: settings.organization.areaServed,
     offers:
-      data.priceCents == null
+      data.bookingServiceSlugs.some((slug) => slug.trim()) || data.priceCents == null
         ? null
         : { '@type': 'Offer', price: (data.priceCents / 100).toFixed(2), priceCurrency: 'EUR' },
   });

@@ -1,6 +1,9 @@
+import { listPublicServices } from '@/lib/booking/content';
 import {
   BOOKING_PAGE_PATH,
+  OFFER_DURATION_FALLBACK,
   OFFER_INDEX_PATH,
+  linkedOfferDurationLabel,
   offerBookingHref,
   offerDurationLabel,
   offerPriceLabel,
@@ -20,16 +23,33 @@ import type { BlockProps } from './types';
  * path) to `/afspraak?dienst=<slug>#boeken`; the booking block decides there
  * whether the widget can take it or a contact prompt is the honest answer.
  *
- * "Duur in overleg" is the fallback while nothing is confirmed. A linked
- * booking offer displays "Prijs op aanvraag" until its approved variant prices
- * can be derived from cms_services; independent editorial cents/labels cannot
- * override the service-level showPrice setting.
+ * Linked offers name each bookable variant's duration from cms_services,
+ * never the independent editorial duration. They display "Prijs op aanvraag"
+ * until approved variant prices can also be derived from those rows; editorial
+ * cents/labels cannot override the service-level showPrice setting.
  */
-export function OfferBlock({ data, anchor, headingLevel, locale, page }: BlockProps<'offer'>) {
+export async function OfferBlock({
+  data,
+  anchor,
+  headingLevel,
+  locale,
+  page,
+}: BlockProps<'offer'>) {
   const offerSlug = offerSlugFromPageSlug(page.slug);
   const bookingHref = offerSlug ? offerBookingHref(offerSlug) : `${BOOKING_PAGE_PATH}#boeken`;
   const price = offerPriceLabel(data);
-  const duration = offerDurationLabel(data.duration);
+  let duration = offerDurationLabel(data.duration);
+  if (data.bookingServiceSlugs.some((slug) => slug.trim())) {
+    try {
+      const services = await listPublicServices(locale);
+      duration =
+        linkedOfferDurationLabel(data.bookingServiceSlugs, services) ?? OFFER_DURATION_FALLBACK;
+    } catch {
+      // Keep the page available; no SQL, credentials or query values in the log.
+      console.error('[aanbod] linked_service_duration_unavailable');
+      duration = OFFER_DURATION_FALLBACK;
+    }
+  }
   const ItemHeading = headingLevel === 1 ? 'h2' : 'h3';
   const withImage = hasImage(data.image);
 

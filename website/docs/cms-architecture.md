@@ -811,7 +811,7 @@ defaultDataFor('hero')          // deep clone of the above
 | `pricing` | Prijzen | **no amounts exist anywhere in the source material** — see below |
 | `contact` | Contact | phone, city, "Op afspraak" — no street address or e-mail is known |
 | `testimonial` | Ervaringen | 4 reviews from the copy deck, all marked placeholder |
-| `offer` | Dienst (aanbod) | one service on `/aanbod/<slug>`: title, intro, the booking button "Boek een afspraak voor deze dienst" (→ `/afspraak?dienst=<slug>#boeken`), Doel, Inhoud, Duur, Kostprijs, Mogelijke extra's. `category` (`bikefit`\|`begeleiding`), `sortOrder`, `summary` (overview card), `priceCents`/`priceLabel` (seeded as the visible, editable placeholder "Prijs op aanvraag"; a free-text label wins over cents, except that the placeholder never hides a confirmed `priceCents`; empty both = "Prijs op aanvraag"), `duration` (default "Duur in overleg"), `bookingServiceSlugs` (see §14). The page path is the offer's identity. The editor shows a hint pointing at `content-placeholders.md`. |
+| `offer` | Dienst (aanbod) | one offer on `/aanbod/<slug>`: title, intro, the booking button "Boek een afspraak voor deze dienst" (→ `/afspraak?dienst=<slug>#boeken`), Doel, Inhoud, Duur, Kostprijs, Mogelijke extra's. `category` (`bikefit`\|`begeleiding`), `sortOrder`, `summary` (overview card), `bookingServiceSlugs` (see §14). For an unlinked offer, editorial `priceCents`/`priceLabel` and `duration` supply the public text (fallback "Prijs op aanvraag" / "Duur in overleg"). For a linked offer, public duration names each bookable CMS service variant; independent editorial price is ignored in page, card and JSON-LD until approved service-level variant pricing is implemented. The page path is the offer's identity. The editor hint points at `content-placeholders.md`. |
 | `offerCatalogue` | Aanbod (overzicht) | grouped overview (Bikefit, Begeleiding, Overige); owns only its title and per-group title/lede — the cards are read from the published offer pages at render time (`listPublishedOffers`), so nothing is duplicated |
 | `giftVoucher` | Cadeaubon (bestelformulier) | the gift voucher page `/aanbod/cadeaubon`: page head (owns the `<h1>`) + the order form (amount of choice, personal message, contact details, button "Bestel nu"). Owns only copy (`eyebrow`, `title`, `intro`, `summary` for the card, `formTitle`, `sentTitle`, `sentText`, `sortOrder`); fields, rules and sending are code in `src/lib/gift-voucher/` (server action → `sendEmail` to the order inbox from `/admin/email` / env `GIFT_VOUCHER_RECIPIENT`, never `contact.email`; success only when Resend accepted it). Its page becomes a card in category `overige` ("Bedrag naar keuze") and is never a booking target. Ops: `booking-runbook.md` §12 |
 | `team` | Team | profiles: name, role, bio paragraphs (verified text only), image; without an image the initials are drawn. `internalNote` is never rendered and names the person's open register rows; interim profiles end with "Een uitgebreid profiel volgt binnenkort." |
@@ -1522,8 +1522,11 @@ company identity line, which stays on the legal pages. The edits for existing
 databases are pure data in `src/lib/studio/seed-content/page-cleanup.ts`,
 applied by `cms:patch-page-cleanup` (`staging-runbook.md` §11).
 
-**One source per offer.** Title, summary, price and duration live on the offer
-page's `offer` block. Overviews derive their cards from the published pages
+**One source per offer.** Title and summary live on the offer page's `offer`
+block. For an unlinked enquiry offer, so do editorial price and duration; for
+a linked booking offer, duration comes from the active, offered `cms_services`
+rows and independent offer price is withheld pending approved variant display.
+Overviews derive their cards from the published pages
 (`listPublishedOffers`, tags `cms` + `cms:pages`), so publishing an offer page
 updates the home page, `/aanbod` and `/bikefit` at once. Category order is
 fixed (Bikefit, Begeleiding); inside a category `sortOrder`, then title.
@@ -1564,4 +1567,3 @@ new block types are zod-validated `text` in `cms_blocks`, as every block type.
 are all still valid). Old code reading a page that uses `offer`,
 `offerCatalogue` or `team` treats it as unpublished (404) — so deploy the code
 before running the rollout.
-

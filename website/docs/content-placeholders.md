@@ -28,27 +28,32 @@ datum).
 | Reeks | Onderwerp | Rijen | Open | Te bevestigen | Bevestigd | Afgerond |
 | --- | --- | --- | --- | --- | --- | --- |
 | P | Prijzen | 7 | 7 | 0 | 0 | 0 |
-| D | Duur | 7 | 7 | 0 | 0 | 0 |
+| D | Duur | 7 | 6 | 0 | 0 | 1 |
 | E | Inhoud, extra's, pakketten | 8 | 1 | 7 | 0 | 0 |
 | T | Team | 13 | 10 | 2 | 1 | 0 |
 | B | AI-beelden en lege beeldvakken | 5 | 5 | 0 | 0 | 0 |
 | K | Online boeken per dienst | 6 | 5 | 1 | 0 | 0 |
 | G | Bestaande hiaten in aangeraakte inhoud | 7 | 2 | 1 | 2 | 2 |
 | C | Cadeaubon (bestelformulier) | 4 | 3 | 1 | 0 | 0 |
-| | **Totaal** | **57** | **40** | **12** | **3** | **2** |
+| | **Totaal** | **57** | **39** | **12** | **3** | **3** |
 
 ## 1. Prijzen (P)
 
 Plaats: CMS → de dienstpagina → blok *Dienst (aanbod)* → veld **Prijslabel** (vrije tekst) of
 **Prijs in eurocent** (bedrag, bv. `12000` = € 120,00).
 
-- Nu staat in **Prijslabel** de zichtbare, bewerkbare tekst "Prijs op aanvraag"; **Prijs in
-  eurocent** is leeg.
-- Zodra de prijs bevestigd is: vul **Prijs in eurocent** in (de tekst "Prijs op aanvraag" verbergt
-  een ingevuld bedrag nooit) of vervang **Prijslabel** door bv. "vanaf € 120". Een ander prijslabel
-  dan "Prijs op aanvraag" wint van het bedrag.
-- Nooit € 0 invullen. Pas met een bedrag in eurocent komt er een prijs in de gestructureerde data
-  (JSON-LD) van de pagina.
+- Nu staat in **Prijslabel** de bewerkbare tekst "Prijs op aanvraag"; **Prijs in eurocent** is
+  leeg. Voor een aanbod gekoppeld aan boekingsdiensten zijn deze twee redactionele velden
+  **niet** de publieke prijsbron: kaart en detail tonen "Prijs op aanvraag" tot de dienstprijzen
+  en de variantweergave zijn goedgekeurd.
+- Voor een **niet-gekoppeld** aanbod: vul na bevestiging **Prijs in eurocent** in (de tekst
+  "Prijs op aanvraag" verbergt een ingevuld bedrag nooit) of vervang **Prijslabel** door bv.
+  "vanaf € 120". Een ander prijslabel dan "Prijs op aanvraag" wint van het bedrag.
+- Voor een **gekoppeld** aanbod: de admin beheert de bedragen en `show_price` op de afzonderlijke
+  diensten in `/admin` → **Diensten**; de publieke variantweergave volgt pas na Toshoni's besluit.
+- Nooit € 0 invullen. Een niet-gekoppeld aanbod met een bedrag in eurocent krijgt ook een prijs
+  in de gestructureerde data (JSON-LD); een gekoppeld aanbod publiceert daar geen zelfstandige
+  redactionele prijs.
 - De prijs verschijnt op de dienstpagina (bovenaan en bij **Kostprijs**) en op de kaarten van
   het overzicht `/aanbod`. Die kaarten lezen de dienstpagina zelf; er is geen tweede plek om aan te
   passen. De overzichten op de home en op `/bikefit` tonen nooit een prijs (beslissing Toshoni,
@@ -65,30 +70,34 @@ Plaats: CMS → de dienstpagina → blok *Dienst (aanbod)* → veld **Prijslabel
 | P-06 | `/aanbod/lactaattest` (*Lactaattest*) | Prijs op aanvraag | idem | open |
 | P-07 | `/aanbod/coaching` (*Coaching*) | Prijs op aanvraag | idem; per sessie, per maand of per traject? | open |
 
-Een prijs in het aanbod verandert **niets** aan de online boeking (zie K-06): de boeking toont
-enkel de prijs van de gekozen dienst zelf (Volwassene of Jeugd), uit `/admin` → **Diensten**. Wie
-P-02 invult, zet dus ook dezelfde bevestigde bedragen per dienst (K-06), of laat beide op "Prijs
-op aanvraag"; nooit één gedeelde prijs voor beide.
+Een redactionele aanbodprijs verandert **niets** aan de online boeking (zie K-06): die toont
+enkel de prijs van de gekozen dienst zelf (Volwassene of Jeugd), uit `/admin` → **Diensten**.
+Voor P-02 wordt geen zelfstandige of gedeelde prijs gepubliceerd; na goedkeuring moet de
+aanbodpagina beide varianten uit de gekoppelde diensten afleiden.
 
 ## 2. Duur (D)
 
 Plaats: CMS → de dienstpagina → blok *Dienst (aanbod)* → veld **Duur** (vrije tekst, bv. "ongeveer
-90 minuten"). Getoond bovenaan de dienstpagina en bij **Duur**. Een leeg veld toont ook "Duur in
-overleg".
+90 minuten"). Voor niet-gekoppeld aanbod getoond bovenaan en bij **Duur**; een leeg veld toont
+"Duur in overleg". Voor gekoppeld aanbod wordt die tekst publiek vervangen door de duur per
+boekbare dienst uit `cms_services`.
 
 | ID | Pagina (titel in CMS) | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
 | D-01 | `/aanbod/bikefit-nieuwe-fiets` (*Bikefit – aankoop nieuwe fiets*) | Duur in overleg | bevestigde duur | open |
-| D-02 | `/aanbod/bikefit-huidige-fiets` (*Bikefit – huidige fiets*) | Duur in overleg | bevestigde duur; de boekbare diensten erachter plannen 90 min (Volwassenenfit) en 60 min (Jeugdfit), zie K-01 | open |
+| D-02 | `/aanbod/bikefit-huidige-fiets` (*Bikefit – huidige fiets*) | Volwassene: 1 u 30 min · Jeugd: 1 uur (uit gekoppelde `cms_services`, bij seed) | publieke duur volgt de boekbare diensten automatisch; redactionele aanbodduur wordt hier niet getoond | afgerond 2026-10-16 |
 | D-03 | `/aanbod/voetanalyse` (*Voetanalyse*) | Duur in overleg | bevestigde duur | open |
 | D-04 | `/aanbod/zadelanalyse` (*Zadelanalyse*) | Duur in overleg | bevestigde duur | open |
 | D-05 | `/aanbod/afstellen-schoenplaatjes` (*Afstellen schoenplaatjes*) | Duur in overleg | bevestigde duur | open |
 | D-06 | `/aanbod/lactaattest` (*Lactaattest*) | Duur in overleg | bevestigde duur | open |
 | D-07 | `/aanbod/coaching` (*Coaching*) | Traject en opvolging in overleg | bevestigde opzet en opvolgritme (geen vast ritme beloven zonder bevestiging) | open |
 
-De planningsduur van een **boekbare** dienst staat los hiervan in `/admin` → **Diensten** → veld
-**Duur (minuten)** (Volwassenenfit 90, Jeugdfit 60: echte, bestaande waarden). Een duur op de
-aanbodpagina wijzigt die niet, en omgekeerd.
+De planningsduur van een **boekbare** dienst staat in `/admin` → **Diensten** → veld
+**Duur (minuten)** (Volwassenenfit 90, Jeugdfit 60: echte, bestaande seedwaarden).
+Bij een gekoppeld aanbod toont de publieke detailpagina elke boekbare variant met de actuele
+dienstduur; het redactionele veld **Duur** van het aanbod wordt dan genegeerd. Voor een
+niet-gekoppeld aanbod blijft dat veld de publieke tekst. Een duur op de aanbodpagina wijzigt
+de planningsduur van een dienst niet.
 
 ## 3. Inhoud, mogelijke extra's en pakketten (E)
 

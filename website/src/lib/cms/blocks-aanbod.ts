@@ -40,8 +40,9 @@ const offerCategorySchema = z.enum(OFFER_CATEGORIES);
  * identity (booking links use that slug), so the block stores no slug of its
  * own. For an unlinked enquiry offer, free-text `priceLabel` wins, then
  * `priceCents`, else "Prijs op aanvraag". For a linked booking offer, both
- * editorial price fields are ignored on public pages until price display is
- * derived from its cms_services rows. `bookingServiceSlugs` points at
+ * editorial price and duration fields are ignored on public pages: duration
+ * comes from the linked cms_services rows, and price display awaits approved
+ * variant amounts and presentation. `bookingServiceSlugs` points at
  * `cms_services.slug`; empty = not online bookable (contact prompt).
  */
 export const offerSchema = z.object({
@@ -58,7 +59,7 @@ export const offerSchema = z.object({
   goal: z.string().default(''),
   /** Inhoud — one item per line. */
   contents: z.array(z.string()).default([]),
-  /** Duur — free text; scheduling length lives on the booking service. */
+  /** Duur — public only for an unlinked offer; linked variants use their service lengths. */
   duration: z.string().default(OFFER_DURATION_FALLBACK),
   /** Kostprijs in euro cents, once confirmed. */
   priceCents: z.number().int().nonnegative().nullable().default(null),
@@ -146,7 +147,7 @@ export const aanbodBlockRegistry = {
     description:
       'Eén dienst uit het aanbod: inleiding, boekknop, doel, inhoud, duur, kostprijs en mogelijke extra’s. Hoort op een pagina onder /aanbod/.',
     editorHint:
-      'Tijdelijke inhoud: laat “Prijs op aanvraag” en “Duur in overleg” staan tot ze bevestigd zijn. Een bevestigde prijs vul je in als bedrag in eurocent (12000 = € 120) of als prijslabel (bv. “vanaf € 120”). Open punten per dienst: register docs/content-placeholders.md (P-, D- en E-nummers).',
+      'Gekoppeld aan boekingsdiensten? Publieke duur komt uit die diensten; prijs blijft “Prijs op aanvraag” tot bedragen en weergave per dienst zijn goedgekeurd. De vrije velden Duur en Kostprijs gelden alleen voor aanbod zonder boekingsdienst. Open punten: docs/content-placeholders.md (P-, D- en E-nummers).',
     schema: offerSchema,
     defaultData: {
       category: 'bikefit',

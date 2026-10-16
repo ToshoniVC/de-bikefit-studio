@@ -916,7 +916,11 @@ aanvraag". Otherwise a CMS editor could disclose a numeric offer price while
 the linked service's `show_price` is false. Once approved prices and their
 presentation are decided, offer-page variants must be derived from the linked
 service rows; no `vanaf` amount is inferred now. Unlinked enquiry offers keep
-their editorial price behavior (`content-placeholders.md` P-02). Admin →
+their editorial price behavior (`content-placeholders.md` §1). A linked offer
+also emits no editorial price in Service JSON-LD. Its public detail derives
+each bookable variant's named duration from the same active, offered
+`cms_services` rows as `/afspraak`; it ignores the offer's free-text duration.
+Admin →
 Diensten shows per service which published offer links to it.
 
 *The widget.* The `booking` block always reads the published offers (cached; on failure the

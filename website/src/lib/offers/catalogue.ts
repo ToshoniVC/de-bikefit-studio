@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { formatPrice } from '@/lib/booking/format';
+import { formatDuration, formatPrice } from '@/lib/booking/format';
 import { emptyImage, type CmsImageRef } from '@/lib/cms/block-primitives';
 
 /**
@@ -115,6 +115,34 @@ export function offerPriceLabel(input: {
 
 export function offerDurationLabel(duration: string): string {
   return duration.trim() || OFFER_DURATION_FALLBACK;
+}
+
+/**
+ * Public duration of a linked offer, in its configured service order. The
+ * service catalogue owns these lengths; the offer's editorial `duration` is
+ * only for unlinked enquiry offers. A missing/unbookable service contributes
+ * no duration, just as it contributes no choice on `/afspraak`.
+ */
+export function linkedOfferDurationLabel(
+  slugs: readonly string[],
+  services: readonly {
+    slug: string;
+    name: string;
+    choiceLabel: string;
+    durationMinutes: number;
+  }[],
+): string | null {
+  const seen = new Set<string>();
+  const variants: string[] = [];
+  for (const rawSlug of slugs) {
+    const slug = rawSlug.trim();
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    const service = services.find((entry) => entry.slug === slug);
+    if (!service) continue;
+    variants.push(`${bookingChoiceLabel(service)}: ${formatDuration(service.durationMinutes)}`);
+  }
+  return variants.length ? variants.join(' · ') : null;
 }
 
 // ---------------------------------------------------------------------------
