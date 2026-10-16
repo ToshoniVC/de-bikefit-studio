@@ -8,6 +8,7 @@ import * as webshopSchema from './schema';
 import * as cmsSchema from './cms-schema';
 import * as cmsMfaSchema from './cms-mfa-schema';
 import * as cmsRateLimitSchema from './cms-rate-limit-schema';
+import * as cmsOfferingSchema from './cms-offering-schema';
 
 /**
  * CMS database client.
@@ -30,7 +31,13 @@ import * as cmsRateLimitSchema from './cms-rate-limit-schema';
  * middleware/edge graph entirely).
  */
 
-export const schema = { ...webshopSchema, ...cmsSchema, ...cmsMfaSchema, ...cmsRateLimitSchema };
+export const schema = {
+  ...webshopSchema,
+  ...cmsSchema,
+  ...cmsMfaSchema,
+  ...cmsRateLimitSchema,
+  ...cmsOfferingSchema,
+};
 export type CmsSchema = typeof schema;
 
 /**
