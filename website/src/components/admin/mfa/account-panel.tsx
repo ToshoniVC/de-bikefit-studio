@@ -97,7 +97,7 @@ export function MfaAccountPanel({
       <p className="text-sm text-muted-foreground">
         {status.required
           ? 'Nog niet ingesteld. Meld je af en weer aan om je authenticator te koppelen.'
-          : 'Niet ingesteld. Tweestapsverificatie is verplicht voor beheerders; voor jouw rol is ze nu niet nodig.'}
+          : 'Niet ingesteld. Tweestapsverificatie is verplicht voor beheerders en aanbieders; voor jouw rol is ze nu niet nodig.'}
       </p>
     );
   }

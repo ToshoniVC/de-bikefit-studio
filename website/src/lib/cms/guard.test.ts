@@ -20,7 +20,10 @@ function user(role: CmsRole, mustChangePassword: boolean, mfaVerified = true): C
   return { role, mustChangePassword, mfaVerified };
 }
 
-describe('cmsAccessDenial: the MFA gate for admins', () => {
+/** The roles whose every session must have passed the second step. */
+const MFA_ROLES = ['admin', 'provider'] as const;
+
+describe('cmsAccessDenial: the MFA gate for admins and providers', () => {
   const REQUIREMENTS = [
     {},
     { allowMustChangePassword: true },
@@ -28,35 +31,45 @@ describe('cmsAccessDenial: the MFA gate for admins', () => {
     ...CMS_PERMISSIONS.map((permission) => ({ permission })),
   ];
 
-  it('refuses an admin session without MFA for every requirement, opt-in included', () => {
-    for (const requirement of REQUIREMENTS) {
-      for (const mustChangePassword of [false, true]) {
-        expect(
-          cmsAccessDenial(user('admin', mustChangePassword, false), requirement),
-          JSON.stringify(requirement),
-        ).toBe('mfa_required');
+  it('refuses an admin or provider session without MFA for every requirement, opt-in included', () => {
+    for (const role of MFA_ROLES) {
+      for (const requirement of REQUIREMENTS) {
+        for (const mustChangePassword of [false, true]) {
+          expect(
+            cmsAccessDenial(user(role, mustChangePassword, false), requirement),
+            `${role} ${JSON.stringify(requirement)}`,
+          ).toBe('mfa_required');
+        }
       }
     }
   });
 
   it('reports missing MFA before a temporary password or a missing permission', () => {
-    expect(cmsAccessDenial(user('admin', true, false))).toBe('mfa_required');
-    expect(cmsAccessDenial(user('admin', false, false), { permission: 'user.manage' })).toBe(
+    for (const role of MFA_ROLES) {
+      expect(cmsAccessDenial(user(role, true, false)), role).toBe('mfa_required');
+      expect(cmsAccessDenial(user(role, false, false), { permission: 'user.manage' }), role).toBe(
+        'mfa_required',
+      );
+    }
+    // A provider's own permissions do not help without the second step either.
+    expect(cmsAccessDenial(user('provider', false, false), { permission: 'provider.self' })).toBe(
       'mfa_required',
     );
   });
 
   it('fails closed on anything but mfaVerified === true', () => {
-    for (const value of [undefined, null, 'true', 1, {}]) {
-      const odd = {
-        role: 'admin',
-        mustChangePassword: false,
-        mfaVerified: value,
-      } as unknown as CmsGuardSubject;
-      expect(cmsAccessDenial(odd), String(value)).toBe('mfa_required');
+    for (const role of MFA_ROLES) {
+      for (const value of [undefined, null, 'true', 1, {}]) {
+        const odd = {
+          role,
+          mustChangePassword: false,
+          mfaVerified: value,
+        } as unknown as CmsGuardSubject;
+        expect(cmsAccessDenial(odd), `${role} ${String(value)}`).toBe('mfa_required');
+      }
+      const missing = { role, mustChangePassword: false } as CmsGuardSubject;
+      expect(cmsAccessDenial(missing), role).toBe('mfa_required');
     }
-    const missing = { role: 'admin', mustChangePassword: false } as CmsGuardSubject;
-    expect(cmsAccessDenial(missing)).toBe('mfa_required');
   });
 
   it('treats an unknown role like an admin (MFA required)', () => {
@@ -65,21 +78,26 @@ describe('cmsAccessDenial: the MFA gate for admins', () => {
     expect(roleRequiresMfa('owner')).toBe(true);
   });
 
-  it('lets an admin session that passed MFA through', () => {
+  it('lets an admin or provider session that passed MFA through to what the role may do', () => {
     expect(cmsAccessDenial(user('admin', false, true), { permission: 'user.manage' })).toBeNull();
+    expect(
+      cmsAccessDenial(user('provider', false, true), { permission: 'provider.self' }),
+    ).toBeNull();
+    expect(cmsAccessDenial(user('provider', false, true), { permission: 'user.manage' })).toBe(
+      'forbidden',
+    );
   });
 
-  it('leaves editors and providers unchanged: no MFA needed', () => {
+  it('leaves editors unchanged: no MFA needed', () => {
     expect(roleRequiresMfa('admin')).toBe(true);
-    for (const role of ['editor', 'provider'] as const) {
-      expect(roleRequiresMfa(role)).toBe(false);
-      expect(cmsAccessDenial(user(role, false, false)), role).toBeNull();
-      expect(cmsAccessDenial(user(role, true, false)), role).toBe('password_change_required');
-      for (const permission of CMS_PERMISSIONS) {
-        expect(cmsAccessDenial(user(role, false, false), { permission }), permission).toBe(
-          can(role, permission) ? null : 'forbidden',
-        );
-      }
+    expect(roleRequiresMfa('provider')).toBe(true);
+    expect(roleRequiresMfa('editor')).toBe(false);
+    expect(cmsAccessDenial(user('editor', false, false))).toBeNull();
+    expect(cmsAccessDenial(user('editor', true, false))).toBe('password_change_required');
+    for (const permission of CMS_PERMISSIONS) {
+      expect(cmsAccessDenial(user('editor', false, false), { permission }), permission).toBe(
+        can('editor', permission) ? null : 'forbidden',
+      );
     }
   });
 });
@@ -309,8 +327,10 @@ describe('assertCmsAccess', () => {
     const cases: Array<[CmsGuardSubject | null, CmsAuthErrorCode]> = [
       [null, 'unauthenticated'],
       [user('admin', false, false), 'mfa_required'],
+      [user('provider', false, false), 'mfa_required'],
       [user('admin', true), 'password_change_required'],
       [user('editor', false), 'forbidden'],
+      [user('provider', false), 'forbidden'],
     ];
     for (const [subject, code] of cases) {
       let caught: unknown;

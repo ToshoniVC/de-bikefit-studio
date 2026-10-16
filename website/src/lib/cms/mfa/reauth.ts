@@ -20,8 +20,9 @@ import { hasConfirmedFactor, verifySecondFactor } from './repo';
  * - **step-up** ({@link confirmIdentity}, "Bevestig je identiteit"): the same
  *   check, recorded on the session as `reauthenticated_at`. For the next
  *   {@link REAUTH_WINDOW_MS} the guard lets this session make the changes
- *   marked `recentReauthentication`: user accounts and roles, an admin's own
- *   password, and the e-mail service key and addresses (`/admin/email`).
+ *   marked `recentReauthentication`: user accounts and roles, an admin's or
+ *   provider's own password, and the e-mail service key and addresses
+ *   (`/admin/email`).
  *   Signing in with password and code counts as well.
  *
  * Both count against the same limits as the sign-in codes (`./rate-limit.ts`)
@@ -100,7 +101,7 @@ export async function reauthenticate(
   return ok(true);
 }
 
-/** Whether this user's step-up asks for a code: admins, and anyone with an authenticator. */
+/** Whether this user's step-up asks for a code: admins, providers, and anyone with an authenticator. */
 async function stepUpNeedsCode(db: CmsDatabase, user: Pick<CmsUserPublic, 'id' | 'role'>) {
   return roleRequiresMfa(user.role) || (await hasConfirmedFactor(db, user.id));
 }
@@ -108,7 +109,7 @@ async function stepUpNeedsCode(db: CmsDatabase, user: Pick<CmsUserPublic, 'id' |
 /**
  * "Bevestig je identiteit": re-authenticate and open the step-up window on
  * the current session. Allowed with a temporary password, because the forced
- * password change of an admin may need it.
+ * password change of an admin or provider may need it.
  */
 export async function confirmIdentity(
   input: Reauthentication,

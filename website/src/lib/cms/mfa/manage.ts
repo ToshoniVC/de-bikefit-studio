@@ -140,9 +140,9 @@ export async function regenerateRecoveryCodes(
 
 /**
  * Switch MFA off for yourself. Only for roles that do not require it (an
- * editor or provider who kept an authenticator from an admin period); an
- * admin cannot remove their own factor, only replace it. Signs out every
- * session; this browser gets a fresh, password-level one.
+ * editor who kept an authenticator from an admin or provider period); an
+ * admin or provider cannot remove their own factor, only replace it. Signs
+ * out every session; this browser gets a fresh, password-level one.
  */
 export async function removeOwnFactor(
   input: Reauthentication,
@@ -181,25 +181,28 @@ export async function listMfaEnrolledUserIds(): Promise<Set<string>> {
 }
 
 /**
- * Admin-only, for a colleague who lost both their authenticator and their
- * recovery codes. The acting admin re-authenticates (password + code). The
+ * Admin-only (role rank, so a provider or editor is `forbidden`), for a
+ * colleague of any role who lost both their authenticator and their recovery
+ * codes. The acting admin re-authenticates (password + code). The
  * target's factors, recovery codes, challenges and sessions are deleted AND
  * their password is replaced by a temporary one, returned once: whoever
  * enrols next must hold that password, handed over out of band, not merely
  * the old one. Not for yourself (replace your own authenticator instead).
+ * `mustEnrol`: the target's role requires MFA, so their next sign-in leads
+ * through a new enrolment (an editor simply signs in with the password).
  */
 export async function adminResetUserMfa(
   targetUserId: string,
   input: Reauthentication,
   context: SessionContext,
-): Promise<MfaResult<{ temporaryPassword: string; email: string }>> {
+): Promise<MfaResult<{ temporaryPassword: string; email: string; mustEnrol: boolean }>> {
   const actor = await requireCmsUser('admin');
   if (actor.id === targetUserId) {
     return fail('not_allowed', 'Vervang je eigen authenticator via Mijn account.');
   }
   const db = await getCmsDb();
   const [target] = await db
-    .select({ id: cmsUsers.id, email: cmsUsers.email })
+    .select({ id: cmsUsers.id, email: cmsUsers.email, role: cmsUsers.role })
     .from(cmsUsers)
     .where(eq(cmsUsers.id, targetUserId))
     .limit(1);
@@ -230,5 +233,5 @@ export async function adminResetUserMfa(
     entityId: target.id,
     summary: target.email,
   });
-  return ok({ temporaryPassword, email: target.email });
+  return ok({ temporaryPassword, email: target.email, mustEnrol: roleRequiresMfa(target.role) });
 }

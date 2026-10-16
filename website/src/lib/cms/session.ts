@@ -25,12 +25,12 @@ import {
  *   minutes without a request and 8 hours after sign-in at the latest;
  *   editor and provider sessions keep 14 days with sliding renewal.
  * - `reauthenticated_at` records the last full authentication (sign-in or
- *   step-up); sensitive admin changes need it to be recent.
+ *   step-up); sensitive changes (`recentReauthentication`) need it to be recent.
  * - `mfa_verified_at` records that the session passed the second step. A
  *   session is only ever created after it (`createSession(…, { mfaVerified })`),
  *   never upgraded in place, so a password-only token can never become an
- *   MFA token. Password sign-in of an admin creates no session at all: it
- *   issues a challenge (`src/lib/cms/mfa/challenge.ts`).
+ *   MFA token. Password sign-in of an admin or provider creates no session at
+ *   all: it issues a challenge (`src/lib/cms/mfa/challenge.ts`).
  *
  * The DB-level helpers below take an explicit `db`, so migration/bootstrap/
  * self-test scripts can use them outside a request. The cookie helpers at the
@@ -72,16 +72,17 @@ export type SessionContext = {
 export type CreateSessionOptions = {
   /**
    * The second step (TOTP or recovery code) was completed for this session.
-   * Admin sessions are refused without it (`src/lib/cms/guard.ts`). Set only by
+   * Admin and provider sessions are refused without it (`src/lib/cms/guard.ts`). Set only by
    * the MFA flow (`src/lib/cms/mfa/flow.ts`), by `changePassword()` when the
    * session it replaces had it, and by the CMS CLIs, whose operator holds the
    * database credentials (`scripts/lib/cms-actor.mts`).
    */
   mfaVerified?: boolean;
   /**
-   * A full authentication just happened (password and, for admins, the second
-   * step): opens the step-up window for sensitive changes. Set by the MFA
-   * sign-in and by the CLIs, never by a password-only sign-in of an admin.
+   * A full authentication just happened (password and, for admins and
+   * providers, the second step): opens the step-up window for sensitive
+   * changes. Set by the MFA sign-in and by the CLIs, never by a password-only
+   * sign-in of an admin or provider.
    */
   reauthenticated?: boolean;
   /**

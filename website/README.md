@@ -15,7 +15,7 @@ Conventions for anyone changing this code (checks, architecture rules, security,
 | Framework | Next.js 16 (App Router, React Server Components), React 19, strict TypeScript |
 | Styling | Tailwind CSS v4 + design-system tokens (`--ds-*`); shadcn/ui (Base UI) in the admin |
 | Database | Drizzle ORM. Neon (neon-http) when `DATABASE_URL` is set, embedded PGlite in `website/.pglite/` otherwise |
-| CMS auth | Own sessions + scrypt passwords, roles `admin` / `editor` / `provider` (not Clerk); admins also TOTP two-step verification |
+| CMS auth | Own sessions + scrypt passwords, roles `admin` / `editor` / `provider` (not Clerk); admins and providers also TOTP two-step verification |
 | Integrations | Google Calendar (OAuth, per provider), GA4 tag + GA4 Data API, Resend (e-mail) |
 | Tests | vitest (unit), `cms:selftest` (integration on PGlite) |
 | Hosting | Vercel (Root Directory `website`), Neon Postgres |
@@ -116,7 +116,7 @@ Run inside `website/`. Scripts that touch a database use PGlite unless `DATABASE
 | `npm run cms:rollout-aanbod` | Offer redesign onto an existing database: dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §9 |
 | `npm run cms:patch-booking-cta` | Points existing "Boek je bikefit" buttons that dial (or jump to `#contact`) at `/afspraak`: dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §10 |
 | `npm run cms:patch-page-cleanup` | Applies Toshoni's site review of 13 Oct 2026 to existing content (kickers, headings, "jeugd", `/afspraak` layout, `/contact` → `/afspraak`, menus, public e-mail): dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §11 |
-| `npm run cms:migrate-offerings` | Saves the offering settings (Beheer → Aanbod, migration 0010) that the published offer pages already imply: dry run by default; `-- --apply --expect-host <host>`. See `docs/staging-runbook.md` §17 |
+| `npm run cms:migrate-offerings` | Saves the offering settings (Beheer → Aanbod, migration 0010) that the published offer pages already imply: dry run by default; `-- --apply --expect-host <host>`. See `docs/staging-runbook.md` §18 |
 | `npm run cms:patch-cadeaubon` | Adds the gift voucher of 13 Oct 2026 to existing content (`/aanbod/cadeaubon` created and published, "Overige" on `/aanbod`): dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §12 |
 | `npm run images:import -- --slot <slot> --src <file>` | Compress a delivered editorial image into `public/images/editorial/` and record it (`docs/editorial-images.md`) |
 | `npm run cms:selftest` | Integration checks on a throwaway PGlite in `.pglite-selftest/` |
@@ -131,7 +131,8 @@ Three layers, all in CI ([`../CLAUDE.md`](../CLAUDE.md) §5):
    database, no network, no Next runtime. Every bug fix starts with a failing test.
 2. **Integration** — `npm run cms:selftest`. Migrations, schema, passwords, sessions,
    admin two-step verification (sign-in, replay, rate limits, recovery, break-glass, and the
-   same under parallel requests), admin session limits and step-up, permissions, block
+   same under parallel requests), provider two-step verification (pre-MFA sessions refused,
+   first sign-in, resets, role changes), admin session limits and step-up, permissions, block
    registry, publish, the booking schema, the
    provider role, `computeSlots()`, e-mail/ICS/token encryption, the full booking flow, the
    offer rollout with service preselection, the content patches (booking CTA, page cleanup,

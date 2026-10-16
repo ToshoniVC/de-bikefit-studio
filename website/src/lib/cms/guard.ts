@@ -3,18 +3,19 @@ import { can, roleAtLeast, type CmsPermission } from './permissions';
 
 /**
  * The decision half of the CMS auth guard, kept pure (no database, cookies or
- * Next runtime) so the whole matrix is unit-tested in `guard.test.ts`.
+ * Next runtime) so the whole matrix is unit-tested in `guard.test.ts` and,
+ * per role, in `guard-roles.test.ts`.
  * `requireCmsUser()` / `requirePermission()` in `./auth` only add the session
  * lookup; call sites that must not throw (`canPreview()`, the analytics
  * panel) use {@link cmsAccessDenial} directly.
  *
  * Checks run in this order, the first failure wins:
  *  1. no signed-in user                → `unauthenticated`;
- *  2. an admin whose session did not pass the second step (TOTP or recovery
- *     code)                            → `mfa_required`. No opt-out exists:
- *     password sign-in of an admin creates no session at all, only a
+ *  2. an admin or provider whose session did not pass the second step (TOTP
+ *     or recovery code)                → `mfa_required`. No opt-out exists:
+ *     password sign-in of such a user creates no session at all, only a
  *     challenge (`src/lib/cms/mfa/challenge.ts`), so this catches sessions
- *     from before MFA existed and an editor or provider who was promoted;
+ *     from before MFA existed for the role and an editor who was promoted;
  *  3. password still temporary         → `password_change_required`, unless
  *     the call site opts in with `allowMustChangePassword`. Only the forced
  *     password change does: `changePassword()` and the `/admin/password` page;
@@ -23,8 +24,8 @@ import { can, roleAtLeast, type CmsPermission } from './permissions';
  *     permission) by a user whose session has no full authentication in the
  *     last 5 minutes → `reauth_required`.
  *     Sign-in sets it; after that only the step-up ("Bevestig je
- *     identiteit": password plus code for admins) renews it. A session that
- *     replaces another inherits its time, never a fresh one.
+ *     identiteit": password plus code for admins and providers) renews it. A
+ *     session that replaces another inherits its time, never a fresh one.
  *
  * Steps 2, 3 and 5 make MFA, `must_change_password` and step-up server-side rules. A
  * layout redirect alone does not stop a session from posting a server action
@@ -85,12 +86,30 @@ export type CmsGuardSubject = Pick<CmsUserPublic, 'role' | 'mustChangePassword'>
 };
 
 /**
- * Whether sessions of this role must have passed the second step. Admins do;
- * editors and providers are unchanged for now. Fails closed: any role that
- * is not explicitly exempt requires it.
+ * The second step per role. `required`: every session must have passed it,
+ * so a password sign-in only opens a challenge, the user enrols at the first
+ * sign-in and cannot switch it off, and step-up and an own password change
+ * ask for the code. `optional`: asked only once the user has an authenticator
+ * (`requiresSecondStep()` in `./auth`). A `Record` over every role, so adding
+ * a role to the enum forces a decision here.
+ *
+ * Only the second step: how long a session lives is decided separately, per
+ * role, in `./session-policy.ts` (providers require MFA but keep the standard
+ * session class; `docs/cms-architecture.md` §4).
+ */
+export const ROLE_MFA_POLICY: Readonly<Record<CmsRole, 'required' | 'optional'>> = Object.freeze({
+  admin: 'required',
+  provider: 'required',
+  editor: 'optional',
+});
+
+/**
+ * Whether sessions of this role must have passed the second step. Fails
+ * closed: any role that is not explicitly `optional` in
+ * {@link ROLE_MFA_POLICY} (an unknown or misspelt one included) requires it.
  */
 export function roleRequiresMfa(role: CmsRole | string): boolean {
-  return role !== 'editor' && role !== 'provider';
+  return !(Object.hasOwn(ROLE_MFA_POLICY, role) && ROLE_MFA_POLICY[role as CmsRole] === 'optional');
 }
 
 /** How long a full (re-)authentication unlocks sensitive changes. */

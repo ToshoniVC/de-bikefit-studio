@@ -1,16 +1,19 @@
-import { NextResponse, type NextRequest } from 'next/server';
+import type { NextRequest } from 'next/server';
 
-import { exchangeCode, fetchGoogleEmail, type GoogleTokens } from '@/lib/booking/google';
+import {
+  exchangeCode,
+  fetchGoogleEmail,
+  googleOAuthConfig,
+  type GoogleTokens,
+} from '@/lib/booking/google';
 import { storeGoogleConnection } from '@/lib/booking/repo';
 import { CmsAuthError, getCurrentCmsUser } from '@/lib/cms/auth';
 import { cmsAccessDenial } from '@/lib/cms/guard';
-import { features } from '@/lib/env';
 
 import {
   OAUTH_STATE_COOKIE,
+  flashRedirect,
   nonceMatches,
-  notConfiguredResponse,
-  oauthRedirectUri,
   readOAuthState,
   returnPath,
   stateCookieOptions,
@@ -22,21 +25,26 @@ import {
  * Order of checks (each failure → `?google=error&reason=<code>`):
  *  1. `state` cookie valid (HMAC, not expired) and its nonce equals the
  *     `state` query → else `state`;
- *  2. the signed-in CMS user is the one who started and no longer has a
+ *  2. the signed-in CMS user is the one who started, second step done, no
  *     temporary password → else `session`;
- *  3. Google's own `error` query → `access_denied` (Cancel) or `google`;
- *  4. code exchange (`exchangeCode`) → else `exchange`;
- *  5. both calendar scopes actually granted (granular consent) → else
+ *  3. the server is still ready (`googleOAuthConfig()`, as in the start
+ *     route; a redeploy in between can change it) → else `config`. It also
+ *     gives the redirect URI for step 5. Only after 1–2, so an anonymous
+ *     caller learns nothing about the configuration;
+ *  4. Google's own `error` query → `access_denied` (Cancel) or `google`;
+ *  5. code exchange (`exchangeCode`) → else `exchange`;
+ *  6. both calendar scopes actually granted (granular consent) → else
  *     `missing_scope`;
- *  6. account e-mail from the `id_token`, else the userinfo endpoint;
- *  7. `storeGoogleConnection()` (re-checks `provider.manage` / own scope,
+ *  7. account e-mail from the `id_token`, else the userinfo endpoint;
+ *  8. `storeGoogleConnection()` (re-checks `provider.manage` / own scope,
  *     encrypts the tokens, audits) → `forbidden`, `no_refresh_token` or `store`.
  *
  * Success → `/admin/agenda?google=connected` (or `/admin/providers/<id>?…`
  * when started from there). The state cookie is cleared on every outcome.
- * Failures 4 and 7 log a fixed `[google-oauth] <event>` code only, never the
- * error: it can hold Google's `error_description` or, for a failed query, the
- * encrypted tokens and the account e-mail.
+ * Failures 3, 5 and 8 log a fixed `[google-oauth] <event>` code only (3 with
+ * its problem codes), never the error: it can hold Google's
+ * `error_description` or, for a failed query, the encrypted tokens and the
+ * account e-mail.
  */
 
 export const dynamic = 'force-dynamic';
@@ -47,16 +55,11 @@ const REQUIRED_SCOPES = [
 ];
 
 export async function GET(request: NextRequest) {
-  if (!features.googleCalendar) return notConfiguredResponse();
-
   const url = request.nextUrl;
   const state = readOAuthState(request.cookies.get(OAUTH_STATE_COOKIE)?.value);
 
   const finish = (path: string, params: Record<string, string>) => {
-    const target = new URL(path, url.origin);
-    for (const [key, value] of Object.entries(params)) target.searchParams.set(key, value);
-    const response = NextResponse.redirect(target, 302);
-    response.headers.set('Cache-Control', 'no-store');
+    const response = flashRedirect(url.origin, path, params);
     response.cookies.set(OAUTH_STATE_COOKIE, '', stateCookieOptions(0));
     return response;
   };
@@ -75,27 +78,34 @@ export async function GET(request: NextRequest) {
   // route does.
   if (!user || user.id !== state.userId || cmsAccessDenial(user) !== null) return fail('session');
 
-  // 3: the provider declined, or Google reported a problem.
+  // 3: still ready, and the redirect URI the start route sent.
+  const config = googleOAuthConfig();
+  if (!config.ready || !config.redirectUri) {
+    console.error('[google-oauth] not_ready', { problems: config.problems });
+    return fail('config');
+  }
+
+  // 4: the provider declined, or Google reported a problem.
   const googleError = url.searchParams.get('error');
   if (googleError) return fail(googleError === 'access_denied' ? 'access_denied' : 'google');
 
   const code = url.searchParams.get('code');
   if (!code) return fail('google');
 
-  // 4: code → tokens (same redirect URI as in the start route).
+  // 5: code → tokens (same redirect URI as in the start route).
   let tokens: GoogleTokens;
   try {
-    tokens = await exchangeCode(code, oauthRedirectUri());
+    tokens = await exchangeCode(code, config.redirectUri);
   } catch {
     console.error('[google-oauth] code_exchange_failed');
     return fail('exchange');
   }
 
-  // 5: Google's granular consent lets people untick the calendar boxes.
+  // 6: Google's granular consent lets people untick the calendar boxes.
   const granted = new Set(tokens.scope.split(/\s+/).filter(Boolean));
   if (!REQUIRED_SCOPES.every((scope) => granted.has(scope))) return fail('missing_scope');
 
-  // 6: which Google account was connected.
+  // 7: which Google account was connected.
   let googleEmail = tokens.email;
   if (!googleEmail) {
     try {
@@ -105,7 +115,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 7: persist (encrypted) through the repo, which re-checks authorisation.
+  // 8: persist (encrypted) through the repo, which re-checks authorisation.
   try {
     const stored = await storeGoogleConnection(
       state.providerId,

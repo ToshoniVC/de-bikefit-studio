@@ -214,9 +214,10 @@ cms_blocks  (draft)  --- publishPage() --->  cms_pages.published_snapshot (froze
 
 `src/lib/cms/{password,session,auth,users,guard,permissions}.ts` and
 `src/lib/cms/mfa/*`. Entirely separate from Clerk: Clerk guards the webshop's
-`/account` and `/checkout`; this guards `/admin`. Admins sign in with a
-password **and** a TOTP code (see "Two-step verification" below); editors and
-providers with a password only, for now.
+`/account` and `/checkout`; this guards `/admin`. Admins and providers sign in
+with a password **and** a TOTP code (see "Two-step verification" below;
+providers since 16 Oct 2026); editors with a password only, unless they kept
+an authenticator. The policy per role is one table there.
 
 ### Passwords
 
@@ -265,8 +266,11 @@ Minimum 12 chars, needs lower + upper + digit (`validatePasswordStrength`).
 - Cookie: `httpOnly`, `sameSite=lax`, `path=/`, `secure` in production.
 - Lifetime by role, decided on every request from the user's **current** role
   by the pure `src/lib/cms/session-policy.ts` (unit-tested), applied in
-  `resolveSession()`:
-  - **Admins** (and, failing closed, any role that requires MFA): the session
+  `resolveSession()`. The class per role is its own table,
+  `ROLE_SESSION_POLICY`, deliberately **not** derived from the MFA rule since
+  16 Oct 2026 (providers need MFA but keep the standard class; see
+  "Session class and MFA are decided separately" below):
+  - **Admins** (and, failing closed, any role not in the table): the session
     ends after **15 minutes without a request** and **8 hours after sign-in**
     at the latest, however active the admin is. Each request moves
     `expires_at` to now + 15 min, but never past `absolute_expires_at`
@@ -277,8 +281,8 @@ Minimum 12 chars, needs lower + upper + digit (`validatePasswordStrength`).
     render). An expired row is deleted on the spot.
   - **Editors and providers**: unchanged, 14 days with sliding renewal (past
     the halfway point a request pushes the expiry back to 14 days). Whether
-    they get limits too is a separate decision for the owner; nothing changes
-    for them silently.
+    they get limits too is a separate decision for the owner (Max); nothing
+    changes for them silently, also not now that providers need MFA.
 - `last_used_at` is written at most every 30 seconds, with a conditional
   `UPDATE` that only moves it forward and never touches an expired row, so
   parallel requests cannot rewind it or revive a dead session. Consequence:
@@ -288,11 +292,11 @@ Minimum 12 chars, needs lower + upper + digit (`validatePasswordStrength`).
   session never extends either.
 - `mfa_verified_at` is set when the session was created after a successful
   second step. A session is never upgraded in place: the MFA flow creates a new
-  one. The guard refuses an admin session without it.
+  one. The guard refuses an admin or provider session without it.
 - `reauthenticated_at` is the last **full** authentication on the session:
-  the sign-in itself (password and code for admins, password for editors and
-  providers) or a step-up (below). It never comes from a password alone for
-  an admin.
+  the sign-in itself (password and code for admins, providers and editors with
+  an authenticator; password for other editors) or a step-up (below). It never
+  comes from a password alone for an admin or provider.
 - Password change, deactivation and every second-factor change revoke every
   session for that user (`changePassword()` re-issues this browser's session
   with the same MFA state it had).
@@ -301,15 +305,17 @@ Minimum 12 chars, needs lower + upper + digit (`validatePasswordStrength`).
 
 ### Step-up for sensitive changes ("Bevestig je identiteit")
 
-Some admin changes need a **recent full authentication on this session**,
+Some changes need a **recent full authentication on this session**,
 within the last **5 minutes** (`REAUTH_WINDOW_MS` in `guard.ts`): creating a
 user, changing a role, (de)activating an account, resetting a password, an
-admin's own password change, and changing the e-mail service settings on
+admin's or provider's own password change (every role that requires MFA; an
+editor's needs only the current password), and changing the e-mail service settings on
 `/admin/email` (storing or removing the API key; sender, reply-to and gift
 voucher order inbox; reading the status and sending the test message need no
 step-up). They call
 `requireCmsUser('admin', { recentReauthentication: true })` inside the
-library function (`users.ts`, `changePassword()` in `auth.ts`; the e-mail
+library function (`users.ts`; `changePassword()` in `auth.ts` asks for
+`recentReauthentication` whenever `roleRequiresMfa()` holds for the user; the e-mail
 service writes in `src/lib/email/repo.ts` call
 `requirePermission('email.manage', { recentReauthentication: true })`), so a
 forged or replayed server-action POST gets exactly the same check as the form;
@@ -320,11 +326,11 @@ of clock skew) or of the wrong type counts as none.
 Signing in opens the window. After that, *Bevestig je identiteit* on
 *Gebruikers*, *Aanbieders*, *E-mail*, *Mijn account* and `/admin/password`
 (`StepUpPanel`, `confirmIdentity()` in `src/lib/cms/mfa/reauth.ts`) asks for
-the current password **and** a code or recovery code (admins and anyone with an
-authenticator; password only otherwise), checked in that order, rate limited
+the current password **and** a code or recovery code (admins, providers and
+anyone with an authenticator; password only otherwise), checked in that order, rate limited
 with the sign-in codes and audited (`auth.step_up`, failures as
 `auth.mfa_reauth_failed`), and stamps **this session only**: another browser
-of the same admin is not unlocked. A step-up changes neither the idle nor the
+of the same user is not unlocked. A step-up changes neither the idle nor the
 absolute end.
 
 The MFA management actions (replace the authenticator, new recovery codes,
@@ -340,8 +346,8 @@ own `_ga*` cookies appear only after consent (§12.7).
 
 | Cookie | Set by | Contents | Flags / lifetime |
 | --- | --- | --- | --- |
-| `cms_session` | login (`session.ts`); for admins only after the second step | random session token; the DB stores only its HMAC | `httpOnly`, `sameSite=lax`, `path=/`, `secure` in production. Admins: expires at the absolute end (sign-in + 8 h; the 15-minute idle limit is enforced server-side). Editors and providers: 14 days, sliding |
-| `cms_mfa` | admin password sign-in (`src/lib/cms/mfa/challenge.ts`) | random challenge token for the second step; the DB stores only its HMAC. Not a session: no guard reads it | `httpOnly`, `sameSite=lax`, `path=/admin`, `secure` in production; 10 minutes, never extended; one per user (a new password sign-in replaces it); deleted on success, cancel, logout, 5 wrong codes, a password change or an admin's password or MFA reset |
+| `cms_session` | login (`session.ts`); for admins, providers and editors with an authenticator only after the second step | random session token; the DB stores only its HMAC | `httpOnly`, `sameSite=lax`, `path=/`, `secure` in production. Admins: expires at the absolute end (sign-in + 8 h; the 15-minute idle limit is enforced server-side). Editors and providers: 14 days, sliding |
+| `cms_mfa` | password sign-in of an admin, a provider or an editor with an authenticator (`src/lib/cms/mfa/challenge.ts`) | random challenge token for the second step; the DB stores only its HMAC. Not a session: no guard reads it | `httpOnly`, `sameSite=lax`, `path=/admin`, `secure` in production; 10 minutes, never extended; one per user (a new password sign-in replaces it); deleted on success, cancel, logout, 5 wrong codes, a password change or an admin's password or MFA reset |
 | `cms_google_oauth` | `GET /api/google/oauth/start` (`src/app/api/google/oauth/state.ts`) | provider id, CMS user id, nonce, return target, expiry; HMAC-SHA256 signed with `CMS_SESSION_SECRET` (domain-separated). The callback accepts only a valid signature, an unexpired state, a nonce equal to Google's `state` (constant-time) and the same signed-in user | `httpOnly`, `sameSite=lax`, `path=/api/google/oauth`, `secure` in production; 10 minutes |
 | `cms_consent` | the consent banner, client-side (`src/lib/analytics/consent.ts`) | `granted` or `denied` | `SameSite=Lax`, `path=/`, `Secure` on https; 365 days. Not `httpOnly`: the banner and the GA4 loader read it in the browser |
 
@@ -442,8 +448,8 @@ type AuthResult<T> = { ok: true; data: T } | { ok: false; error: AuthError; mess
 
 login(input: { email: string; password: string; context?: { userAgent?, ipAddress? } })
   : Promise<AuthResult<{ user: CmsUserPublic; secondStep: boolean }>>
-  // secondStep true (admins): only the cms_mfa challenge cookie, NO session
-  // secondStep false (editors, providers): the cms_session cookie, as before
+  // secondStep true (admins, providers, editors with an authenticator): only the cms_mfa challenge cookie, NO session
+  // secondStep false (editors without an authenticator): the cms_session cookie, as before
 logout(): Promise<void>                           // session + challenge; always succeeds
 getCurrentCmsUser(): Promise<CmsSessionUser | null> // CmsUserPublic & { mfaVerified, reauthenticatedAt }; React.cache'd
 requireCmsUser(role?: CmsRole, options?: {
@@ -481,37 +487,105 @@ The guard decision (`cmsAccessDenial()` / `assertCmsAccess()` in
 `src/lib/cms/guard.ts`, pure and unit-tested) makes `requireCmsUser()` and
 `requirePermission()` throw `password_change_required` for such a session, so
 every page, server action and repo call refuses it, including a POST that
-never renders the layout. Order: unauthenticated → admin without MFA →
-temporary password → role/permission → recent re-authentication (only where
+never renders the layout. Order: unauthenticated → admin or provider without
+MFA → temporary password → role/permission → recent re-authentication (only where
 asked). The only ways through are
 `requireCmsUser(role, { allowMustChangePassword: true })`, used solely by
 `changePassword()` and the `/admin/password` page (it grants no role or
 permission), and `login()` / `logout()`, which use no guard. The GA4 panel and
 `canPreview()` apply
 `cmsAccessDenial()` without throwing; both Google OAuth routes refuse such a
-session (and a pre-MFA admin session). The CMS CLIs write through a session, so
+session (and a pre-MFA admin or provider session). The CMS CLIs write through a session, so
 they act as the oldest active admin who has chosen their own password **and
 enrolled two-step verification** (`scripts/lib/cms-actor.mts`) and stop with an
 explanation when there is none: after `cms:bootstrap`, sign in once, replace
 the password and set up the authenticator before `cms:seed`. Their session is
 created with `mfaVerified`: the operator's database credentials are the
-authentication. Self-test sections 5b–5f run the flows on PGlite.
+authentication. Self-test sections 5b–5g run the flows on PGlite.
 
-### Two-step verification (MFA) for admins
+### Two-step verification (MFA) for admins and providers
 
-Mandatory for the `admin` role (`roleRequiresMfa()` in `guard.ts`; any role
-that is not explicitly `editor` or `provider` counts as requiring it). Editors
-and providers are unchanged; one who still has an authenticator (e.g. a
-former admin) is asked for it at sign-in too. TOTP only: no SMS, no e-mail
-codes, no Google or Microsoft dependency.
+Mandatory for the `admin` role (since 0005, 13 Oct 2026) and the `provider`
+role ("Aanbieder", since 16 Oct 2026, no migration). The rule is one table,
+`ROLE_MFA_POLICY` in `guard.ts` (`admin` and `provider`: `required`; `editor`:
+`optional`), read through `roleRequiresMfa()`; any role that is not explicitly
+`optional` (an unknown or misspelt one included) counts as requiring it, and
+the table is a `Record` over `CmsRole`, so a new role cannot be added without
+a decision. **Editors are deliberately unchanged** (identified, not changed):
+no second step unless they still have an authenticator (e.g. a former admin
+or provider), which is then asked at sign-in too; they cannot enrol one
+themselves. TOTP only: no SMS, no e-mail codes, no Google or Microsoft
+dependency.
+
+**Policy per role** (each row is a use of `roleRequiresMfa()` unless noted):
+
+| | Admin (Beheerder) | Provider (Aanbieder) | Editor (Redacteur) |
+| --- | --- | --- | --- |
+| Second step at password sign-in (`requiresSecondStep()`, `auth.ts`) | always: challenge, no session | always: challenge, no session | only with an authenticator |
+| First sign-in without an authenticator | temporary password replaced in the challenge, then enrolment (QR, ten recovery codes) | same | session with the password alone |
+| Session without the second step (guard, `cmsAccessDenial()`) | refused: `mfa_required` | refused: `mfa_required` | accepted |
+| Switch MFA off yourself (`removeOwnFactor()`, `manage.ts`) | no, only replace it | no, only replace it | yes, if they have one |
+| Step-up "Bevestig je identiteit" (`stepUpNeedsCode()`, `reauth.ts`) | password + code | password + code | password (+ code if they have one) |
+| Own password change (`changePassword()`) | needs a recent step-up | needs a recent step-up | current password only |
+| *Mijn account* status (`getOwnMfaStatus().required`) | required: no switch-off shown | required | optional |
+| *Gebruikers*: "Geen authenticator: moet tweestapsverificatie instellen" | yes | yes | no |
+| Reset someone else's MFA (`adminResetUserMfa()`, role rank) | yes, other users, with password + code | no: `forbidden` | no: `forbidden` |
+| Session class (`ROLE_SESSION_POLICY`, **not** the MFA rule) | admin: 15 min idle, 8 h absolute | standard: 14 days, sliding (open decision) | standard |
+
+**Session class and MFA are decided separately.** Until 16 Oct 2026 the
+session class followed `roleRequiresMfa()`, so making providers require MFA
+would have put them on the admin limits as a side effect. `sessionPolicyFor()`
+now reads its own table, `ROLE_SESSION_POLICY` in `session-policy.ts`
+(`admin: 'admin'`, `editor` and `provider: 'standard'`, any other role
+`'admin'`, failing closed). A provider's session after the second step is a
+14-day sliding one, exactly as before. Max accepted this for the staging-only
+MFA test, not for production. Whether providers (or editors) should get a
+shorter lifetime before production is the product owner's decision (below),
+made by changing that one entry.
+
+**Role changes** take effect on the next request, because the guard and the
+session class read the user's current role: an editor promoted to provider (or
+admin) is refused with `mfa_required` at once, keeps the standard session
+class as a provider, and enrols at the next sign-in, which also revokes the old
+session of that browser. A provider demoted to editor keeps the authenticator
+and the MFA session goes on as an editor session; the authenticator is still
+asked at sign-in, and the editor may switch it off (*Mijn account*, password +
+code). A provider promoted to admin with an MFA session continues as an admin
+session at once, held to the admin limits from its sign-in time (a session
+older than 8 hours ends). Admins are unchanged. Self-test 5g covers each case.
+
+**Open decisions for the product owner (Max)**, except the stated staging-only
+session trade-off, all left as they are:
+
+1. **Provider session lifetime before production.** Standard (14 days,
+   sliding) is accepted for the protected staging MFA test only. Providers
+   handle customers' names, e-mail addresses, phone numbers and notes in
+   *Mijn agenda*, and their Google connection. The admin limits (15 minutes
+   idle, 8 hours absolute) could interrupt an appointment; choose a
+   provider-specific policy before production. Staging acceptance is not
+   production security approval.
+2. **No grace period.** From the deploy every provider session is refused
+   and each provider enrols at the next sign-in; nobody can postpone it, and
+   an admin can no longer create a provider account that signs in with a
+   password alone. Is that acceptable for every provider, or is a short,
+   explicit grace period (per user, audited) wanted?
+3. **Lost device.** A provider who loses the phone signs in with a recovery
+   code and replaces the authenticator; with the codes also lost, an admin
+   resets it (*Gebruikers*) and hands over the temporary password. Who may ask
+   for that, and how is the person verified before the admin acts (call back
+   on a known number, in person)?
+4. **Editors** stay MFA-optional. Should they follow later?
 
 **The rule, server-side.** The guard order is unauthenticated →
-`mfa_required` (an admin session without `mfa_verified_at`; there is no
-opt-out) → temporary password → role/permission. A password sign-in of an
-admin creates **no session**, only a challenge, so every page, server action
-and repo call refuses that state as `unauthenticated`; an old admin session
-from before 0005 is refused as `mfa_required`. Self-test 5c calls the repos
-directly with both and checks nothing is written.
+`mfa_required` (an admin or provider session without `mfa_verified_at`; there
+is no opt-out) → temporary password → role/permission. A password sign-in of an
+admin or provider creates **no session**, only a challenge, so every page,
+server action and repo call refuses that state as `unauthenticated`; an old
+admin session from before 0005, and a provider session from before 16 Oct 2026,
+is refused as `mfa_required`: the dashboard layout, every server action and
+repo call (`getOwnProvider()`, bookings, hours, services), both Google OAuth
+routes (`cmsAccessDenial()`) and the draft preview. Self-tests 5c (admins) and
+5g (providers) call the repos directly with both and check nothing is written.
 
 **Sign-in** (`/admin/login` → `/admin/mfa`, `src/lib/cms/mfa/flow.ts`):
 
@@ -537,8 +611,9 @@ directly with both and checks nothing is written.
    Success consumes the challenge (single `DELETE … RETURNING`, so two
    parallel completions cannot both get a session) and creates the session
    with `mfa_verified_at`.
-3. A temporary password on an admin who already has an authenticator is
-   changed after the code, on `/admin/password`, inside the full session.
+3. A temporary password on an admin or provider who already has an
+   authenticator (after an admin's password reset) is changed after the code,
+   on `/admin/password`, inside the full session.
 
 A challenge belongs to the password that opened it: a password change
 (`changePassword`) and an admin's password reset (`resetUserPassword`) delete
@@ -608,18 +683,23 @@ current password **and** a current code or recovery code in the same request
 replacement is bound to the session that started it and confirmed by the new
 app's first code; it then deletes the old factor and codes, revokes **every**
 session and re-issues this browser's. New recovery codes revoke every other
-session. Admins cannot switch MFA off; an editor or provider who kept an
-authenticator can, with the same re-authentication.
+session. Admins and providers cannot switch MFA off, only replace it; an editor
+who kept an authenticator (a former admin or provider) can, with the same
+re-authentication.
 
 **Break-glass.** Another admin, re-authenticated with their own password and
-code, resets a colleague under *Gebruikers → Tweestapsverificatie resetten*:
+code, resets a colleague of any role (a provider included) under *Gebruikers →
+Tweestapsverificatie resetten*; providers and editors cannot (`forbidden`, the
+function asks for the admin role before anything else):
 factors, recovery codes, challenges and sessions are deleted and the password
 becomes a temporary one shown once, so whoever enrols next must hold that
 password (`user.mfa_reset`). Password and sessions are replaced first, the
 factors removed last, so a crash in between never leaves the old password
-without a second factor. Not for yourself. With no admin left, an operator
+without a second factor. Not for yourself. With no admin left (or for any
+user, a provider included), an operator
 with database access runs `npm run cms:mfa-reset -- --email <address>` (dry
-run; `--apply --expect-host <host>` to write; `staging-runbook.md` §14): same
+run; `--apply --expect-host <host>` to write; `staging-runbook.md` §14, for a
+provider §17): same
 deletion and revocation, nothing secret printed, audited as
 `auth.mfa_break_glass` without an actor. Pass a new temporary password inline
 as `CMS_BREAK_GLASS_PASSWORD` (recommended); without it the password is left
@@ -640,13 +720,24 @@ sign-in (`staging-runbook.md` §14, combined order §16); while it is missing or
 malformed the login page itself says so ("niet geconfigureerd"), before anyone
 types a password.
 
-**Known residual risks** (independent review, 13 Oct 2026):
-- *First come, first enrolled.* An admin without an authenticator enrols with
-  the password alone. Between the deploy and the admin's first sign-in, and
-  after a break-glass reset without a new temporary password, whoever holds
-  the password can enrol first. Mitigation: the first sign-in right after the
-  deploy, temporary passwords on every reset, and `auth.mfa_enrol` in the
-  audit log as the line to watch.
+**Existing providers (16 Oct 2026).** No migration: the role, the `cms_mfa_*`
+tables and `cms_sessions.mfa_verified_at` exist since 0002/0005. From the
+deploy every provider session is refused (`mfa_required`, the dashboard sends
+it to `/admin/login?mfa=1`); the next sign-in leads to the enrolment, after
+the temporary password is replaced if the provider still has one (the staging
+provider has never signed in). Rollout, break-glass and rollback:
+`staging-runbook.md` §17.
+
+**Known residual risks** (independent review, 13 Oct 2026; providers added 16 Oct 2026):
+- *First come, first enrolled.* An admin or provider without an authenticator
+  enrols with the password alone. Between the deploy and that user's first
+  sign-in, and after a break-glass reset without a new temporary password,
+  whoever holds the password can enrol first. For a provider who never signed
+  in that is whoever holds the temporary password printed by
+  `cms:seed-booking` or shown when the account was made. Mitigation: the first
+  sign-in right after the deploy, temporary passwords on every reset (reset a
+  provider's password just before handing it over if the old one may have
+  travelled), and `auth.mfa_enrol` in the audit log as the line to watch.
 - `auth.login` and *Laatst aangemeld* record the **password** step, so a
   password-only attempt by someone else is visible there; a burst of
   `auth.mfa_failed` after `auth.login` means the password is known to someone
@@ -667,6 +758,11 @@ types a password.
 - IPv6: someone rotating addresses (one /64 holds plenty) gets a fresh user +
   IP and IP bucket per address; the daily backstop of 50 checks per user is
   the bound that holds then.
+- *Long provider sessions.* A provider's session after the second step keeps
+  the standard 14 days, sliding (staging-only decision 1 above): a stolen provider
+  session cookie keeps working that long, where an admin's ends after 15 idle
+  minutes. Its password and authenticator stay protected (step-up with the
+  code; the factor cannot be removed); its own bookings and agenda do not.
 
 ### Permission matrix
 
@@ -1147,9 +1243,9 @@ The full contract (every variable, per environment, secret or not) is in
 | --- | --- | --- |
 | `DATABASE_URL` | deployed envs | Neon pooled URL. Unset locally → PGlite. |
 | `CMS_SESSION_SECRET` | deployed envs | Pepper for session-token hashing; also signs the `cms_google_oauth` cookie and the booking confirmation link, and is the key source for the e-mail API key stored in `/admin/email` (§5). `openssl rand -base64 48`. Rotating it signs everyone out and makes that stored key unreadable (paste it again). |
-| `CMS_MFA_ENCRYPTION_KEY` | deployed envs | base64 of 32 bytes (`openssl rand -base64 32`), own value per environment. Encrypts admins' TOTP secrets. Missing on a deployment → admins cannot finish signing in (fail closed). Rotating it makes stored authenticators unreadable: admins sign in with a recovery code and replace the authenticator. Local development falls back to a derived key. |
+| `CMS_MFA_ENCRYPTION_KEY` | deployed envs | base64 of 32 bytes (`openssl rand -base64 32`), own value per environment. Encrypts the TOTP secrets of admins and providers (and of editors who chose one). Missing on a deployment → admins and providers cannot finish signing in (fail closed). Rotating it makes stored authenticators unreadable: they sign in with a recovery code and replace the authenticator. Local development falls back to a derived key. |
 | `CMS_BOOTSTRAP_PASSWORD` | bootstrap only | Pass inline to `npm run cms:bootstrap`. Never store it in `.env.local` or in Vercel. |
-| `NEXT_PUBLIC_SITE_URL` | deployed envs | Canonical origin for canonicals, sitemap, OG, e-mail links and the Google OAuth redirect URI. `siteUrl()` in `src/lib/env.ts` falls back to `NEXT_PUBLIC_APP_URL`, then `VERCEL_URL`, then localhost. |
+| `NEXT_PUBLIC_SITE_URL` | deployed envs | Canonical origin for canonicals, sitemap, OG, e-mail links and the Google OAuth redirect URI. `siteUrl()` in `src/lib/env.ts` falls back to `NEXT_PUBLIC_APP_URL`, then `VERCEL_URL`, then localhost; the Google OAuth redirect URI does not use those fallbacks outside development (`booking-architecture.md` §7). |
 | `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | no | GA4 tag id. Loaded only when valid, `analytics.enabled` is true and the visitor consented (§12.7). Build-time. |
 | `GA4_PROPERTY_ID`, `GA4_SERVICE_ACCOUNT_JSON` | no | Admin analytics panel (GA4 Data API). |
 | `CMS_PGLITE_DIR` | no | Override the local PGlite directory. |
@@ -1484,7 +1580,15 @@ above the fields; `offer` and `team` use it to point editors at the register.
   a separate piece of work.
 - **Editor and provider sessions** still last 14 days with sliding renewal;
   only admin sessions have the 15-minute idle and 8-hour absolute limits (§4).
-  Whether editors and providers get limits too is an owner decision.
+  Providers need two-step verification since 16 Oct 2026, but their session
+  class was deliberately left alone (`ROLE_SESSION_POLICY`) for the staging
+  MFA test. The provider production policy is still an owner decision, listed
+  with the other open MFA decisions in §4.
+- **Draft preview gate is wider than `page.read`.** `canPreview()`
+  (`src/lib/cms/actions/preview.ts`) lets any signed-in user who passes the
+  guard read drafts, a provider included, although providers have no
+  `page.read`. No route uses it today; whoever wires it up should ask for
+  `page.read` (`cmsAccessDenial(user, { permission: 'page.read' })`).
 - Session rows are only pruned opportunistically. If volume ever matters, add a
   scheduled `pruneExpiredSessions()` call.
 - **Uncaught errors are printed by Next in full.** Every explicit catch (server
@@ -1598,7 +1702,7 @@ settings of an offer page without a `cms_offerings` row (`deriveLegacyOffering()
 `src/lib/offers/offering-legacy.ts`): no linked service → asked for, one option, its editorial
 cents; one service → direct, one option; Volwassenenfit + Jeugdfit (one with the guardian rule) →
 direct, Volwassene/Jeugd; never a price copied from a service. So the site behaves the same before
-and after migration 0010 and before and after `cms:migrate-offerings` (staging-runbook §17), which
+and after migration 0010 and before and after `cms:migrate-offerings` (staging-runbook §18), which
 saves exactly those derivations; anything not exact (a free-text price label, an unknown slug, a
 service that shows its own widget price) is reported and left for an editor.
 

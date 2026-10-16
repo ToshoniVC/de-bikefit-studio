@@ -100,7 +100,7 @@ export function MfaSignIn({ step, next }: { step: MfaSignInStep; next: string })
       ) : (
         <form action={startAction} className="flex flex-col gap-3">
           <p className="text-sm">
-            Als beheerder meld je je aan met je wachtwoord én een code uit een authenticator-app.
+            Voor je account meld je je aan met je wachtwoord én een code uit een authenticator-app.
             Dat stel je nu één keer in; je hebt je telefoon of 1Password bij de hand nodig.
           </p>
           <StatusMessage state={startState} />

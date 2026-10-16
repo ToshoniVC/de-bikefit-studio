@@ -11,14 +11,14 @@ import { base32Decode, base32Encode } from './totp';
  * does not expose the factors, and either can rotate without touching them.
  * **Required on every deployment** (`NODE_ENV=production`, Vercel previews
  * included). When it is missing there, enrolment and verification fail closed
- * with {@link MfaConfigError} and admins cannot finish signing in; nothing
+ * with {@link MfaConfigError} and admins and providers cannot finish signing in; nothing
  * else on the site is affected. Only local development and the self-test fall
  * back to a key derived from the dev pepper (`derivedSecret('cms-mfa-totp')`).
  *
  * AES-256-GCM via `src/lib/sealed-box.ts`, with the owning user id as
  * additional authenticated data: a ciphertext moved to another user's row does
  * not decrypt. Rotating the key makes every stored factor unreadable; affected
- * admins sign in with a recovery code (those do not depend on this key) and
+ * users sign in with a recovery code (those do not depend on this key) and
  * replace their authenticator (docs/cms-architecture.md §4, MFA).
  */
 

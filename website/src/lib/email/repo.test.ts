@@ -196,11 +196,20 @@ describe('e-mail service changes need a recent step-up (direct calls included)',
   });
 
   it('stays admin-only: editors, providers and visitors are refused, step-up or not', async () => {
-    for (const role of ['editor', 'provider'] as const) {
-      signIn(cmsUser(role), { mfaVerified: false, reauthenticatedAt: minutesAgo(1) });
+    // Editors need no second step; providers do (a provider without it is
+    // refused even earlier, as `mfa_required`).
+    for (const [role, mfaVerified] of [
+      ['editor', false],
+      ['provider', true],
+    ] as const) {
+      signIn(cmsUser(role), { mfaVerified, reauthenticatedAt: minutesAgo(1) });
       for (const [name, call] of [...CHANGES, ...READS]) {
         await expect(call(), `${role} ${name}`).rejects.toMatchObject(refusedFor('forbidden'));
       }
+    }
+    signIn(cmsUser('provider'), { mfaVerified: false, reauthenticatedAt: minutesAgo(1) });
+    for (const [name, call] of [...CHANGES, ...READS]) {
+      await expect(call(), `provider ${name}`).rejects.toMatchObject(refusedFor('mfa_required'));
     }
     signIn(null);
     for (const [name, call] of [...CHANGES, ...READS]) {

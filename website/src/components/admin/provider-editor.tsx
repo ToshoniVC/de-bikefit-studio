@@ -3,12 +3,11 @@
 import { useActionState, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
-import { Button, buttonVariants } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import {
-  ActionForm,
   CheckboxField,
   Field,
   SectionCard,
@@ -20,14 +19,14 @@ import {
   WEEKDAY_LABELS,
   WEEKDAY_ORDER,
 } from '@/components/admin/booking-labels';
-import { badgeTone, FLASH_TONES } from '@/components/admin/tones';
+import { FLASH_TONES } from '@/components/admin/tones';
 import { hhmmToMinutes as timeToMinutes, minutesToHhmm as minutesToTime } from '@/lib/booking/time';
 import { locationOptionLabel, type LocationOption } from '@/components/admin/services-manager';
 import {
   setAvailabilityExceptionsAction,
   setBusinessHoursAction,
 } from '@/lib/cms/actions/availability';
-import { disconnectGoogleAction, updateProviderAction } from '@/lib/cms/actions/providers';
+import { updateProviderAction } from '@/lib/cms/actions/providers';
 import { IDLE_STATE } from '@/lib/cms/actions/state';
 import type { CmsAvailabilityExceptionKind } from '@/db/cms-schema';
 
@@ -35,7 +34,8 @@ import type { CmsAvailabilityExceptionKind } from '@/db/cms-schema';
  * Cards for one provider. Used by `/admin/providers/[id]` (scope `any`, needs
  * `provider.manage`) and by `/admin/agenda` (scope `own`: the signed-in
  * provider's own row). The server actions resolve and re-check the scope; the
- * `providerId` sent along is never trusted on its own.
+ * `providerId` sent along is never trusted on its own. The Google Agenda card
+ * is in `./google-connection-card.tsx`.
  */
 
 export type EditorScope = 'own' | 'any';
@@ -73,13 +73,8 @@ export type ExceptionRow = {
   note: string | null;
 };
 
-export type GoogleStatus = {
-  connected: boolean;
-  email: string | null;
-  /** Already formatted for display, or null. */
-  connectedSince: string | null;
-  error: string | null;
-};
+/** The Google card lives in `./google-connection-card.tsx`; its type stays importable from here. */
+export type { GoogleStatus } from '@/components/admin/google-connection-card';
 
 export function ScopeFields({ providerId, scope }: { providerId: string; scope: EditorScope }) {
   return (
@@ -531,92 +526,6 @@ export function ExceptionsEditor({
           </div>
         ) : null}
       </form>
-    </SectionCard>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Google Calendar connection
-// ---------------------------------------------------------------------------
-
-export function GoogleConnectionCard({
-  providerId,
-  google,
-  scope,
-  canConnect,
-  configured,
-}: {
-  providerId: string;
-  google: GoogleStatus;
-  scope: EditorScope;
-  canConnect: boolean;
-  /** False when the server has no Google OAuth client configured. */
-  configured: boolean;
-}) {
-  return (
-    <SectionCard
-      title="Google Agenda"
-      description={
-        scope === 'own'
-          ? 'Bezette momenten in je Google Agenda worden niet aangeboden, en elke nieuwe afspraak komt erin te staan.'
-          : 'Bezette momenten in de Google Agenda van deze aanbieder worden niet aangeboden, en elke nieuwe afspraak komt erin te staan.'
-      }
-    >
-      <div className="flex flex-col gap-3 text-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          {google.connected ? (
-            <>
-              <Badge
-                variant={google.error ? 'warning' : 'success'}
-                className={badgeTone(google.error ? 'warning' : 'success')}
-              >
-                Verbonden
-              </Badge>
-              <span>
-                als <span className="font-medium">{google.email ?? 'onbekend account'}</span>
-                {google.connectedSince ? ` sinds ${google.connectedSince}` : ''}
-              </span>
-            </>
-          ) : (
-            <Badge variant="secondary">Niet verbonden</Badge>
-          )}
-        </div>
-        {google.error ? (
-          <p className={`px-3 py-2 text-sm ${FLASH_TONES.error}`}>Laatste fout: {google.error}</p>
-        ) : null}
-        {!configured ? (
-          <p className={`px-3 py-2 text-xs ${FLASH_TONES.info}`}>
-            De Google-koppeling is nog niet ingesteld op de server (OAuth-client ontbreekt). Zonder
-            koppeling tellen enkel de openingsuren en bestaande afspraken.
-          </p>
-        ) : null}
-        {canConnect ? (
-          <div className="flex flex-wrap items-start gap-2">
-            {configured ? (
-              <a
-                href={`/api/google/oauth/start?provider=${encodeURIComponent(providerId)}&return=${scope === 'own' ? 'agenda' : 'provider'}`}
-                data-slot="button"
-                className={buttonVariants({
-                  size: 'sm',
-                  variant: google.connected ? 'outline' : 'default',
-                })}
-              >
-                {google.connected ? 'Opnieuw koppelen' : 'Google Agenda koppelen'}
-              </a>
-            ) : null}
-            {google.connected ? (
-              <ActionForm action={disconnectGoogleAction} hidden={{ providerId, scope }}>
-                <SubmitButton
-                  variant="destructive"
-                  confirm="Google Agenda ontkoppelen? Nieuwe afspraken komen dan niet meer in je agenda en bezette momenten worden niet meer gecontroleerd."
-                >
-                  Ontkoppelen
-                </SubmitButton>
-              </ActionForm>
-            ) : null}
-          </div>
-        ) : null}
-      </div>
     </SectionCard>
   );
 }

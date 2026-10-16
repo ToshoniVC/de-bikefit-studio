@@ -30,6 +30,13 @@
  *      actually run ≤ 5), parallel password sign-ins, replay, release on
  *      success, an unreadable factor, password change and admin reset end a
  *      challenge (`scripts/selftest/mfa-concurrency.mts`)
+ *  5g. two-step verification for providers: a pre-MFA provider session refused
+ *      by the guards, the own agenda (`getOwnProvider()`, bookings, hours) and
+ *      the Google OAuth check; first sign-in in order (temporary password →
+ *      enrolment → session, standard lifetime); TOTP and recovery codes; no
+ *      switch-off, no reset of others, step-up with the code; admin reset and
+ *      break-glass CLI force a new enrolment; editor ↔ provider role changes;
+ *      editor and admin regressions (`scripts/selftest/provider-mfa.mts`)
  *   6. block registry: every block's defaultData validates, unknown type fails
  *   7. permissions: admin / editor content matrix
  *   8. draft → publish snapshot: draft blocks freeze into a published snapshot
@@ -86,8 +93,8 @@
  *      with an env override and never `contact.email`)
  *      (`scripts/selftest/cadeaubon.mts`)
  *  19. e-mail service set up in /admin/email: migration 0004, admin-only
- *      access (no session / editor / provider / admin without MFA refused,
- *      nothing written), changing key or addresses only after a recent
+ *      access (no session / editor / provider / provider or admin without MFA
+ *      refused, nothing written), changing key or addresses only after a recent
  *      step-up (status and test mail without one; `selftest/email-access.mts`),
  *      missing config is "not sent" without a provider call, validation, the
  *      key sealed and never in status, settings, audit or logs, admin config
@@ -406,6 +413,17 @@ async function main() {
   // 5f: concurrent second steps, one cookie jar per simulated browser.
   const { mfaConcurrencySection } = await import('./selftest/mfa-concurrency.mjs');
   await mfaConcurrencySection({ db, admin: user, check, section, cookieJar });
+
+  // 5g: two-step verification for providers; removes its own users again.
+  const { providerMfaSection } = await import('./selftest/provider-mfa.mjs');
+  await providerMfaSection({
+    db,
+    admin: user,
+    password: ADMIN_NEW_PASSWORD,
+    check,
+    section,
+    cookieJar,
+  });
 
   section('6. block registry');
   check(
@@ -1106,16 +1124,20 @@ async function bookingSections(
   const schema = await import('@/db/cms-schema');
   const { changeTemporaryPassword } = await import('./selftest/password-gate.mjs');
 
-  // The admin enrolled two-step verification in section 5c, so its sessions
-  // carry `mfaVerified`; the provider's never do (providers are unchanged).
-  // Each stands for a fresh full sign-in, so the step-up window is open (a new
-  // provider login is a user account: section 5e).
+  // Admins and providers sign in with password and code (sections 5c and 5g),
+  // so these sessions carry `mfaVerified`, as the CLIs' do. Each stands for a
+  // fresh full sign-in, so the step-up window is open (a new provider login is
+  // a user account: section 5e). Test-only shortcut for the provider: in the
+  // browser a new provider replaces the temporary password inside the
+  // challenge and then enrols (5g); here the MFA session still has it, as for
+  // an enrolled provider whose password an admin reset, so the forced change
+  // below is exercised.
   const signInAs = async (userId: string) => {
     const session = await createSession(
       db,
       userId,
       { userAgent: 'selftest' },
-      { mfaVerified: userId === admin.id, reauthenticated: true },
+      { mfaVerified: true, reauthenticated: true },
     );
     cookieJar.set('cms_session', session.token);
   };

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { roleRequiresMfa } from './guard';
 import {
   ADMIN_ABSOLUTE_LIFETIME_MS,
   ADMIN_IDLE_TIMEOUT_MS,
+  ROLE_SESSION_POLICY,
   SESSION_TOUCH_INTERVAL_MS,
   STANDARD_RENEW_AFTER_MS,
   STANDARD_SESSION_TTL_MS,
@@ -55,6 +57,77 @@ describe('session policy per role', () => {
   it('fails closed: an unknown role gets the strict admin policy', () => {
     expect(sessionPolicyFor('superuser')).toBe('admin');
     expect(sessionPolicyFor('')).toBe('admin');
+    // Names a plain object lookup would find on the prototype, and near misses.
+    for (const role of [
+      'constructor',
+      '__proto__',
+      'toString',
+      'hasOwnProperty',
+      'Editor',
+      ' provider',
+    ]) {
+      expect(sessionPolicyFor(role), JSON.stringify(role)).toBe('admin');
+    }
+  });
+
+  it('is its own table, written out per role, and frozen', () => {
+    expect(ROLE_SESSION_POLICY).toEqual({
+      admin: 'admin',
+      editor: 'standard',
+      provider: 'standard',
+    });
+    expect(Object.isFrozen(ROLE_SESSION_POLICY)).toBe(true);
+  });
+
+  it('is decoupled from the MFA rule: providers need the second step, yet keep standard sessions', () => {
+    expect(roleRequiresMfa('provider')).toBe(true);
+    expect(sessionPolicyFor('provider')).toBe('standard');
+    // Admins: both. Editors: neither.
+    expect(roleRequiresMfa('admin')).toBe(true);
+    expect(sessionPolicyFor('admin')).toBe('admin');
+    expect(roleRequiresMfa('editor')).toBe(false);
+    expect(sessionPolicyFor('editor')).toBe('standard');
+  });
+});
+
+describe('provider sessions: the standard class, decided separately (docs/cms-architecture.md §4)', () => {
+  const provider = (overrides: Partial<SessionTimes> = {}): SessionTimes => ({
+    createdAt: SIGN_IN,
+    lastUsedAt: SIGN_IN,
+    ...initialSessionTimes('provider', SIGN_IN),
+    ...overrides,
+  });
+
+  it('start at 14 days without an absolute end; the cookie follows the sliding expiry', () => {
+    const times = initialSessionTimes('provider', SIGN_IN);
+    expect(times).toEqual({ expiresAt: at(STANDARD_SESSION_TTL_MS), absoluteExpiresAt: null });
+    expect(sessionCookieExpiry('provider', provider())).toEqual(at(STANDARD_SESSION_TTL_MS));
+  });
+
+  it('are not ended by the admin limits: 16 minutes idle, 9 hours, 3 days', () => {
+    for (const later of [16 * MIN, 9 * HOUR, 3 * 24 * HOUR]) {
+      expect(
+        evaluateSession('provider', provider(), at(later)),
+        `${later / MIN} min`,
+      ).toMatchObject({ valid: true });
+    }
+    expect(evaluateSession('provider', provider(), at(STANDARD_SESSION_TTL_MS))).toEqual({
+      valid: false,
+      reason: 'expired',
+    });
+  });
+
+  it('a replacement (password change, new authenticator) keeps no absolute end it never had', () => {
+    expect(
+      initialSessionTimes('provider', at(HOUR), { absoluteExpiresAt: null }).absoluteExpiresAt,
+    ).toBeNull();
+  });
+
+  it('a provider promoted to admin is held to the admin limits at once', () => {
+    expect(evaluateSession('admin', provider({ lastUsedAt: at(20 * MIN) }), at(40 * MIN))).toEqual({
+      valid: false,
+      reason: 'idle',
+    });
   });
 });
 

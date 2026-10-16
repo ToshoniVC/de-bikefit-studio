@@ -16,7 +16,7 @@
  * price label, an unknown service slug) is reported and left for an editor.
  * Needs migration 0010 and an active admin with their own password and
  * two-step verification (`scripts/lib/cms-actor.mts`). Logic and guarantees:
- * `scripts/lib/offerings-migrate.mts`. Runbook: `docs/staging-runbook.md` §17.
+ * `scripts/lib/offerings-migrate.mts`. Runbook: `docs/staging-runbook.md` §18.
  */
 import { config } from 'dotenv';
 import { cookieJar, installRequestContextStubs } from './lib/request-context.mjs';

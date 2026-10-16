@@ -2,7 +2,9 @@ import 'server-only';
 
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
-import { isProduction, siteUrl } from '@/lib/env';
+import { NextResponse } from 'next/server';
+
+import { isProduction } from '@/lib/env';
 import { sessionSecret } from '@/lib/secrets';
 
 /**
@@ -24,12 +26,15 @@ import { sessionSecret } from '@/lib/secrets';
  * The cookie is `SameSite=Lax` (it must ride along on Google's top-level GET
  * redirect back to us), scoped to `/api/google/oauth`, and lives 10 minutes.
  * The return target is an enum, never a URL, so there is no open redirect.
+ *
+ * Whether a connection may start at all, and the redirect URI, come from
+ * `googleOAuthConfig()` in `src/lib/booking/google.ts` (rules in
+ * `src/lib/booking/google-oauth-config.ts`), not from here.
  */
 
 export const OAUTH_STATE_COOKIE = 'cms_google_oauth';
 export const OAUTH_STATE_TTL_SECONDS = 10 * 60;
 export const OAUTH_COOKIE_PATH = '/api/google/oauth';
-export const OAUTH_CALLBACK_PATH = '/api/google/oauth/callback';
 
 export type OAuthReturnTo = 'agenda' | 'provider';
 
@@ -119,16 +124,6 @@ export function stateCookieOptions(maxAgeSeconds = OAUTH_STATE_TTL_SECONDS) {
   };
 }
 
-/** Canonical public origin (`NEXT_PUBLIC_SITE_URL` → … → localhost). */
-export function canonicalOrigin(): string {
-  return new URL(siteUrl()).origin;
-}
-
-/** `${siteUrl()}/api/google/oauth/callback` — must be registered in the OAuth client. */
-export function oauthRedirectUri(): string {
-  return `${canonicalOrigin()}${OAUTH_CALLBACK_PATH}`;
-}
-
 export function plainResponse(status: number, message: string): Response {
   return new Response(message, {
     status,
@@ -136,16 +131,26 @@ export function plainResponse(status: number, message: string): Response {
   });
 }
 
-export function notConfiguredResponse(): Response {
-  return plainResponse(
-    503,
-    'Google Agenda is nog niet ingesteld op deze website: GOOGLE_OAUTH_CLIENT_ID en GOOGLE_OAUTH_CLIENT_SECRET ontbreken. Zie docs/booking-runbook.md.',
-  );
-}
-
 /** Where the admin lands afterwards. Provider ids are app-generated, but encode anyway. */
 export function returnPath(returnTo: OAuthReturnTo, providerId: string): string {
   return returnTo === 'provider'
     ? `/admin/providers/${encodeURIComponent(providerId)}`
     : '/admin/agenda';
+}
+
+/**
+ * A `no-store` 302 to an admin page on `origin` (the request's own) with the
+ * `?google=…` parameters that `GoogleFlash` turns into Dutch. `path` is
+ * {@link returnPath} or a fixed admin path, never a value from the request.
+ */
+export function flashRedirect(
+  origin: string,
+  path: string,
+  params: Record<string, string>,
+): NextResponse {
+  const target = new URL(path, origin);
+  for (const [key, value] of Object.entries(params)) target.searchParams.set(key, value);
+  const response = NextResponse.redirect(target, 302);
+  response.headers.set('Cache-Control', 'no-store');
+  return response;
 }

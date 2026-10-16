@@ -1,23 +1,27 @@
 import type { CmsRole } from '@/db/cms-schema';
-import { roleRequiresMfa } from './guard';
 
 /**
  * Session lifetime rules, kept pure (no database, cookies or Next runtime) so
  * every edge is unit-tested in `session-policy.test.ts`. `./session.ts` only
  * reads the row, asks {@link evaluateSession} and writes back what it says.
  *
- * Two policies, chosen by the user's role at the moment the session is used
- * (a promotion or demotion takes effect on the next request):
+ * Two policies, chosen per role in {@link ROLE_SESSION_POLICY} at the moment
+ * the session is used (a promotion or demotion takes effect on the next
+ * request):
  *
- * - **admin** (every role that requires MFA, so it fails closed for unknown
- *   roles): ends after {@link ADMIN_IDLE_TIMEOUT_MS} without a request, and
- *   at the latest {@link ADMIN_ABSOLUTE_LIFETIME_MS} after sign-in, however
- *   active the admin is. Use moves `expires_at` forward but never past the
- *   absolute end; a session that replaces another (password change, new
- *   authenticator) inherits that end instead of starting a new one.
+ * - **admin** (admins, and every role not in the table, so it fails closed
+ *   for unknown roles): ends after {@link ADMIN_IDLE_TIMEOUT_MS} without a
+ *   request, and at the latest {@link ADMIN_ABSOLUTE_LIFETIME_MS} after
+ *   sign-in, however active the admin is. Use moves `expires_at` forward but
+ *   never past the absolute end; a session that replaces another (password
+ *   change, new authenticator) inherits that end instead of starting a new one.
  * - **standard** (editors, providers): unchanged from before, 14 days with
- *   sliding renewal past the halfway point. A separate decision; see
- *   `docs/cms-architecture.md` §4.
+ *   sliding renewal past the halfway point.
+ *
+ * Deliberately NOT derived from the MFA rule (`roleRequiresMfa()` in
+ * `./guard.ts`): providers must pass the second step, but whether their
+ * sessions also get the admin limits is an open decision for the product
+ * owner (`docs/cms-architecture.md` §4), so they keep the standard class.
  *
  * `last_used_at` is written at most once per {@link SESSION_TOUCH_INTERVAL_MS},
  * so a burst of requests (an admin page fires several) costs one write. The
@@ -35,8 +39,20 @@ export const SESSION_TOUCH_INTERVAL_MS = 30 * 1000;
 
 export type SessionPolicyName = 'admin' | 'standard';
 
+/**
+ * Lifetime class per role. A `Record` over every role, so adding one to the
+ * enum forces a decision here. `provider: 'standard'` is the open decision
+ * above: change it here (and in the docs) only on the product owner's word.
+ */
+export const ROLE_SESSION_POLICY: Readonly<Record<CmsRole, SessionPolicyName>> = Object.freeze({
+  admin: 'admin',
+  editor: 'standard',
+  provider: 'standard',
+});
+
+/** The class for `role`; any role not in {@link ROLE_SESSION_POLICY} gets the strict admin one. */
 export function sessionPolicyFor(role: CmsRole | string): SessionPolicyName {
-  return roleRequiresMfa(role) ? 'admin' : 'standard';
+  return Object.hasOwn(ROLE_SESSION_POLICY, role) ? ROLE_SESSION_POLICY[role as CmsRole] : 'admin';
 }
 
 export type SessionTimes = {

@@ -34,7 +34,8 @@ const COPY: Record<MfaSignInStep, { title: string; description: string }> = {
 };
 
 /**
- * The second sign-in step for admins. Outside the `(dashboard)` group and
+ * The second sign-in step for admins, providers and editors who kept an
+ * authenticator; the copy is role-neutral. Outside the `(dashboard)` group and
  * exempt from the middleware's cookie check, because no session exists yet:
  * all it has is the short-lived `cms_mfa` challenge, which this page resolves
  * against the database (`getCurrentMfaChallenge()`). Every step it offers is

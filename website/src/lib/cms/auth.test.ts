@@ -185,17 +185,27 @@ describe('an admin session that did not pass MFA (e.g. from before MFA existed)'
     expect(fake.state.updates).toEqual([]);
   });
 
-  it('leaves editors and providers unchanged', async () => {
-    for (const role of ['editor', 'provider'] as const) {
-      signIn(cmsUser(role, false), false);
-      await expect(requireCmsUser(), role).resolves.toMatchObject({ role, mfaVerified: false });
+  it('applies to providers too: a session from before provider MFA is refused', async () => {
+    for (const mustChangePassword of [false, true]) {
+      signIn(cmsUser('provider', mustChangePassword), false);
+      await expect(requireCmsUser()).rejects.toMatchObject(refusedFor('mfa_required'));
+      await expect(
+        requireCmsUser(undefined, { allowMustChangePassword: true }),
+      ).rejects.toMatchObject(refusedFor('mfa_required'));
+      await expect(requirePermission('provider.self')).rejects.toMatchObject(
+        refusedFor('mfa_required'),
+      );
     }
+  });
+
+  it('leaves editors unchanged', async () => {
     signIn(cmsUser('editor', false), false);
+    await expect(requireCmsUser()).resolves.toMatchObject({ role: 'editor', mfaVerified: false });
     await expect(requirePermission('page.update')).resolves.toMatchObject({ role: 'editor' });
   });
 });
 
-describe('login(): a password alone never creates an admin session', () => {
+describe('login(): a password alone never creates an admin or provider session', () => {
   let hash = '';
   beforeAll(async () => {
     hash = await hashPassword(CHOSEN);
@@ -218,6 +228,24 @@ describe('login(): a password alone never creates an admin session', () => {
       expect(session.setSessionCookie).not.toHaveBeenCalled();
       expect(session.revokeSession).toHaveBeenCalledWith(fake.db, 'legacy-token');
       expect(session.clearSessionCookie).toHaveBeenCalled();
+    },
+    SLOW,
+  );
+
+  it(
+    'provider: only a challenge as well, first sign-in (temporary password) included',
+    async () => {
+      for (const mustChangePassword of [false, true]) {
+        resetDoubles();
+        fake.state.rows = asStored(cmsUser('provider', mustChangePassword));
+        session.readSessionCookie.mockResolvedValue('legacy-token');
+        const result = await login({ email: 'provider@example.com', password: CHOSEN });
+        expect(result).toMatchObject({ ok: true, data: { secondStep: true } });
+        expect(mfa.createMfaChallenge).toHaveBeenCalledWith(fake.db, 'user-provider', undefined);
+        expect(session.createSession).not.toHaveBeenCalled();
+        expect(session.setSessionCookie).not.toHaveBeenCalled();
+        expect(session.revokeSession).toHaveBeenCalledWith(fake.db, 'legacy-token');
+      }
     },
     SLOW,
   );
@@ -346,18 +374,44 @@ describe('changePassword: the one write a temporary-password session may make', 
     SLOW,
   );
 
-  it('an admin without a recent step-up is refused before anything is checked or written', async () => {
-    for (const reauthenticatedAt of [null, minutesAgo(6)]) {
-      signIn(cmsUser('admin', false), true, reauthenticatedAt);
-      fake.state.rows = [{ ...cmsUser('admin', false), passwordHash: temporaryHash }];
-      await expect(
-        changePassword({ currentPassword: TEMPORARY, newPassword: CHOSEN }),
-      ).rejects.toMatchObject(refusedFor('reauth_required'));
+  it('an admin or provider without a recent step-up is refused before anything is checked or written', async () => {
+    for (const role of ['admin', 'provider'] as const) {
+      for (const reauthenticatedAt of [null, minutesAgo(6)]) {
+        signIn(cmsUser(role, false), true, reauthenticatedAt);
+        fake.state.rows = [{ ...cmsUser(role, false), passwordHash: temporaryHash }];
+        await expect(
+          changePassword({ currentPassword: TEMPORARY, newPassword: CHOSEN }),
+          role,
+        ).rejects.toMatchObject(refusedFor('reauth_required'));
+      }
     }
     expect(fake.state.updates).toEqual([]);
     expect(session.revokeAllUserSessions).not.toHaveBeenCalled();
     expect(session.createSession).not.toHaveBeenCalled();
   });
+
+  it(
+    'a provider with a recent step-up: changed, and the fresh session keeps MFA, never more',
+    async () => {
+      const provider = cmsUser('provider', false);
+      const steppedUp = minutesAgo(1);
+      signIn(provider, true, steppedUp);
+      fake.state.rows = [{ ...provider, passwordHash: temporaryHash }];
+      const result = await changePassword({ currentPassword: TEMPORARY, newPassword: CHOSEN });
+      expect(result).toEqual({ ok: true, data: true });
+      expect(session.revokeAllUserSessions).toHaveBeenCalledWith(fake.db, provider.id);
+      expect(session.createSession).toHaveBeenCalledWith(
+        fake.db,
+        provider.id,
+        {},
+        {
+          mfaVerified: true,
+          replaces: { absoluteExpiresAt: ABSOLUTE_END, reauthenticatedAt: steppedUp },
+        },
+      );
+    },
+    SLOW,
+  );
 
   it('still needs a session', async () => {
     signIn(null);

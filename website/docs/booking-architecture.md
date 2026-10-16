@@ -30,7 +30,8 @@ UTC (`timestamptz`).
 | `src/lib/booking/settings.ts` | plain* | `BookingRules`, defaults, `getBookingRules()` |
 | `src/lib/booking/format.ts` | plain | location/price/duration labels, `slugify` |
 | `src/lib/booking/defaults.ts` | plain | bootstrap data (locations, 5 services, default hours) |
-| `src/lib/booking/google.ts` | server-only | OAuth + Calendar REST via `fetch`, token encryption |
+| `src/lib/booking/google.ts` | server-only | OAuth + Calendar REST via `fetch`, token encryption, `googleOAuthConfig()` (env → the rules below) |
+| `src/lib/booking/google-oauth-config.ts` | plain | `resolveGoogleOAuthConfig()`: may a Google connection start here, and with which redirect URI; `googleSetupView()`: what the admin's Google card may show (§7) |
 | `src/lib/booking/provider-calendar.ts` | server-only | a provider's busy times and events, degrading gracefully |
 | `src/lib/booking/provider-calendar-errors.ts` | plain | `describeProviderError()`: the fixed text stored as `google_sync_error` |
 | `src/lib/booking/content.ts` | server-only | public read API (cached lists, live availability) |
@@ -387,7 +388,10 @@ audits (`service.*`, `location.*`, `provider.*`, `booking.cancel`,
 
 ```ts
 GOOGLE_SCOPES   // calendar.events, calendar.freebusy, openid, email
-isGoogleConfigured(): boolean
+isGoogleConfigured(): boolean                                   // both client values set: sync of connected calendars
+googleOAuthConfig(): GoogleOAuthConfig                          // { ready, problems, origin, originSource, redirectUri } (§7)
+googleConnectSetup({ canManage }): GoogleSetupView              // { ready, admin: { problems, redirectUri } | null } for the card
+googleTokenKeyUsable(): boolean                                 // encryptionKey() would succeed; never throws
 buildAuthUrl({ state, redirectUri, loginHint? }): string        // access_type=offline, prompt=consent
 exchangeCode(code, redirectUri): Promise<GoogleTokens>          // { accessToken, refreshToken, expiresAt, scope, idToken, email }
 refreshAccessToken(refreshToken): Promise<{ accessToken; expiresAt; scope }>
@@ -462,14 +466,47 @@ so every slot is exactly `duration` real minutes long, also on 2026-10-25.
 
 ```
 /admin/agenda ── Verbind ──► GET /api/google/oauth/start?provider=<id>      (Worker D)
+                               ready? hop to the redirect origin → session → access
+                               → not ready: back with ?google=error&reason=config
                                signed state cookie, buildAuthUrl({ state, redirectUri })
 Google consent ────────────► GET /api/google/oauth/callback                 (Worker D)
-                               verify state → exchangeCode() → tokens.email (id_token)
+                               verify state → session → still ready → exchangeCode()
+                               → tokens.email (id_token)
                                → repo.storeGoogleConnection(providerId, tokens, email)
                                → /admin/agenda?google=connected|error
 ```
 
-- Redirect URI: `${siteUrl()}/api/google/oauth/callback`.
+- **May a connection start here, and with which redirect URI** (16 Oct 2026):
+  `googleOAuthConfig()` in `google.ts` feeds the environment to the pure
+  `resolveGoogleOAuthConfig()` (`google-oauth-config.ts`, unit-tested). Ready means: both
+  client values set and free of whitespace, the token key usable
+  (`googleTokenKeyUsable()`: the same code as encrypting), and a redirect origin. Outside
+  development (`NODE_ENV=production`, so `next start` and every Vercel deployment) that
+  origin comes **only** from `NEXT_PUBLIC_SITE_URL` and must be https; in development it
+  follows `siteUrl()` (`NEXT_PUBLIC_SITE_URL` → `NEXT_PUBLIC_APP_URL` → `https://${VERCEL_URL}`
+  → `http://localhost:3000`). `siteUrl()` itself is unchanged for canonicals and e-mail
+  links.
+- Redirect URI: `<origin>/api/google/oauth/callback`; a path or trailing slash on
+  `NEXT_PUBLIC_SITE_URL` is dropped. Staging's is
+  `https://de-bikefit-studio-git-staging-toshoni.vercel.app/api/google/oauth/callback`
+  (`booking-runbook.md` §7.3). Until 16 Oct 2026 the routes used `siteUrl()` here too, so a
+  deployment without `NEXT_PUBLIC_SITE_URL` sent its per-deployment `VERCEL_URL` host to Google
+  (never registered: `redirect_uri_mismatch`) and an http origin went out as it was.
+- **Order in the routes.** Start: the hop to the redirect origin (whenever that origin is
+  usable, regardless of readiness), then the session (sign-in, second step, temporary
+  password), then access to the provider (403), and only then readiness: not ready → back to the Google card with `reason=config`, no state
+  cookie, nobody sent to Google. Callback: state, session, then readiness (`config`), then
+  Google's answer. So an anonymous caller learns nothing about the configuration; until
+  16 Oct 2026 both routes answered every caller, before any check, with a plain-text 503 that
+  named the missing variables.
+- **The Google card** (`src/components/admin/google-connection-card.tsx`, split out of
+  `provider-editor.tsx`) gets `googleConnectSetup({ canManage })` from the page and shows the
+  connect button exactly when the start route would go on to Google. When not ready, a user
+  with `provider.manage` sees one Dutch line per problem (variable names, never values) and the
+  redirect URI to register; a ready admin finds that URI under *Gegevens voor de OAuth-client*.
+  Everyone else only reads that the connection is not set up yet and, for a provider, to ask
+  the beheerder. `isGoogleConfigured()` (both client values present) still decides whether
+  already-connected calendars are synced.
 - Scopes: `calendar.events`, `calendar.freebusy` + `openid email` (so the
   callback can read the account e-mail from the `id_token` without an extra
   call). `access_type=offline` + `prompt=consent` → Google always returns a
@@ -507,7 +544,10 @@ Google consent ────────────► GET /api/google/oauth/cal
   `[google-oauth] store_failed` when it throws. Never Google's `error_description` (the
   `GoogleApiError` message) or a failed query's text, which binds the encrypted tokens and the
   account e-mail; Google's own `?error=` value is not logged either. The `reason` in the
-  redirect is unchanged (`booking-runbook.md` §10).
+  redirect is unchanged (`booking-runbook.md` §10). Both routes log
+  `[google-oauth] not_ready` with `{ problems }`, the problem codes (`client_id_missing`,
+  `token_key_unusable`, `site_url_missing`, …), when they answer `reason=config`; never a
+  value.
 
 ---
 
@@ -654,8 +694,9 @@ All optional; defined in `src/lib/env.ts`, documented in `.env.example`.
 
 | Variable | Used by | Notes |
 | --- | --- | --- |
-| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | `google.ts` | "Web application" OAuth client. `features.googleCalendar`. |
-| `GOOGLE_TOKEN_ENCRYPTION_KEY` | `google.ts` | base64 of 32 bytes (`openssl rand -base64 32`). Rotating signs providers out of Google. |
+| `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | `google.ts` | "Web application" OAuth client. `features.googleCalendar` (sync); connecting also needs them free of whitespace (§7). |
+| `GOOGLE_TOKEN_ENCRYPTION_KEY` | `google.ts` | base64 of 32 bytes (`openssl rand -base64 32`). Rotating signs providers out of Google. Any other length blocks connecting (§7). |
+| `NEXT_PUBLIC_SITE_URL` | `google.ts` (and the whole site) | Outside development the only source of the OAuth redirect URI; https required, else connecting is refused (§7). |
 | `GA4_PROPERTY_ID`, `GA4_SERVICE_ACCOUNT_JSON` | Worker D (`src/lib/analytics`) | `features.ga4Data` = service account present. |
 | `RESEND_API_KEY`, `EMAIL_FROM`, `EMAIL_REPLY_TO` | `email/settings.ts` → `email/send.ts` | Optional: the same values can be stored in `/admin/email`; env wins per field. `features.email` = env key present only. |
 
@@ -787,6 +828,28 @@ service actions called directly as a provider, also on a service with their `cre
 as an editor: refused before the row is read, nothing written; the admin succeeds; the
 subscription action: active only, kept inactive, other provider refused).
 
+For the Google connect flow (16 Oct 2026, §7): `google-oauth-config.test.ts` covers the client
+matrix (none, only the id, only the secret, both; blank and whitespace values), the token key,
+the redirect URI from `NEXT_PUBLIC_SITE_URL` with and without a trailing slash, path, query or
+surrounding whitespace (staging's exact URI included), https outside development, no fallback
+to `VERCEL_URL` or `NEXT_PUBLIC_APP_URL` there, the `siteUrl()` chain and localhost in
+development (checked against `siteUrl()` itself), what the card's view holds per role, and that
+no client id, secret or URL credential ever appears in the result or a text;
+`google.test.ts` checks that `googleTokenKeyUsable()` agrees with encrypting for good, 48-byte,
+hex and derived keys, and the env wiring of `googleOAuthConfig()`;
+`src/app/api/google/oauth/oauth-routes.test.ts` runs both route handlers with the session,
+the repo and Google's token endpoint replaced: an anonymous caller gets the sign-in page (or
+the `state` error) whether or not Google is configured; nothing anyone sees names a variable or
+holds a value; a provider and an admin get `reason=config` without a state cookie when the
+client is missing, `NEXT_PUBLIC_SITE_URL` is missing (a per-deployment host) or http, or the
+token key is 48 bytes or hex; no hop while not ready; the ready path sends the canonical URI
+and the scopes, with the state cookie `HttpOnly; Secure; SameSite=lax; Path=/api/google/oauth;
+Max-Age=600` and the cookie's nonce as Google's `state`; the callback exchanges the code with
+that same URI, clears the cookie, refuses another user or a forged `state` before any exchange,
+and answers `config` after the state and session checks. Written failing first: against the
+old routes 8 of the 13 failed (the 503 before any check, the per-deployment and http URIs, the
+doomed token key).
+
 ---
 
 ## 13. Decisions and open points
@@ -842,6 +905,19 @@ subscription action: active only, kept inactive, other provider refused).
   `src/lib/cms/mfa/rate-limit.ts` and can move onto `src/lib/rate-limit.ts` later (its
   `user_id` column serves `clearMfaAttempts()`). Not covered: an IPv6 visitor who rotates
   addresses inside their /64 counts as many IPs (the e-mail key still holds per address).
+- **Connecting Google needs a ready server, and says so to the right person** (16 Oct 2026,
+  §7). Staging showed "OAuth-client ontbreekt" because Preview/`staging` had no Google
+  variables; setting them is `booking-runbook.md` §7.3. The code change makes the next failures
+  visible before anyone leaves for Google: an https `NEXT_PUBLIC_SITE_URL` is required outside
+  development (no `VERCEL_URL` fallback for the redirect URI), the token key and the client
+  values are checked up front, the routes no longer tell anonymous callers which variables are
+  missing (no 503; `reason=config` for a signed-in user who may connect), and the card names the
+  problems and the redirect URI to admins only. **Behaviour change:** a local `next start`
+  (production mode) with `http://localhost:3000` cannot connect Google any more; use `next dev`.
+  Not changed: the scopes, the state cookie, the session and access checks, the token
+  encryption, `isGoogleConfigured()` for syncing. Still open: a Calendar API that is not
+  enabled shows only as "HTTP 403" after connecting, because `describeProviderError()` keeps
+  lower-case codes only and Google's reason is `accessNotConfigured`.
 
 ---
 

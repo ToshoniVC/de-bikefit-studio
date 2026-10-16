@@ -19,7 +19,7 @@ is therefore not a separate Vercel environment: it is the **preview deployments 
 | Vercel | — | Preview deployment | Preview deployment of `staging` | Production deployment |
 | Vercel env scope | `.env.local` | Preview (all branches) | Preview, branch `staging` | Production |
 | URL | `http://localhost:3000` | per-deployment `*.vercel.app` | `https://de-bikefit-studio-git-staging-toshoni.vercel.app` (stable alias) | `https://de-bikefit-studio.vercel.app` until a domain is chosen |
-| Database | PGlite `website/.pglite/` | a non-production Neon branch | Neon `Qarakter` → branch `Staging` | Neon `Qarakter` → branch `production` |
+| Database | PGlite `website/.pglite/` | **currently the same Neon `Staging` branch** (isolation pending; see booking runbook §7.3) | Neon `Qarakter` → branch `Staging` | Neon `Qarakter` → branch `production` |
 | Indexing | — | off | off (`seo.allowIndexing = false`) | on only after the §8 checklist in the staging runbook |
 
 Branch flow: `feat/<topic>` → pull request → `staging` → `main`. A push to `staging` deploys
@@ -28,8 +28,19 @@ staging; a merge to `main` deploys production (Vercel Git integration).
 Branch-scoped Preview variables override the generic Preview ones for that branch, so staging
 and feature previews can have different values (e.g. their own `CMS_SESSION_SECRET`). Feature
 previews currently use the staging alias as `NEXT_PUBLIC_SITE_URL`, so their canonicals,
-e-mail links and Google connect flow point at staging: `/api/google/oauth/start` hops to the
-`NEXT_PUBLIC_SITE_URL` host first and the connection completes on the staging deployment.
+e-mail links and Google connect flow point at staging: where the Google variables are set,
+`/api/google/oauth/start` hops to the `NEXT_PUBLIC_SITE_URL` host first and the connection
+completes on the staging deployment. The Google variables belong to Preview with branch
+`staging` only (`docs/booking-runbook.md` §7.3), so a feature preview's Google card says the
+connection is not set up there: connect on staging.
+
+As of 16 Oct 2026, generic Preview and Preview/`staging` have different
+`CMS_SESSION_SECRET` values but the **same Neon Staging database**. Scoping the
+Google secret and token key to `staging` protects token confidentiality; it does
+not prevent generic feature-preview code from writing shared booking or Google
+status rows. Before the first provider connects Google, isolate generic Preview
+onto its own Neon branch and address old immutable previews, which retain the
+environment values from when they were deployed (`docs/booking-runbook.md` §7.3).
 
 ## 2. Who deploys
 
@@ -98,15 +109,15 @@ its variables are missing. Names and purpose only; values never appear here.
 | --- | --- | :-: | --- |
 | `DATABASE_URL` | Neon pooled URL for this environment's branch. Unset → PGlite, which is refused in production. | yes | every deployed env |
 | `CMS_SESSION_SECRET` | Pepper for CMS session-token hashes; also signs the Google OAuth state cookie and the booking confirmation link, is the fallback source for the token key below and the key source for an e-mail API key stored in `/admin/email`. Rotating it signs every CMS user out and makes that stored key unreadable (an admin pastes it again). Different per environment. | yes | every deployed env |
-| `CMS_MFA_ENCRYPTION_KEY` | base64 of 32 bytes; AES-256-GCM key for admins' TOTP secrets (two-step verification). **Required:** without it admins cannot finish signing in (fail closed; the rest of the site is unaffected). Set it before deploying the build that needs it (staging runbook §16). Different per environment, never derived from another secret. Rotating it makes stored authenticators unreadable: admins sign in with a recovery code and replace the authenticator. | yes | every deployed env (Production and Preview) |
+| `CMS_MFA_ENCRYPTION_KEY` | base64 of 32 bytes; AES-256-GCM key for the TOTP secrets of admins and providers (two-step verification). **Required:** without it admins and providers cannot finish signing in (fail closed; the rest of the site is unaffected). Set it before deploying the build that needs it (staging runbook §16). Different per environment, never derived from another secret. Rotating it makes stored authenticators unreadable: admins and providers sign in with a recovery code and replace the authenticator. | yes | every deployed env (Production and Preview) |
 | `CMS_BOOTSTRAP_PASSWORD` | One-shot password for the first admin, passed inline to `cms:bootstrap`. | yes | **never** in Vercel or `.env.local` |
-| `NEXT_PUBLIC_SITE_URL` | Canonical origin: canonicals, sitemap, OG images, e-mail cancel links, Google OAuth redirect URI (`<origin>/api/google/oauth/callback`). | no | every deployed env |
+| `NEXT_PUBLIC_SITE_URL` | Canonical origin: canonicals, sitemap, OG images, e-mail cancel links, Google OAuth redirect URI (`<origin>/api/google/oauth/callback`). On a deployment (`NODE_ENV=production`) the redirect URI comes from this variable only and must be https: without it, or with `http://`, connecting Google is refused (never a fallback to `VERCEL_URL`). | no | every deployed env |
 | `NEXT_PUBLIC_GA4_MEASUREMENT_ID` | GA4 measurement id (`G-…`). The tag loads only when this is valid, *Analytics ingeschakeld* is on in the admin, and the visitor accepts cookies. Build-time. | no | production (staging only to test the banner) |
 | `GA4_PROPERTY_ID` | Numeric GA4 property id for the admin analytics panel; overrides the `analytics.ga4PropertyId` setting. | no | optional |
 | `GA4_SERVICE_ACCOUNT_JSON` | Service-account key (raw JSON or base64) with Viewer on the GA4 property; enables the admin panel. | yes | optional |
-| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ("Web application") for per-provider Calendar sync. | no | optional (both or neither) |
-| `GOOGLE_OAUTH_CLIENT_SECRET` | Secret of that client. Without the pair the OAuth routes answer 503 and availability ignores Google. | yes | optional |
-| `GOOGLE_TOKEN_ENCRYPTION_KEY` | base64 of 32 bytes; AES-256-GCM key for stored Google tokens. **Optional:** empty → key derived from `CMS_SESSION_SECRET` (HKDF-SHA256). Rotating either value forces every provider to reconnect Google. One per environment. | yes | optional |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ("Web application") for per-provider Calendar sync. Staging: Preview with branch `staging` only, never Preview (all branches) (`docs/booking-runbook.md` §7.3). | no | optional (both or neither) |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Secret of that client. Without the pair the Google card shows no connect button (an admin sees what is missing), the OAuth routes send a signed-in user back with `reason=config`, and availability ignores Google. A value with whitespace is refused the same way. | yes | optional |
+| `GOOGLE_TOKEN_ENCRYPTION_KEY` | base64 of exactly 32 bytes (`openssl rand -base64 32`); AES-256-GCM key for stored Google tokens. **Optional:** empty → key derived from `CMS_SESSION_SECRET` (HKDF-SHA256). Any other length blocks connecting. Rotating either value forces every provider to reconnect Google, so set it before the first connection. One per environment. | yes | optional |
 | `RESEND_API_KEY` | Resend API key for booking e-mails and gift voucher orders. **Optional:** an admin can instead store the key in `/admin/email` (sealed with AES-256-GCM, key derived from `CMS_SESSION_SECRET`); when set here it wins. With no key anywhere, booking mails are logged (number of recipients only, no subject or address) and skipped, and every gift voucher order shows "niet verstuurd". | yes | optional |
 | `EMAIL_FROM` | Sender on a domain verified in Resend. Also required for gift voucher orders. Overrides the sender in `/admin/email`. | no | optional |
 | `EMAIL_REPLY_TO` | Reply-To for customer mails (not used for gift voucher orders: their Reply-To is the visitor). Overrides `/admin/email`. | no | optional |
@@ -117,7 +128,8 @@ its variables are missing. Names and purpose only; values never appear here.
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, `CLERK_WEBHOOK_SECRET` | Clerk (webshop customers only; not the CMS). | secret key + webhook: yes | legacy webshop |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` | Stripe checkout and order webhook. | secret key + webhook: yes | legacy webshop |
 
-Set by Vercel, not by us: `VERCEL_URL` (last fallback for the canonical origin), `VERCEL_ENV`.
+Set by Vercel, not by us: `VERCEL_URL` (last fallback for the canonical origin; never the
+Google OAuth redirect URI on a deployment, it changes with every deployment), `VERCEL_ENV`.
 Script-only, never in Vercel: `CMS_BREAK_GLASS_PASSWORD` (optional, inline for `cms:mfa-reset`),
 `PROVIDER_EMAIL` / `PROVIDER_NAME` (`cms:seed-booking`),
 `NEON_PROJECT_ID`, `STAGING_DATABASE_URL`, `PARENT_BRANCH`, `STAGING_BRANCH`

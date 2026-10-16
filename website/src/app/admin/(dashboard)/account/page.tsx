@@ -21,7 +21,8 @@ export default async function AdminAccountPage({
 }) {
   const user = await requireCmsUser();
   const mfa = await getOwnMfaStatus();
-  // Admins change their password only after a recent step-up (server-enforced).
+  // Roles that require MFA (admins, providers) change their password only after
+  // a recent step-up (server-enforced in `changePassword()`).
   const stepUp = roleRequiresMfa(user.role) ? await getStepUpStatus() : null;
   const { herstelcode } = await searchParams;
 

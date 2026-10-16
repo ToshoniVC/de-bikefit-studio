@@ -51,7 +51,7 @@ export async function createProviderAction(
     const { temporaryPassword } = result.data;
     return actionOk(
       temporaryPassword
-        ? 'Aanbieder aangemaakt. Geef dit tijdelijke wachtwoord één keer door; het moet bij de eerste aanmelding gewijzigd worden.'
+        ? 'Aanbieder aangemaakt. Geef dit tijdelijke wachtwoord één keer door; bij de eerste aanmelding kiest de aanbieder een eigen wachtwoord en stelt tweestapsverificatie in (authenticator-app).'
         : 'Aanbieder aangemaakt.',
       temporaryPassword ? { temporaryPassword } : undefined,
     );

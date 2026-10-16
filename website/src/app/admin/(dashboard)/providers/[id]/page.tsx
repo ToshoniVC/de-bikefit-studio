@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 
 import { Badge } from '@/components/ui/badge';
 import { ForbiddenNotice } from '@/components/admin/forbidden';
+import { GoogleConnectionCard } from '@/components/admin/google-connection-card';
 import { GoogleFlash } from '@/components/admin/google-flash';
 import {
   toLocationOption,
@@ -12,18 +13,17 @@ import {
 import {
   BusinessHoursEditor,
   ExceptionsEditor,
-  GoogleConnectionCard,
   ProviderProfileForm,
 } from '@/components/admin/provider-editor';
 import { ProviderServicesForm } from '@/components/admin/provider-services-form';
 import { PageHeading } from '@/components/admin/shell';
 import { badgeTone } from '@/components/admin/tones';
+import { googleConnectSetup } from '@/lib/booking/google';
 import { getProvider, listLocations, listServices } from '@/lib/booking/repo';
 import { todayYmd } from '@/lib/booking/time';
 import { requireCmsUser } from '@/lib/cms/auth';
 import { listOfferingSubscriptionGroups, type OfferingSubscriptionGroup } from '@/lib/offers/repo';
 import { can, ROLE_LABELS } from '@/lib/cms/permissions';
-import { features } from '@/lib/env';
 
 export const metadata = { title: 'Aanbieder' };
 
@@ -128,7 +128,7 @@ export default async function AdminProviderPage({
           google={editor.google}
           scope="any"
           canConnect={canEdit}
-          configured={features.googleCalendar}
+          setup={googleConnectSetup({ canManage: canEdit })}
         />
       </div>
     </>
