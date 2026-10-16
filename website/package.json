@@ -26,6 +26,7 @@
     "cms:patch-booking-cta": "tsx scripts/cms-patch-booking-cta.mts",
     "cms:patch-page-cleanup": "tsx scripts/cms-patch-page-cleanup.mts",
     "cms:patch-cadeaubon": "tsx scripts/cms-patch-cadeaubon.mts",
+    "cms:migrate-offerings": "tsx scripts/cms-migrate-offerings.mts",
     "cms:selftest": "tsx scripts/cms-selftest.mts",
     "cms:retention": "tsx scripts/cms-retention.mts",
     "cms:mfa-reset": "tsx scripts/cms-mfa-reset.mts",

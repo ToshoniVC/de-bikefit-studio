@@ -33,7 +33,7 @@ export function StudioPageView({
   studio: StudioPage;
   requestedService?: string | null;
 }) {
-  const { page, settings, canonical, locale, parents } = studio;
+  const { page, settings, canonical, locale, parents, offer } = studio;
   const origin = absoluteUrl('/').replace(/\/+$/, '');
   const isHome = page.slug === '';
   const blocks = page.snapshot.blocks;
@@ -66,7 +66,7 @@ export function StudioPageView({
     trail.length > 0 ? breadcrumbJsonLd(canonical, trail) : null,
     faqJsonLd(blocks, canonical),
     ...servicesJsonLd(blocks, settings, origin),
-    offerServiceJsonLd(blocks, settings, origin, canonical),
+    offerServiceJsonLd(blocks, settings, origin, canonical, offer?.offering ?? null),
   ]);
 
   return (
@@ -93,7 +93,11 @@ export function StudioPageView({
         </nav>
       ) : null}
 
-      <BlockRenderer blocks={blocks} locale={locale} page={{ slug: page.slug, requestedService }} />
+      <BlockRenderer
+        blocks={blocks}
+        locale={locale}
+        page={{ slug: page.slug, requestedService, offer }}
+      />
     </>
   );
 }

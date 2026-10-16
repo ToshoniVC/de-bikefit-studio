@@ -1,10 +1,14 @@
 import type { MetadataRoute } from 'next';
 import { listPublishedPages } from '@/lib/cms/content';
+import { loadOfferCatalogue } from '@/lib/cms/offers-content';
 import { defaultLocale, localePath, localeTag } from '@/lib/studio/locale';
 import { absoluteUrl } from '@/lib/studio/site';
 
 /**
  * `/sitemap.xml`, built from the published pages in the CMS.
+ *
+ * Offer pages hidden in Beheer → Aanbod ("Tonen op de website" off) are left
+ * out too: they answer 404.
  *
  * Pages flagged `noIndex` are left out — a sitemap is a list of pages you want
  * indexed, so including one you have told robots to skip is a contradiction
@@ -24,10 +28,14 @@ import { absoluteUrl } from '@/lib/studio/site';
 export const dynamic = 'force-dynamic';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const pages = await listPublishedPages(defaultLocale);
+  const [pages, catalogue] = await Promise.all([
+    listPublishedPages(defaultLocale),
+    loadOfferCatalogue(defaultLocale),
+  ]);
+  const hidden = new Set(catalogue.hiddenPageIds);
 
   return pages
-    .filter((page) => !page.noIndex)
+    .filter((page) => !page.noIndex && !hidden.has(page.id))
     .map((page) => {
       const url = absoluteUrl(localePath(defaultLocale, page.slug));
       return {

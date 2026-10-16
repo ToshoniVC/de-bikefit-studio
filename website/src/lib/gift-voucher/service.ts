@@ -12,7 +12,7 @@ import { deliverGiftVoucherOrder, type GiftVoucherResult, type GiftVoucherStore 
  * The real wiring behind "Bestel nu" (`actions.ts` → here → `delivery.ts`):
  *
  *  - recipient: env `GIFT_VOUCHER_RECIPIENT`, else `/admin/email` →
- *    *Ontvanger cadeaubonbestellingen*; deliberately NOT the public
+ *    *Ontvanger bestellingen en aanvragen*; deliberately NOT the public
  *    `contact.email` (see `recipient.ts`); empty = nothing is sent;
  *  - sender: the configured sender (`EMAIL_FROM` or `/admin/email`) through
  *    Resend (`src/lib/email/send.ts`), never the visitor's address; the

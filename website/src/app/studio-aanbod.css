@@ -246,6 +246,48 @@
   .studio-section--dark .studio-offer-card__more {
     color: var(--ds-color-fg-inverse);
   }
+  /* Booking status (Beheer → Aanbod). "Tijdelijk niet online te boeken" greys
+     the card out; the text says it too, so colour is never the only signal. */
+  .studio-offer-card__status {
+    font-family: var(--ds-font-display);
+    font-size: var(--ds-text-micro);
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--ds-color-fg-muted);
+  }
+  .studio-section--dark .studio-offer-card__status {
+    color: var(--ds-color-fg-inverse-muted);
+  }
+  /* Greyed without opacity, so every text keeps its contrast. */
+  .studio-offer-card--unavailable,
+  .studio-offer-card--unavailable:hover {
+    background: var(--ds-color-surface-alt);
+    border-style: dashed;
+    border-color: var(--ds-color-border-strong);
+  }
+  .studio-offer-card--unavailable .studio-offer-card__title {
+    color: var(--ds-color-fg-muted);
+  }
+  .studio-offer-head--unavailable .studio-offer-head__facts dd[data-offer-status] {
+    color: var(--ds-color-fg-muted);
+  }
+  .studio-offer-head .studio-btn:disabled,
+  .studio-offer__actions .studio-btn:disabled {
+    background: var(--ds-color-surface-alt);
+    border-color: var(--ds-color-border-strong);
+    color: var(--ds-color-fg-muted);
+    cursor: not-allowed;
+  }
+  .studio-offer__status-note {
+    max-width: 60ch;
+    margin-top: var(--ds-space-sm);
+    font-size: var(--ds-text-small);
+    color: var(--ds-color-fg-muted);
+  }
+  .studio-offer__enquiry {
+    margin-top: var(--ds-space-xl);
+    scroll-margin-top: var(--ds-space-xl);
+  }
 
   /* ---- team ------------------------------------------------------------- */
   .studio-team {

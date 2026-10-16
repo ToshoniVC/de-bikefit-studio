@@ -1,6 +1,14 @@
 import { z } from 'zod';
 import { formatDuration, formatPrice } from '@/lib/booking/format';
 import { emptyImage, type CmsImageRef } from '@/lib/cms/block-primitives';
+import {
+  offeringBookingSlugs,
+  offeringDurationLabel,
+  offeringPriceLabel,
+  type OfferingStatus,
+  type ResolvedOffering,
+  type ResolvedVariant,
+} from './offering';
 
 /**
  * The public offer ("Aanbod") and how it meets the booking catalogue.
@@ -17,11 +25,15 @@ import { emptyImage, type CmsImageRef } from '@/lib/cms/block-primitives';
  *  - a **booking service** is a `cms_services` row: a bookable slot length with
  *    providers behind it. Its id and slug are what existing bookings reference.
  *
- * An offer points at zero or more booking services through
- * `bookingServiceSlugs` (editable in the CMS). Zero means "not online
- * bookable yet": the booking page then shows a contact prompt that names the
- * offer instead of a widget with an unrelated default fit. Nothing here ever
- * renames, creates or re-subscribes a booking service.
+ * Since 16 Oct 2026 (Beheer → Aanbod) an offer's settings — shown or not,
+ * variants, prices, direct booking or enquiry — live in `cms_offerings`
+ * (`./offering.ts`); the server resolves them (`ResolvedOffering`) and hands
+ * them to {@link offerFromPage}, which derives `bookingServiceSlugs` from the
+ * bookable variants. Without a resolved offering (tests, legacy callers) the
+ * block's own `bookingServiceSlugs` apply as before. Empty means "not online
+ * bookable": the booking page then shows a prompt that names the offer instead
+ * of a widget with an unrelated default fit. Nothing here ever renames,
+ * creates or re-subscribes a booking service.
  */
 
 /** Overview order; `overige` (13 Oct 2026) holds the gift voucher, after the services. */
@@ -185,6 +197,8 @@ export type OfferBlockData = {
 export type CatalogueOffer = {
   /** `service`: an `offer` block (bookable or enquiry); `giftVoucher`: the order form, never booked. */
   kind: 'service' | 'giftVoucher';
+  /** The offer page's `cms_pages.id` when known (the offering's key). */
+  pageId?: string;
   slug: string;
   path: string;
   category: OfferCategory;
@@ -194,7 +208,12 @@ export type CatalogueOffer = {
   summary: string;
   priceLabel: string;
   durationLabel: string;
+  /** Booking services `/afspraak` may use for this offer, in variant order; empty = not online bookable. */
   bookingServiceSlugs: string[];
+  /** Bookable, temporarily unavailable or enquiry only; `null` for the gift voucher. */
+  status: OfferingStatus | null;
+  /** The resolved variants (empty for the gift voucher and without a resolved offering). */
+  variants: ResolvedVariant[];
   image: CmsImageRef;
 };
 
@@ -212,10 +231,14 @@ export type GiftVoucherBlockData = {
  * `offer` block wins; a page with only a `giftVoucher` block becomes a card
  * under Overige with "Bedrag naar keuze".
  */
-export function offerFromPage(page: {
-  slug: string;
-  blocks: ReadonlyArray<{ type: string; data: unknown }>;
-}): CatalogueOffer | null {
+export function offerFromPage(
+  page: {
+    id?: string;
+    slug: string;
+    blocks: ReadonlyArray<{ type: string; data: unknown }>;
+  },
+  offering?: ResolvedOffering | null,
+): CatalogueOffer | null {
   const slug = offerSlugFromPageSlug(page.slug);
   if (!slug) return null;
   const block = page.blocks.find((entry) => entry.type === 'offer');
@@ -225,6 +248,7 @@ export function offerFromPage(page: {
     const data = voucher.data as GiftVoucherBlockData;
     return {
       kind: 'giftVoucher',
+      ...(page.id ? { pageId: page.id } : {}),
       slug,
       path: offerPagePath(slug),
       category: 'overige',
@@ -234,22 +258,41 @@ export function offerFromPage(page: {
       priceLabel: GIFT_VOUCHER_PRICE_LABEL,
       durationLabel: '',
       bookingServiceSlugs: [],
+      status: null,
+      variants: [],
       image: { ...emptyImage },
     };
   }
   const data = block.data as OfferBlockData;
-  return {
-    kind: 'service',
+  const base = {
+    kind: 'service' as const,
+    ...(page.id ? { pageId: page.id } : {}),
     slug,
     path: offerPagePath(slug),
     category: data.category,
     sortOrder: data.sortOrder,
     title: data.title,
     summary: data.summary.trim() || data.intro.trim(),
+    image: data.image,
+  };
+  if (offering) {
+    return {
+      ...base,
+      priceLabel: offeringPriceLabel(offering),
+      durationLabel: offeringDurationLabel(offering, data.duration),
+      bookingServiceSlugs: offeringBookingSlugs(offering),
+      status: offering.status,
+      variants: offering.variants,
+    };
+  }
+  const bookingServiceSlugs = data.bookingServiceSlugs.map((entry) => entry.trim()).filter(Boolean);
+  return {
+    ...base,
     priceLabel: offerPriceLabel(data),
     durationLabel: offerDurationLabel(data.duration),
-    bookingServiceSlugs: data.bookingServiceSlugs.map((entry) => entry.trim()).filter(Boolean),
-    image: data.image,
+    bookingServiceSlugs,
+    status: bookingServiceSlugs.length ? 'bookable' : 'enquiry',
+    variants: [],
   };
 }
 
@@ -289,7 +332,12 @@ export type BookingSelection =
    */
   | {
       kind: 'offer';
-      offer: { slug: string; title: string; path: string };
+      /**
+       * `status` tells an empty `serviceIds` apart: `enquiry` (asked for through
+       * the form on the offer page, on purpose) or `unavailable` (direct booking,
+       * but nobody offers it right now). `null` when unknown.
+       */
+      offer: { slug: string; title: string; path: string; status: OfferingStatus | null };
       serviceIds: string[];
       initialServiceId: string | null;
     };
@@ -308,6 +356,7 @@ export function resolveBookingSelection(input: {
   offers: ReadonlyArray<
     Pick<CatalogueOffer, 'slug' | 'title' | 'path' | 'bookingServiceSlugs'> & {
       kind?: CatalogueOffer['kind'];
+      status?: OfferingStatus | null;
     }
   >;
   services: readonly BookableService[];
@@ -325,7 +374,12 @@ export function resolveBookingSelection(input: {
     }
     return {
       kind: 'offer',
-      offer: { slug: offer.slug, title: offer.title, path: offer.path },
+      offer: {
+        slug: offer.slug,
+        title: offer.title,
+        path: offer.path,
+        status: offer.status ?? null,
+      },
       serviceIds,
       initialServiceId: serviceIds.length === 1 ? serviceIds[0] : null,
     };

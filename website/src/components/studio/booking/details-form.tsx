@@ -223,7 +223,8 @@ export function DetailsForm({
 
 type BaseFieldProps = {
   id: string;
-  name: DetailsField;
+  /** A `DetailsField` here; the offer enquiry form reuses these fields with its own names. */
+  name: string;
   label: string;
   value: string;
   error?: string;
@@ -268,7 +269,7 @@ function FieldShell({
   );
 }
 
-function TextField({
+export function TextField({
   id,
   name,
   label,
@@ -333,7 +334,7 @@ function TextField({
  * is cleared again, so "required" still means a number was typed. The server
  * normalizes once more (`@/lib/booking/phone`).
  */
-function PhoneField(props: Omit<BaseFieldProps, 'label'>) {
+export function PhoneField(props: Omit<BaseFieldProps, 'label'>) {
   const { value, onChange } = props;
   return (
     <TextField

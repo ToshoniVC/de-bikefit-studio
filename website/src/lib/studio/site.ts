@@ -9,6 +9,9 @@ import {
   type PublishedPage,
 } from '@/lib/cms/content';
 import type { NavigationItem, SiteSettings } from '@/lib/cms/blocks';
+import { loadOfferCatalogue } from '@/lib/cms/offers-content';
+import { offerSlugFromPageSlug } from '@/lib/offers/catalogue';
+import type { CatalogueOfferEntry } from '@/lib/offers/offer-catalogue';
 import { siteUrl } from '@/lib/env';
 import { localePath, type StudioLocale } from './locale';
 
@@ -48,6 +51,11 @@ export type StudioPage = {
    * `/aanbod/voetanalyse`. Feeds the visible breadcrumb and its JSON-LD.
    */
   parents: { title: string; path: string }[];
+  /**
+   * On an offer page (`/aanbod/<slug>`): its catalogue entry with the resolved
+   * offering settings (Beheer → Aanbod); `null` elsewhere.
+   */
+  offer: CatalogueOfferEntry | null;
 };
 
 /**
@@ -60,6 +68,14 @@ export async function getStudioPage(
 ): Promise<StudioPage | null> {
   const page = await getPublishedPage(locale, slug);
   if (!page) return null;
+
+  // An offer whose "Tonen op de website" is off is not served at all.
+  let offer: CatalogueOfferEntry | null = null;
+  if (offerSlugFromPageSlug(page.slug)) {
+    const catalogue = await loadOfferCatalogue(locale);
+    if (catalogue.hiddenPageIds.includes(page.id)) return null;
+    offer = catalogue.byPageId[page.id] ?? null;
+  }
 
   const settings = await getSiteSettings(locale);
   const path = localePath(locale, page.slug);
@@ -82,6 +98,7 @@ export async function getStudioPage(
     path,
     canonical: override ? absoluteUrl(override) : absoluteUrl(path),
     parents,
+    offer,
   };
 }
 

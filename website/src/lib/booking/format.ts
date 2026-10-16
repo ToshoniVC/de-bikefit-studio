@@ -42,6 +42,18 @@ export function formatPrice(priceCents: number | null | undefined): string {
 }
 
 /** `90` → `'1 u 30 min'`, `60` → `'1 uur'`, `45` → `'45 min'`. */
+/**
+ * An admin price field → cents: "149,50" / "149.50" / "€ 150" / "150"; `null`
+ * when empty, `undefined` when it is not an amount (at most two decimals).
+ * Shared by Beheer → Diensten and Beheer → Aanbod.
+ */
+export function euroInputToCents(raw: string): number | null | undefined {
+  if (!raw) return null;
+  const normalized = raw.replace(/\s|€/g, '').replace(',', '.');
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return undefined;
+  return Math.round(Number(normalized) * 100);
+}
+
 export function formatDuration(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;

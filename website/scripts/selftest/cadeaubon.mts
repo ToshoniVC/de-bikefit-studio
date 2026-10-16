@@ -12,7 +12,7 @@
  *    replaced): no `RESEND_API_KEY` or no `EMAIL_FROM` or a provider refusal
  *    is "not sent" and leaves no sent marker; only an accepted request is a
  *    success, sent from `EMAIL_FROM` to the order inbox (/admin/email →
- *    *Ontvanger cadeaubonbestellingen*) with the visitor as Reply-To; a repeat is
+ *    *Ontvanger bestellingen en aanvragen*) with the visitor as Reply-To; a repeat is
  *    not mailed twice; the rate limit holds; the rows never hold the plain
  *    e-mail address and never count as booking attempts. The public
  *    `contact.email` alone is never used as the recipient; env

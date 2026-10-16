@@ -11,8 +11,10 @@ import type { CmsRole } from '@/db/cms-schema';
  *                 `service.create`, no `service.manage` (16 Oct 2026). No access
  *                 to pages, media or settings.
  *  - **editor** — day-to-day content work: pages, blocks, media, navigation,
- *                 plus read-only access to bookings, services, locations and
- *                 providers.
+ *                 the offering settings in Beheer → Aanbod (`offering.manage`:
+ *                 shown or not, variants, prices, direct booking or enquiry;
+ *                 Toshoni, 16 Oct 2026), plus read-only access to bookings,
+ *                 services, locations and providers.
  *  - **admin**  — everything, including publishing, users, redirects, site
  *                 settings, the e-mail service, the audit log and all booking
  *                 management.
@@ -56,6 +58,14 @@ export const CMS_PERMISSIONS = [
    * mail. Changes also need a recent step-up (`src/lib/email/repo.ts`).
    */
   'email.manage',
+  /**
+   * Beheer → Aanbod: per offer page, shown on the website or not, one option or
+   * Volwassene/Jeugd, the price per variant, and booked directly (as an existing
+   * service) or asked for through the enquiry form. Takes effect at once (no
+   * publish step), like the booking catalogue. Creating or changing a service
+   * itself stays `service.manage`.
+   */
+  'offering.manage',
   // Booking
   'booking.read',
   'booking.read.own',
@@ -91,6 +101,7 @@ const EDITOR_PERMISSIONS = new Set<CmsPermission>([
   'navigation.update',
   'settings.read',
   'redirect.read',
+  'offering.manage',
   'booking.read',
   'service.read',
   'location.read',

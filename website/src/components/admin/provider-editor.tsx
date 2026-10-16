@@ -27,11 +27,7 @@ import {
   setAvailabilityExceptionsAction,
   setBusinessHoursAction,
 } from '@/lib/cms/actions/availability';
-import {
-  disconnectGoogleAction,
-  setProviderServicesAction,
-  updateProviderAction,
-} from '@/lib/cms/actions/providers';
+import { disconnectGoogleAction, updateProviderAction } from '@/lib/cms/actions/providers';
 import { IDLE_STATE } from '@/lib/cms/actions/state';
 import type { CmsAvailabilityExceptionKind } from '@/db/cms-schema';
 
@@ -85,7 +81,7 @@ export type GoogleStatus = {
   error: string | null;
 };
 
-function ScopeFields({ providerId, scope }: { providerId: string; scope: EditorScope }) {
+export function ScopeFields({ providerId, scope }: { providerId: string; scope: EditorScope }) {
   return (
     <>
       <input type="hidden" name="providerId" value={providerId} />
@@ -208,88 +204,8 @@ export function ProviderProfileForm({
 
 // ---------------------------------------------------------------------------
 // Services (subscriptions with optional location override)
-// ---------------------------------------------------------------------------
-
-export function ProviderServicesForm({
-  providerId,
-  services,
-  subscriptions,
-  locations,
-  scope,
-  canEdit,
-  description = 'Vink de diensten aan die je aanbiedt. Kies per dienst eventueel een andere locatie.',
-}: {
-  providerId: string;
-  services: ProviderServiceOption[];
-  subscriptions: ProviderSubscription[];
-  locations: LocationOption[];
-  scope: EditorScope;
-  canEdit: boolean;
-  description?: string;
-}) {
-  const [state, formAction] = useActionState(setProviderServicesAction, IDLE_STATE);
-  const subscribed = new Map(subscriptions.map((row) => [row.serviceId, row.locationId]));
-  // Inactive services stay listed only while subscribed, so they can be removed.
-  const visible = services.filter((service) => service.isActive || subscribed.has(service.id));
-
-  return (
-    <SectionCard title="Diensten" description={description}>
-      <form action={formAction} className="flex flex-col gap-3">
-        <ScopeFields providerId={providerId} scope={scope} />
-        {visible.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Er zijn nog geen diensten.</p>
-        ) : (
-          <fieldset disabled={!canEdit} className="flex flex-col gap-2">
-            {visible.map((service) => (
-              <div
-                key={service.id}
-                className="flex flex-col gap-2 border border-border bg-background p-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    name="serviceIds"
-                    value={service.id}
-                    defaultChecked={subscribed.has(service.id)}
-                    className="size-4 rounded border-input accent-primary"
-                  />
-                  <span className="font-medium">{service.name}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {service.durationMinutes} min
-                  </span>
-                  {!service.isActive ? <Badge variant="secondary">Inactief</Badge> : null}
-                </label>
-                <Select
-                  name={`location:${service.id}`}
-                  defaultValue={subscribed.get(service.id) ?? ''}
-                  aria-label={`Locatie voor ${service.name}`}
-                  className="sm:w-72"
-                >
-                  <option value="">
-                    {service.locationName
-                      ? `Locatie van de dienst (${service.locationName})`
-                      : 'Mijn standaardlocatie'}
-                  </option>
-                  {locations.map((location) => (
-                    <option key={location.id} value={location.id}>
-                      {locationOptionLabel(location)}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            ))}
-          </fieldset>
-        )}
-        <StatusMessage state={state} />
-        {canEdit && visible.length > 0 ? (
-          <div>
-            <SubmitButton>Diensten opslaan</SubmitButton>
-          </div>
-        ) : null}
-      </form>
-    </SectionCard>
-  );
-}
+// The services form lives in `./provider-services-form.tsx` (split off on
+// 16 Oct 2026, size limit); it reuses `ScopeFields` and the types above.
 
 // ---------------------------------------------------------------------------
 // Business hours

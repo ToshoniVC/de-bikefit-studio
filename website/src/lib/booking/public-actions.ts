@@ -15,6 +15,7 @@ import type {
   BookingSummary,
   CancelActionResult,
 } from '@/components/studio/booking/types';
+import { isServiceBookableOnline } from '@/lib/cms/offers-content';
 import { clientIpFromHeaders } from '@/lib/request-ip';
 import { logBookingFailure } from './booking-log';
 import { getAvailability } from './content';
@@ -39,12 +40,20 @@ import {
  *
  * Next's server actions carry their own Origin/Host check, which is what keeps
  * these from being posted cross-site.
+ *
+ * Offerings (Beheer → Aanbod): a service that is a variant of an offering is
+ * only bookable while that offering is shown and booked directly. Both the
+ * availability and the booking action refuse a held-back service before
+ * anything else is looked up (`isServiceBookableOnline()`), so a crafted
+ * request cannot book around an enquiry-only or hidden offering. It fails
+ * closed when the offering settings cannot be read (migration 0010 missing).
  */
 
 const LOAD_ERROR = 'De agenda kon niet geladen worden. Probeer het opnieuw.';
 const BOOK_ERROR = 'Er ging iets mis bij het boeken. Probeer het opnieuw of bel ons.';
 const SLOT_TAKEN = 'Dit moment is net geboekt. Kies een ander moment.';
 const CANCEL_ERROR = 'Er ging iets mis. Probeer het opnieuw of bel ons.';
+const NOT_ONLINE = 'Deze dienst kun je niet online boeken.';
 
 const ymd = z
   .string()
@@ -122,6 +131,9 @@ export async function availabilityAction(
   }
 
   try {
+    if (!(await isServiceBookableOnline(parsed.data.serviceId, DEFAULT_LOCALE))) {
+      return { ok: false, message: NOT_ONLINE };
+    }
     const result = await getAvailability({
       serviceId: parsed.data.serviceId,
       providerId: parsed.data.providerId || null,
@@ -158,6 +170,9 @@ export async function bookAction(input: BookActionInput): Promise<BookActionResu
   const data = parsed.data;
 
   try {
+    if (!(await isServiceBookableOnline(data.serviceId, DEFAULT_LOCALE))) {
+      return { ok: false, code: 'invalid', message: NOT_ONLINE, fieldErrors: {} };
+    }
     const result = await createPublicBooking(
       {
         serviceId: data.serviceId,

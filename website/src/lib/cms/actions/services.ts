@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { slugify } from '@/lib/booking/format';
+import { euroInputToCents, slugify } from '@/lib/booking/format';
 import { createService, deleteService, updateService } from '@/lib/booking/repo';
 import { runAction } from './run';
 import { actionError, actionOk, boolField, field, type ActionState } from './state';
@@ -19,14 +19,6 @@ function intIn(raw: string, min: number, max: number): number | null {
   if (!/^-?\d+$/.test(raw)) return null;
   const value = Number(raw);
   return value >= min && value <= max ? value : null;
-}
-
-/** "149,50" / "149.50" / "150" → cents; `undefined` when invalid. */
-function euroToCents(raw: string): number | null | undefined {
-  if (!raw) return null;
-  const normalized = raw.replace(/\s|€/g, '').replace(',', '.');
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return undefined;
-  return Math.round(Number(normalized) * 100);
 }
 
 type ServiceFormValues = {
@@ -70,7 +62,7 @@ function parseServiceForm(
     return { ok: false, message: 'De buffer moet tussen 0 en 240 minuten liggen.' };
   }
 
-  const priceCents = euroToCents(field(form, 'price'));
+  const priceCents = euroInputToCents(field(form, 'price'));
   if (priceCents === undefined) {
     return { ok: false, message: 'Geef de prijs in euro, bv. 150 of 149,50.' };
   }

@@ -34,6 +34,8 @@ function offer(partial: Partial<CatalogueOffer> & { slug: string }): CatalogueOf
     priceLabel: OFFER_PRICE_FALLBACK,
     durationLabel: 'Duur in overleg',
     bookingServiceSlugs: [],
+    status: partial.bookingServiceSlugs?.length ? 'bookable' : 'enquiry',
+    variants: [],
     image: emptyImage,
     ...partial,
   };
@@ -291,6 +293,7 @@ describe('resolveBookingSelection (service preselection)', () => {
         slug: 'bikefit-huidige-fiets',
         title: 'Bikefit – huidige fiets',
         path: '/aanbod/bikefit-huidige-fiets',
+        status: 'bookable',
       },
       serviceIds: ['svc-adult', 'svc-youth'],
       initialServiceId: null,

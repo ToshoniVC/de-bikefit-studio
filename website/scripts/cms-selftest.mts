@@ -58,6 +58,12 @@
  *      service has `created_by` = them) cannot create, edit, price, deactivate
  *      or reactivate, through the repo or the server actions; subscriptions on
  *      the own profile to active services only (`scripts/selftest/service-catalogue.mts`)
+ *  14d. Beheer → Aanbod: migration 0010, `cms:migrate-offerings` (dry run writes
+ *      nothing, apply, idempotent, public card unchanged), `offering.manage`
+ *      (provider refused, editor and admin save), provider self-service and
+ *      booking eligibility (unavailable / bookable / enquiry / hidden, the
+ *      booking-action gate, hidden page 404), the enquiry form on the real store
+ *      with no outbound mail (`scripts/selftest/offerings.mts`)
  *  15. aanbod rollout + service preselection: the CLI dry run and the plan
  *      write nothing (no session, no audit, read-only db), draft guard,
  *      apply/backup, booking tables untouched, catalogue, menus, /over-ons
@@ -1238,6 +1244,17 @@ async function bookingSections(
     signInAs,
     admin,
     provider: { id: providerId, userId: providerUserId },
+  });
+  // Beheer → Aanbod: offering settings, provider self-service, enquiry (section 14d).
+  const { offeringsSection } = await import('./selftest/offerings.mjs');
+  await offeringsSection({
+    db,
+    check,
+    section,
+    signInAs,
+    admin,
+    provider: { id: providerId, userId: providerUserId },
+    cookieJar,
   });
   await signInAs(providerUserId);
   const closure = await repo.setAvailabilityExceptions(providerId, [

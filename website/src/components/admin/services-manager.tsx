@@ -45,8 +45,10 @@ export type ServiceRow = {
   providerCount: number;
   /** `service.manage` only: the catalogue is the admin's (providers subscribe, never edit). */
   editable: boolean;
-  /** Published offers that link to it (`bookingServiceSlugs`), by title. */
+  /** Offerings (Beheer → Aanbod) that use it as a variant, by title. */
   offers: string[];
+  /** Its public price and label are set in Beheer → Aanbod (a saved offering uses it). */
+  managedByOffering: boolean;
 };
 
 export type LocationOption = {
@@ -74,24 +76,40 @@ export function ServiceFields({
   defaultBuffer: number;
 }) {
   const id = (name: string) => `${idPrefix}-${name}`;
+  const managed = Boolean(service?.managedByOffering);
   return (
     <>
+      {managed ? (
+        <>
+          {/* Kept as stored: the public label and price come from Beheer → Aanbod. */}
+          <input type="hidden" name="choiceLabel" value={service?.choiceLabel ?? ''} />
+          <input type="hidden" name="price" value={centsToEuroInput(service?.priceCents ?? null)} />
+          {service?.showPrice ? <input type="hidden" name="showPrice" value="on" /> : null}
+          <p className="mb-3 border-l-2 border-primary bg-muted px-3 py-2 text-xs text-muted-foreground">
+            Deze dienst is een variant van {service?.offers.join(', ')}. Prijs en label (Volwassene
+            of Jeugd) stel je in bij Beheer → Aanbod; hier beheer je duur, buffer, locatie en de
+            ouderregel.
+          </p>
+        </>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Naam" htmlFor={id('name')}>
           <Input id={id('name')} name="name" defaultValue={service?.name} required />
         </Field>
-        <Field
-          label="Keuzelabel onder een aanbod"
-          htmlFor={id('choiceLabel')}
-          hint="Bv. Volwassene of Jeugd: zo heet deze keuze als een aanbod meerdere diensten koppelt. Leeg = de naam."
-        >
-          <Input
-            id={id('choiceLabel')}
-            name="choiceLabel"
-            defaultValue={service?.choiceLabel}
-            maxLength={40}
-          />
-        </Field>
+        {managed ? null : (
+          <Field
+            label="Keuzelabel onder een aanbod"
+            htmlFor={id('choiceLabel')}
+            hint="Bv. Volwassene of Jeugd: zo heet deze keuze als een aanbod meerdere diensten koppelt. Leeg = de naam."
+          >
+            <Input
+              id={id('choiceLabel')}
+              name="choiceLabel"
+              defaultValue={service?.choiceLabel}
+              maxLength={40}
+            />
+          </Field>
+        )}
         <Field
           label="Slug"
           htmlFor={id('slug')}
@@ -131,18 +149,20 @@ export function ServiceFields({
             defaultValue={service?.bufferAfterMinutes ?? ''}
           />
         </Field>
-        <Field
-          label="Prijs (euro)"
-          htmlFor={id('price')}
-          hint="Bv. 150 of 149,50. Leeg = geen prijs."
-        >
-          <Input
-            id={id('price')}
-            name="price"
-            inputMode="decimal"
-            defaultValue={centsToEuroInput(service?.priceCents ?? null)}
-          />
-        </Field>
+        {managed ? null : (
+          <Field
+            label="Prijs (euro)"
+            htmlFor={id('price')}
+            hint="Bv. 150 of 149,50. Leeg = geen prijs."
+          >
+            <Input
+              id={id('price')}
+              name="price"
+              inputMode="decimal"
+              defaultValue={centsToEuroInput(service?.priceCents ?? null)}
+            />
+          </Field>
+        )}
         <Field
           label="Locatie"
           htmlFor={id('locationId')}
@@ -194,11 +214,13 @@ export function ServiceFields({
         />
       </Field>
       <div className="mt-3 flex flex-col gap-2">
-        <CheckboxField
-          name="showPrice"
-          label="Prijs tonen op de website"
-          defaultChecked={service?.showPrice ?? false}
-        />
+        {managed ? null : (
+          <CheckboxField
+            name="showPrice"
+            label="Prijs tonen op de website"
+            defaultChecked={service?.showPrice ?? false}
+          />
+        )}
         <CheckboxField
           name="requiresGuardian"
           label="Ouder of voogd verplicht"
@@ -285,7 +307,9 @@ export function ServicesManager({
                   ) : null}
                   <code className="bg-muted px-1 text-xs">{service.slug}</code>
                   <Badge variant="outline">{service.durationMinutes} min</Badge>
-                  {service.showPrice && service.priceCents !== null ? (
+                  {!service.managedByOffering &&
+                  service.showPrice &&
+                  service.priceCents !== null ? (
                     <Badge variant="outline">{formatPrice(service.priceCents)}</Badge>
                   ) : null}
                   {service.requiresGuardian ? <Badge variant="secondary">Met ouder</Badge> : null}
@@ -304,8 +328,8 @@ export function ServicesManager({
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {service.offers.length > 0
-                    ? `Online te boeken via het aanbod: ${service.offers.join(', ')}.`
-                    : 'Aan geen gepubliceerd aanbod gekoppeld: enkel rechtstreeks te kiezen op /afspraak.'}
+                    ? `Variant van het aanbod: ${service.offers.join(', ')} (Beheer → Aanbod). Enkel via dat aanbod te boeken, zolang het getoond wordt en rechtstreeks geboekt wordt.`
+                    : 'Geen variant van een aanbod: rechtstreeks te kiezen op /afspraak.'}
                 </p>
 
                 {service.editable ? (

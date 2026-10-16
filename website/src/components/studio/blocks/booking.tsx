@@ -1,11 +1,11 @@
 import { getSiteSettings } from '@/lib/cms/content';
-import { listPublishedOffers } from '@/lib/cms/offers-content';
+import { loadOfferCatalogue } from '@/lib/cms/offers-content';
 import {
   groupBookingChoices,
   resolveBookingSelection,
   type BookingSelection,
-  type CatalogueOffer,
 } from '@/lib/offers/catalogue';
+import type { OfferCatalogue } from '@/lib/offers/offer-catalogue';
 import { BookingWidget } from '../booking/booking-widget';
 import { BookingHeadingLevel } from '../booking/heading-level';
 import { loadBookingOptions, type BookingOptions } from '../booking/load';
@@ -35,7 +35,12 @@ import type { BlockProps } from './types';
  * published offer links to appear once, under that offer, as a sub-selection
  * (`groupBookingChoices()`: "Bikefit – huidige fiets" → Volwassene / Jeugd);
  * services no offer links to stay directly selectable. The chosen SERVICE is
- * what is booked, with its own duration, availability, guardian rule and price.
+ * what is booked, with its own duration, availability and guardian rule.
+ *
+ * Beheer → Aanbod decides which offer links which services: a service that is
+ * a variant of an offering is offered only through that offering while it is
+ * shown and booked directly (`withheldServiceIds`, also enforced by the
+ * booking actions), labelled "Volwassene" / "Jeugd" and priced as set there.
  *
  * It never breaks the page: when the booking tables are unreachable (e.g. the
  * migration has not run yet) or nothing is bookable, the section shows a short
@@ -62,11 +67,30 @@ export async function BookingBlock({
   }
 
   // Cached reader; without it the widget simply lists every service on its own.
-  let offers: CatalogueOffer[] = [];
+  let catalogue: OfferCatalogue | null = null;
   try {
-    offers = await listPublishedOffers(locale);
+    catalogue = await loadOfferCatalogue(locale);
   } catch {
     console.error('[booking] offer_catalogue_unavailable');
+  }
+  const offers = catalogue?.offers ?? [];
+  if (options && catalogue) {
+    const withheld = new Set(catalogue.withheldServiceIds);
+    const display = catalogue.variantDisplay;
+    options = {
+      ...options,
+      services: options.services
+        .filter((service) => !withheld.has(service.id))
+        .map((service) => {
+          const variant = display[service.id];
+          if (!variant) return service;
+          return {
+            ...service,
+            choiceLabel: variant.label || service.choiceLabel,
+            priceLabel: variant.priceLabel,
+          };
+        }),
+    };
   }
   const selection: BookingSelection = resolveBookingSelection({
     requested: page.requestedService,

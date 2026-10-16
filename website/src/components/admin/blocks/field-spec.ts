@@ -317,7 +317,11 @@ export function blockSpec(type: BlockType): BlockSpec {
     label: definition.label,
     description: definition.description,
     hint: definition.editorHint ?? '',
-    fields: def?.type === 'object' ? objectFields(def) : [],
+    // Fields another screen owns are left out; the editor keeps their stored values.
+    fields:
+      def?.type === 'object'
+        ? objectFields(def).filter((field) => !definition.managedFields?.includes(field.name))
+        : [],
   };
 }
 

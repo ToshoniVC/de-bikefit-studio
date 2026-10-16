@@ -15,14 +15,15 @@ import {
   ExceptionsEditor,
   GoogleConnectionCard,
   ProviderProfileForm,
-  ProviderServicesForm,
 } from '@/components/admin/provider-editor';
+import { ProviderServicesForm } from '@/components/admin/provider-services-form';
 import { ServiceCreateForm } from '@/components/admin/services-manager';
 import { PageHeading } from '@/components/admin/shell';
 import { getOwnProvider, listBookings, listLocations, listServices } from '@/lib/booking/repo';
 import { getBookingRules } from '@/lib/booking/settings';
 import { todayYmd } from '@/lib/booking/time';
 import { requireCmsUser } from '@/lib/cms/auth';
+import { listOfferingSubscriptionGroups, type OfferingSubscriptionGroup } from '@/lib/offers/repo';
 import { can } from '@/lib/cms/permissions';
 import { features } from '@/lib/env';
 
@@ -67,11 +68,17 @@ export default async function AdminAgendaPage({ searchParams }: { searchParams: 
     );
   }
 
-  const [bookings, services, locations, rules] = await Promise.all([
+  const [bookings, services, locations, rules, groups] = await Promise.all([
     listBookings({ scope: 'own', range: 'upcoming', limit: 50 }),
     can(user.role, 'service.read') ? listServices({ includeInactive: true }) : Promise.resolve([]),
     can(user.role, 'location.read') ? listLocations() : Promise.resolve([]),
     getBookingRules(),
+    can(user.role, 'service.read')
+      ? listOfferingSubscriptionGroups().catch((): OfferingSubscriptionGroup[] => {
+          console.error('[cms] offering_groups_unavailable');
+          return [];
+        })
+      : Promise.resolve([]),
   ]);
 
   const editor = toProviderEditorProps(provider);
@@ -82,7 +89,7 @@ export default async function AdminAgendaPage({ searchParams }: { searchParams: 
     <>
       <PageHeading
         title="Mijn agenda"
-        description={`Je afspraken, uren, diensten en Google Agenda als ${provider.displayName}.`}
+        description={`Je afspraken, uren, aanbod en Google Agenda als ${provider.displayName}.`}
         actions={
           <Link
             href="/admin/bookings"
@@ -132,7 +139,9 @@ export default async function AdminAgendaPage({ searchParams }: { searchParams: 
           locations={locationOptions}
           scope="own"
           canEdit={can(user.role, 'service.subscribe.own') || can(user.role, 'provider.manage')}
-          description="Vink de actieve diensten aan die je aanbiedt en kies per dienst eventueel een andere locatie. Naam, duur en prijs van een dienst beheert de beheerder."
+          groups={groups}
+          title="Mijn aanbod"
+          description="Vink aan wat je zelf aanbiedt, per aanbod en variant (bv. Volwassene en Jeugd), en kies per dienst eventueel een andere locatie. Een aanbod is pas online te boeken als minstens één aanbieder het aanbiedt. Naam, duur en prijs beheert de beheerder."
         />
         {/* The catalogue is the admin's: a provider never sees a create form here. */}
         {can(user.role, 'service.manage') ? (

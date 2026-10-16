@@ -44,7 +44,7 @@ export default async function AdminEmailPage() {
       <div className="mb-4">
         <SectionCard
           title="Bevestig je identiteit"
-          description="De API-sleutel, de afzender, het antwoordadres en de ontvanger van cadeaubonbestellingen wijzigen vraagt een recente bevestiging. Een testbericht versturen kan zonder."
+          description="De API-sleutel, de afzender, het antwoordadres en de ontvanger van bestellingen en aanvragen wijzigen vraagt een recente bevestiging. Een testbericht versturen kan zonder."
         >
           <StepUpPanel
             until={stepUp.until ? stepUp.until.toISOString() : null}

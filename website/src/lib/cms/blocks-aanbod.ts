@@ -38,12 +38,16 @@ const offerCategorySchema = z.enum(OFFER_CATEGORIES);
 /**
  * `offer` — one service. The page's `/aanbod/<slug>` path is the offer's
  * identity (booking links use that slug), so the block stores no slug of its
- * own. For an unlinked enquiry offer, free-text `priceLabel` wins, then
- * `priceCents`, else "Prijs op aanvraag". For a linked booking offer, both
- * editorial price and duration fields are ignored on public pages: duration
- * comes from the linked cms_services rows, and price display awaits approved
- * variant amounts and presentation. `bookingServiceSlugs` points at
- * `cms_services.slug`; empty = not online bookable (contact prompt).
+ * own. The block owns the copy (title, summary, intro, Doel, Inhoud, extras,
+ * image, category, order) and, for an offering that is asked for rather than
+ * booked online, the free-text Duur.
+ *
+ * Since 16 Oct 2026 Beheer → Aanbod (`cms_offerings`) owns whether it is
+ * shown, its variants, its prices and whether it is booked directly (as which
+ * services). `bookingServiceSlugs`, `priceCents` and `priceLabel` stay in the
+ * schema so existing content keeps validating, but they are hidden in the
+ * editor (`managedFields`) and only read to derive the settings of an offer
+ * that has no `cms_offerings` row yet (`deriveLegacyOffering()`).
  */
 export const offerSchema = z.object({
   category: offerCategorySchema.default('bikefit'),
@@ -59,16 +63,16 @@ export const offerSchema = z.object({
   goal: z.string().default(''),
   /** Inhoud — one item per line. */
   contents: z.array(z.string()).default([]),
-  /** Duur — public only for an unlinked offer; linked variants use their service lengths. */
+  /** Duur — public only for an enquiry offering; a direct one uses its services' lengths. */
   duration: z.string().default(OFFER_DURATION_FALLBACK),
-  /** Kostprijs in euro cents, once confirmed. */
+  /** Legacy (managed in Beheer → Aanbod): editorial price in cents of an offer without settings. */
   priceCents: z.number().int().nonnegative().nullable().default(null),
-  /** Free-text price, e.g. "vanaf € 120"; empty or "Prijs op aanvraag" + no cents = "Prijs op aanvraag". */
+  /** Legacy (managed in Beheer → Aanbod): free-text price of an offer without settings. */
   priceLabel: z.string().default(''),
   /** Mogelijke extra's — one item per line. */
   extras: z.array(z.string()).default([]),
   extrasNote: z.string().default(OFFER_EXTRAS_NOTE),
-  /** `cms_services.slug` values, in order. Empty = not online bookable yet. */
+  /** Legacy (managed in Beheer → Aanbod): `cms_services.slug` values of an offer without settings. */
   bookingServiceSlugs: z.array(z.string()).default([]),
   image: imageRefSchema.default(emptyImage),
 });
@@ -147,7 +151,8 @@ export const aanbodBlockRegistry = {
     description:
       'Eén dienst uit het aanbod: inleiding, boekknop, doel, inhoud, duur, kostprijs en mogelijke extra’s. Hoort op een pagina onder /aanbod/.',
     editorHint:
-      'Gekoppeld aan boekingsdiensten? Publieke duur komt uit die diensten; prijs blijft “Prijs op aanvraag” tot bedragen en weergave per dienst zijn goedgekeurd. De vrije velden Duur en Kostprijs gelden alleen voor aanbod zonder boekingsdienst. Open punten: docs/content-placeholders.md (P-, D- en E-nummers).',
+      'Tonen, varianten (Volwassene/Jeugd), prijzen en online boeken of aanvragen stel je in bij Beheer → Aanbod. Het veld Duur geldt enkel voor aanbod op aanvraag; online te boeken aanbod toont de duur van zijn diensten. Open punten: docs/content-placeholders.md (P-, D- en E-nummers).',
+    managedFields: ['bookingServiceSlugs', 'priceCents', 'priceLabel'],
     schema: offerSchema,
     defaultData: {
       category: 'bikefit',

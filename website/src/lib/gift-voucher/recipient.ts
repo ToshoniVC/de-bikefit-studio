@@ -1,11 +1,13 @@
 import { EMAIL_RE } from './order';
 
 /**
- * Where gift voucher orders go. Deliberately its own setting, separate from the
+ * Where gift voucher orders go — and, since 16 Oct 2026, the enquiries sent
+ * from an offer page that is asked for rather than booked online
+ * (`src/lib/offer-enquiry/service.ts`). Deliberately its own setting, separate from the
  * public contact address in the footer (`contact.email`):
  *
  *  1. env `GIFT_VOUCHER_RECIPIENT` (set by DevOps per environment) wins;
- *  2. else `/admin/email` → *Ontvanger cadeaubonbestellingen* (the e-mail
+ *  2. else `/admin/email` → *Ontvanger bestellingen en aanvragen* (the e-mail
  *     service settings, `src/lib/email/config.ts`);
  *  3. else nobody: the order is "niet verstuurd".
  *
@@ -60,5 +62,5 @@ export function resolveGiftVoucherRecipient(input: {
 export function giftVoucherRecipientProblem(value: string): string | null {
   const trimmed = value.trim();
   if (!trimmed || isValidRecipientAddress(trimmed)) return null;
-  return 'Ontvanger cadeaubonbestellingen: vul één geldig e-mailadres in (bv. naam@domein.be), of laat het veld leeg.';
+  return 'Ontvanger bestellingen en aanvragen: vul één geldig e-mailadres in (bv. naam@domein.be), of laat het veld leeg.';
 }

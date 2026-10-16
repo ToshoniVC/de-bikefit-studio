@@ -6,6 +6,7 @@ import {
   showsOfferPrices,
   type CatalogueOffer,
 } from '@/lib/offers/catalogue';
+import { OFFERING_STATUS_LABELS } from '@/lib/offers/offering';
 import { StudioButtonLink, splitArrow } from '../link';
 import { StudioSection } from './section';
 import type { BlockProps } from './types';
@@ -24,6 +25,11 @@ import type { BlockProps } from './types';
  * The price line needs "Prijzen tonen" *and* a page under `/aanbod`
  * (`showsOfferPrices`): the home page and `/bikefit` never show prices, also
  * when older published content still has the switch on.
+ *
+ * Every service card names how it is booked (Beheer → Aanbod): "Online te
+ * boeken", "Op aanvraag", or — greyed out — "Tijdelijk niet online te boeken"
+ * for a directly bookable offering nobody offers right now. The card still
+ * links to its page, which says the same; hidden offerings are not listed.
  */
 export async function OfferCatalogueBlock({
   data,
@@ -78,7 +84,13 @@ export async function OfferCatalogueBlock({
               </div>
               <ul className="studio-offer-list">
                 {group.offers.map((offer) => (
-                  <li key={offer.slug} className="studio-offer-card">
+                  <li
+                    key={offer.slug}
+                    className={`studio-offer-card${
+                      offer.status === 'unavailable' ? ' studio-offer-card--unavailable' : ''
+                    }`}
+                    data-offer-status={offer.status ?? undefined}
+                  >
                     <CardHeading className="studio-offer-card__title">
                       <Link href={offer.path} className="studio-offer-card__link">
                         {offer.title}
@@ -86,6 +98,11 @@ export async function OfferCatalogueBlock({
                     </CardHeading>
                     {offer.summary ? (
                       <p className="studio-offer-card__body">{offer.summary}</p>
+                    ) : null}
+                    {offer.status ? (
+                      <p className="studio-offer-card__status">
+                        {OFFERING_STATUS_LABELS[offer.status]}
+                      </p>
                     ) : null}
                     <p className="studio-offer-card__foot">
                       {showPrices ? (

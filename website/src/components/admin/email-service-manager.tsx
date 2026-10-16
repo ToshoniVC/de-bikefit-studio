@@ -151,7 +151,7 @@ export function EmailServiceManager({
           </li>
           <li className="flex items-start justify-between gap-3">
             <span>
-              <span className="font-medium">Ontvanger cadeaubonbestellingen</span>
+              <span className="font-medium">Ontvanger bestellingen en aanvragen</span>
               <span className="block break-all text-muted-foreground">
                 {recipientLine}
                 {recipient.address ? (
@@ -245,9 +245,9 @@ export function EmailServiceManager({
           </Field>
           <EnvNote active={replyTo.source === 'env'} envName="EMAIL_REPLY_TO" />
           <Field
-            label="Ontvanger cadeaubonbestellingen"
+            label="Ontvanger bestellingen en aanvragen"
             htmlFor="email-giftVoucherRecipient"
-            hint="Eén mailbox die echt mail ontvangt. Het publieke contactadres (Instellingen → Contact) wordt hier niet automatisch voor gebruikt."
+            hint="Eén mailbox die echt mail ontvangt: cadeaubonbestellingen en aanvragen via het formulier op een dienstpagina (aanbod op aanvraag) komen hier aan. Het publieke contactadres (Instellingen → Contact) wordt hier niet automatisch voor gebruikt."
           >
             <Input
               id="email-giftVoucherRecipient"
@@ -310,8 +310,8 @@ export function EmailServiceManager({
           </li>
           <li>Vul de afzender in met een adres op dat geverifieerde domein.</li>
           <li>
-            Vul de ontvanger voor cadeaubonbestellingen in: een mailbox die echt mail ontvangt en
-            gelezen wordt.
+            Vul de ontvanger voor bestellingen en aanvragen in: een mailbox die echt mail ontvangt
+            en gelezen wordt.
           </li>
           <li>
             Verstuur een testbericht en controleer of het aankomt. Het cadeaubonformulier meldt

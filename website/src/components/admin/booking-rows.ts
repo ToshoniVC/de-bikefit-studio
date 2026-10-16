@@ -81,8 +81,15 @@ export function toLocationOption(location: CmsLocation): LocationOption {
 export function toServiceRow(
   service: ServiceListItem,
   user: CmsUserPublic,
-  offers: readonly { title: string; bookingServiceSlugs: readonly string[] }[] = [],
+  offerings: readonly {
+    title: string;
+    stored: boolean;
+    variants: readonly { serviceId: string }[];
+  }[] = [],
 ): ServiceRow {
+  const using = offerings.filter((offering) =>
+    offering.variants.some((variant) => variant.serviceId === service.id),
+  );
   return {
     id: service.id,
     name: service.name,
@@ -103,9 +110,10 @@ export function toServiceRow(
     // `created_by` grants nothing: a provider who once created a service
     // cannot edit, price or deactivate it.
     editable: can(user.role, 'service.manage'),
-    offers: offers
-      .filter((offer) => offer.bookingServiceSlugs.includes(service.slug))
-      .map((offer) => offer.title),
+    offers: using.map((offering) => offering.title),
+    // A variant of an offering saved in Beheer → Aanbod: its public price and
+    // label come from there, so this screen does not offer a second one.
+    managedByOffering: using.some((offering) => offering.stored),
   };
 }
 

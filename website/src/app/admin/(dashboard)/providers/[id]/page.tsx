@@ -14,17 +14,26 @@ import {
   ExceptionsEditor,
   GoogleConnectionCard,
   ProviderProfileForm,
-  ProviderServicesForm,
 } from '@/components/admin/provider-editor';
+import { ProviderServicesForm } from '@/components/admin/provider-services-form';
 import { PageHeading } from '@/components/admin/shell';
 import { badgeTone } from '@/components/admin/tones';
 import { getProvider, listLocations, listServices } from '@/lib/booking/repo';
 import { todayYmd } from '@/lib/booking/time';
 import { requireCmsUser } from '@/lib/cms/auth';
+import { listOfferingSubscriptionGroups, type OfferingSubscriptionGroup } from '@/lib/offers/repo';
 import { can, ROLE_LABELS } from '@/lib/cms/permissions';
 import { features } from '@/lib/env';
 
 export const metadata = { title: 'Aanbieder' };
+
+/** Offerings to group the services form by; without them the flat list of before. */
+function offeringGroups(): Promise<OfferingSubscriptionGroup[]> {
+  return listOfferingSubscriptionGroups().catch(() => {
+    console.error('[cms] offering_groups_unavailable');
+    return [];
+  });
+}
 
 export default async function AdminProviderPage({
   params,
@@ -41,11 +50,12 @@ export default async function AdminProviderPage({
   const provider = await getProvider(id);
   if (!provider) notFound();
 
-  const [services, locations] = await Promise.all([
+  const [services, locations, groups] = await Promise.all([
     can(user.role, 'service.read') ? listServices({ includeInactive: true }) : Promise.resolve([]),
     can(user.role, 'location.read')
       ? listLocations({ includeInactive: true })
       : Promise.resolve([]),
+    can(user.role, 'service.read') ? offeringGroups() : Promise.resolve([]),
   ]);
 
   const canEdit = can(user.role, 'provider.manage');
@@ -97,7 +107,8 @@ export default async function AdminProviderPage({
           locations={locationOptions}
           scope="any"
           canEdit={canEdit}
-          description="De diensten die deze aanbieder aanbiedt, eventueel met een andere locatie per dienst."
+          groups={groups}
+          description="Wat deze aanbieder aanbiedt, per aanbod en variant, eventueel met een andere locatie per dienst. Normaal kiest de aanbieder dit zelf."
         />
         <BusinessHoursEditor
           providerId={provider.id}

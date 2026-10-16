@@ -22,12 +22,16 @@ const fake = vi.hoisted(() => ({
   createPublicBooking: vi.fn(),
   cancelBookingByToken: vi.fn(),
   createConfirmationRef: vi.fn(),
+  isServiceBookableOnline: vi.fn(async () => true),
 }));
 
 vi.mock('next/headers', () => ({
   headers: async () => new Headers({ 'x-forwarded-for': fake.clientIp }),
 }));
 vi.mock('./content', () => ({ getAvailability: fake.getAvailability }));
+vi.mock('@/lib/cms/offers-content', () => ({
+  isServiceBookableOnline: fake.isServiceBookableOnline,
+}));
 vi.mock('./public-booking', () => ({
   createPublicBooking: fake.createPublicBooking,
   cancelBookingByToken: fake.cancelBookingByToken,
@@ -156,6 +160,8 @@ beforeEach(() => {
   fake.createPublicBooking.mockReset();
   fake.cancelBookingByToken.mockReset();
   fake.createConfirmationRef.mockReset();
+  fake.isServiceBookableOnline.mockReset();
+  fake.isServiceBookableOnline.mockResolvedValue(true);
 });
 
 afterEach(() => {
@@ -275,5 +281,51 @@ describe('public booking actions: a failure is one fixed line, nothing personal'
       confirmationPath: '/afspraak/bevestigd?ref=payload.signature',
     });
     expect(logged).toStrictEqual([]);
+  });
+});
+
+describe('offerings hold back their services (Beheer → Aanbod)', () => {
+  it('availabilityAction refuses a held-back service before reading any availability', async () => {
+    fake.isServiceBookableOnline.mockResolvedValue(false);
+    const result = await availabilityAction({
+      serviceId: 'svc-youth',
+      providerId: null,
+      fromYmd: '2026-11-02',
+      toYmd: '2026-11-08',
+    });
+    expect(result).toStrictEqual({ ok: false, message: 'Deze dienst kun je niet online boeken.' });
+    expect(fake.isServiceBookableOnline).toHaveBeenCalledWith('svc-youth', 'nl');
+    expect(fake.getAvailability).not.toHaveBeenCalled();
+    expect(logged).toStrictEqual([]);
+  });
+
+  it('bookAction refuses a held-back service: no booking, no rate-limit hit, nothing logged', async () => {
+    fake.isServiceBookableOnline.mockResolvedValue(false);
+    const result = await bookAction(BOOK_INPUT);
+    expect(result).toStrictEqual({
+      ok: false,
+      code: 'invalid',
+      message: 'Deze dienst kun je niet online boeken.',
+      fieldErrors: {},
+    });
+    expect(fake.createPublicBooking).not.toHaveBeenCalled();
+    expect(logged).toStrictEqual([]);
+  });
+
+  it('a failing gate fails closed with the generic error and one fixed line', async () => {
+    fake.isServiceBookableOnline.mockRejectedValue(new Error(`params: ${CUSTOMER_EMAIL}`));
+    const result = await bookAction(BOOK_INPUT);
+    expect(result).toMatchObject({ ok: false, code: 'error' });
+    expect(fake.createPublicBooking).not.toHaveBeenCalled();
+    expectLoggedOnly('book_action_failed');
+    expectNoLeak();
+  });
+
+  it('a service the gate allows is booked as before', async () => {
+    fake.createPublicBooking.mockResolvedValue(booked());
+    fake.createConfirmationRef.mockReturnValue('payload.signature');
+    const result = await bookAction(BOOK_INPUT);
+    expect(result).toMatchObject({ ok: true, bookingId: BOOKING_ID });
+    expect(fake.isServiceBookableOnline).toHaveBeenCalledWith(BOOK_INPUT.serviceId, 'nl');
   });
 });

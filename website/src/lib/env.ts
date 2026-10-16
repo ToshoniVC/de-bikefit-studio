@@ -118,8 +118,9 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().optional(),
   EMAIL_REPLY_TO: z.string().optional(),
   /**
-   * Inbox for gift voucher orders; overrides /admin/email → *Ontvanger
-   * cadeaubonbestellingen*. Never falls back to the public contact address.
+   * Inbox for gift voucher orders and offer enquiries; overrides /admin/email
+   * → *Ontvanger bestellingen en aanvragen*. Never falls back to the public
+   * contact address.
    * An invalid value means "not sent" (see `gift-voucher/recipient.ts`).
    */
   GIFT_VOUCHER_RECIPIENT: z.string().optional(),
