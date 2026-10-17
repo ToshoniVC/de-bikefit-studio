@@ -5,7 +5,7 @@ import { SectionHeading } from './section';
 import type { BlockProps } from './types';
 
 /**
- * `giftVoucher` — the "Cadeaubon" page at `/aanbod/cadeaubon`: a page head in
+ * `giftVoucher` — the "Cadeaubon" page at `/cadeaubon`: a page head in
  * the offer-page style (it owns the `<h1>`), then the order form.
  *
  * The form posts to a server action that e-mails the studio; there is no

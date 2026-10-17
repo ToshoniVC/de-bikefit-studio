@@ -1,13 +1,5 @@
 import { z } from 'zod';
-import {
-  OFFER_CATEGORIES,
-  OFFER_CATEGORY_LABELS,
-  OFFER_CTA_LABEL,
-  OFFER_DURATION_FALLBACK,
-  OFFER_EXTRAS_NOTE,
-  OFFER_INDEX_PATH,
-  OFFER_PRICE_FALLBACK,
-} from '@/lib/offers/catalogue';
+import { OFFER_CATEGORIES, OFFER_CATEGORY_LABELS, OFFER_INDEX_PATH } from '@/lib/offers/catalogue';
 import {
   emptyImage,
   eyebrow,
@@ -22,11 +14,13 @@ import {
  * Registered in `blockRegistry` (`blocks.ts`) through {@link aanbodBlockRegistry};
  * kept in their own module because `blocks.ts` is already past the size limit.
  *
- * - `offer`           one service, the same template on every offer page
- * - `offerCatalogue`  the grouped overview; its cards are DERIVED from the
- *                     published offer pages, so a title or price edited on an
- *                     offer page changes every overview without a second edit
- * - `giftVoucher`     the "Cadeaubon" order form, listed under Overige
+ * - `offerCatalogue`  the grouped overview; its cards are READ from the
+ *                     offerings in Beheer → Aanbod (`cms_offerings`), so a
+ *                     title or price edited there changes every overview
+ *                     without a second edit. Since 17 Oct 2026 there is no
+ *                     `offer` block any more: an offer has no page of its own,
+ *                     `/aanbod/<slug>` is rendered from the offering.
+ * - `giftVoucher`     the "Cadeaubon" order form (page `/cadeaubon`)
  * - `team`            team profiles with an initials fallback for portraits
  *
  * Defaults are deliberately neutral: an editor who adds a block sees the
@@ -36,51 +30,11 @@ import {
 const offerCategorySchema = z.enum(OFFER_CATEGORIES);
 
 /**
- * `offer` — one service. The page's `/aanbod/<slug>` path is the offer's
- * identity (booking links use that slug), so the block stores no slug of its
- * own. The block owns the copy (title, summary, intro, Doel, Inhoud, extras,
- * image, category, order) and, for an offering that is asked for rather than
- * booked online, the free-text Duur.
- *
- * Since 16 Oct 2026 Beheer → Aanbod (`cms_offerings`) owns whether it is
- * shown, its variants, its prices and whether it is booked directly (as which
- * services). `bookingServiceSlugs`, `priceCents` and `priceLabel` stay in the
- * schema so existing content keeps validating, but they are hidden in the
- * editor (`managedFields`) and only read to derive the settings of an offer
- * that has no `cms_offerings` row yet (`deriveLegacyOffering()`).
- */
-export const offerSchema = z.object({
-  category: offerCategorySchema.default('bikefit'),
-  /** Position inside its category on every overview (lower first). */
-  sortOrder: z.number().int().min(0).max(999).default(0),
-  eyebrow,
-  title: z.string().min(1),
-  /** One or two sentences for the overview card; empty = the intro. */
-  summary: z.string().default(''),
-  intro: z.string().default(''),
-  ctaLabel: z.string().min(1).default(OFFER_CTA_LABEL),
-  /** Doel */
-  goal: z.string().default(''),
-  /** Inhoud — one item per line. */
-  contents: z.array(z.string()).default([]),
-  /** Duur — public only for an enquiry offering; a direct one uses its services' lengths. */
-  duration: z.string().default(OFFER_DURATION_FALLBACK),
-  /** Legacy (managed in Beheer → Aanbod): editorial price in cents of an offer without settings. */
-  priceCents: z.number().int().nonnegative().nullable().default(null),
-  /** Legacy (managed in Beheer → Aanbod): free-text price of an offer without settings. */
-  priceLabel: z.string().default(''),
-  /** Mogelijke extra's — one item per line. */
-  extras: z.array(z.string()).default([]),
-  extrasNote: z.string().default(OFFER_EXTRAS_NOTE),
-  /** Legacy (managed in Beheer → Aanbod): `cms_services.slug` values of an offer without settings. */
-  bookingServiceSlugs: z.array(z.string()).default([]),
-  image: imageRefSchema.default(emptyImage),
-});
-
-/**
  * `offerCatalogue` — the grouped overview on `/aanbod`, the home page and
- * `/bikefit`. Each group shows the published offers of its category; the
- * group's title and lede are the only copy this block owns.
+ * `/bikefit`. Each group shows the shown offerings of its category; the
+ * group's title and lede are the only copy this block owns. `extraCards` are
+ * fixed cards that are not offerings (the gift voucher: "Bedrag naar keuze",
+ * linking to its own page), placed after the offerings of their category.
  */
 export const offerCatalogueSchema = z.object({
   variant: sectionVariantSchema,
@@ -96,6 +50,17 @@ export const offerCatalogueSchema = z.object({
       }),
     )
     .default([]),
+  extraCards: z
+    .array(
+      z.object({
+        category: offerCategorySchema,
+        title: z.string().min(1),
+        summary: z.string().default(''),
+        priceLabel: z.string().default(''),
+        href: z.string().min(1),
+      }),
+    )
+    .default([]),
   showPrices: z.boolean().default(true),
   cta: optionalLinkSchema,
 });
@@ -104,15 +69,15 @@ export const offerCatalogueSchema = z.object({
  * `giftVoucher` — the "Cadeaubon" page: a short intro and the order form
  * (amount of the visitor's choice, personal message, contact details, "Bestel
  * nu"). The form and its rules are code (`src/lib/gift-voucher/`); the block
- * owns only the copy around it. Its page under `/aanbod/` also gives it a
- * card in the overview (category Overige), like an `offer` block.
+ * owns only the copy around it. Its card on `/aanbod` is an `extraCards`
+ * entry of that page's `offerCatalogue` block.
  */
 export const giftVoucherSchema = z.object({
-  /** Position inside Overige on every overview (lower first). */
+  /** Kept for existing content; no longer used (the card is on the catalogue block). */
   sortOrder: z.number().int().min(0).max(999).default(0),
   eyebrow,
   title: z.string().min(1),
-  /** One or two sentences for the overview card; empty = the intro. */
+  /** Kept for existing content; the card text lives on the catalogue block. */
   summary: z.string().default(''),
   intro: z.string().default(''),
   /** Shown above the form; plain text. */
@@ -146,38 +111,10 @@ export const teamSchema = z.object({
 });
 
 export const aanbodBlockRegistry = {
-  offer: {
-    label: 'Dienst (aanbod)',
-    description:
-      'Eén dienst uit het aanbod: inleiding, boekknop, doel, inhoud, duur, kostprijs en mogelijke extra’s. Hoort op een pagina onder /aanbod/.',
-    editorHint:
-      'Tonen, varianten (Volwassene/Jeugd), prijzen en online boeken of aanvragen stel je in bij Beheer → Aanbod. Het veld Duur geldt enkel voor aanbod op aanvraag; online te boeken aanbod toont de duur van zijn diensten. Open punten: docs/content-placeholders.md (P-, D- en E-nummers).',
-    managedFields: ['bookingServiceSlugs', 'priceCents', 'priceLabel'],
-    schema: offerSchema,
-    defaultData: {
-      category: 'bikefit',
-      sortOrder: 0,
-      eyebrow: 'Aanbod',
-      title: 'Nieuwe dienst',
-      summary: '',
-      intro: '',
-      ctaLabel: OFFER_CTA_LABEL,
-      goal: '',
-      contents: [],
-      duration: OFFER_DURATION_FALLBACK,
-      priceCents: null,
-      priceLabel: OFFER_PRICE_FALLBACK,
-      extras: [],
-      extrasNote: OFFER_EXTRAS_NOTE,
-      bookingServiceSlugs: [],
-      image: emptyImage,
-    },
-  },
-
   offerCatalogue: {
     label: 'Aanbod (overzicht)',
     description:
-      'Overzicht van de gepubliceerde diensten onder /aanbod/, per categorie. Titels en prijzen komen uit de dienstpagina’s zelf.',
+      'Overzicht van het aanbod uit Beheer → Aanbod, per categorie. Titels, prijzen en status komen uit het aanbod zelf; extra kaarten (bv. de cadeaubon) vul je hier in.',
     schema: offerCatalogueSchema,
     defaultData: {
       variant: 'default',
@@ -189,6 +126,7 @@ export const aanbodBlockRegistry = {
         title: OFFER_CATEGORY_LABELS[category],
         lede: '',
       })),
+      extraCards: [],
       showPrices: true,
       cta: { label: 'Bekijk het volledige aanbod', href: OFFER_INDEX_PATH, external: false },
     },
@@ -197,7 +135,7 @@ export const aanbodBlockRegistry = {
   giftVoucher: {
     label: 'Cadeaubon (bestelformulier)',
     description:
-      'Bestelformulier voor een cadeaubon: bedrag naar keuze, persoonlijke boodschap en contactgegevens. “Bestel nu” mailt de aanvraag naar de ontvanger uit Beheer → E-mail; factuur en betaallink maak je zelf op. Hoort op /aanbod/cadeaubon.',
+      'Bestelformulier voor een cadeaubon: bedrag naar keuze, persoonlijke boodschap en contactgegevens. “Bestel nu” mailt de aanvraag naar de ontvanger uit Beheer → E-mail; factuur en betaallink maak je zelf op. Hoort op /cadeaubon.',
     editorHint:
       'Zonder werkende e-mailverzending of zonder ontvanger (Beheer → E-mail) meldt het formulier dat de bestelling niet verstuurd is. Vermeld geen geldigheid of voorwaarden die nog niet beslist zijn.',
     schema: giftVoucherSchema,

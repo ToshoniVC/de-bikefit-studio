@@ -2,8 +2,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SERVICES } from '@/lib/booking/defaults';
-import { linkedOfferDurationLabel, offerPagePath, offerPriceLabel } from '@/lib/offers/catalogue';
-import { DEFAULT_OFFERS, offerBlockData } from '@/lib/offers/defaults';
+import { formatDuration } from '@/lib/booking/format';
+import { OFFER_PRICE_FALLBACK, offerPagePath } from '@/lib/offers/catalogue';
+import { DEFAULT_OFFERS } from '@/lib/offers/defaults';
+import { AUDIENCE_LABELS } from '@/lib/offers/offering';
 import { EDITORIAL_SLOTS, editorialImage } from '@/lib/studio/editorial-images';
 import { AANBOD_PAGES, TEAM_MEMBERS } from './aanbod';
 import { TEAM_PROFILE_PENDING } from './copy';
@@ -87,16 +89,22 @@ describe('content placeholder register', () => {
     expect(totals).toContain(`**${ROWS.length}**`);
   });
 
-  it('lists the price, duration and extras of every offer with the text the site shows', () => {
+  it('lists the price, duration and extras of every offering with the text the site shows', () => {
     for (const offer of DEFAULT_OFFERS) {
-      const path = `\`${offerPagePath(offer.slug)}\``;
-      const data = offerBlockData(offer) as { priceCents: number | null; priceLabel: string };
+      const path = `\`${offerPagePath(offer.content.slug)}\``;
       const price = rowMentioning('P', path);
-      expect(price.cells[2]).toBe(offerPriceLabel(data));
+      expect(price.cells[2]).toBe(OFFER_PRICE_FALLBACK);
       const duration = rowMentioning('D', path);
-      const linkedDuration = linkedOfferDurationLabel(offer.bookingServiceSlugs, DEFAULT_SERVICES);
-      if (linkedDuration) expect(duration.cells[2]).toContain(linkedDuration);
-      else expect(duration.cells[2]).toBe(offer.duration);
+      // A directly booked offering shows the real length of its services, per variant.
+      const linked = offer.variants
+        .filter((variant) => variant.serviceSlug)
+        .map((variant) => {
+          const service = DEFAULT_SERVICES.find((entry) => entry.slug === variant.serviceSlug)!;
+          return `${AUDIENCE_LABELS[variant.audience]}: ${formatDuration(service.durationMinutes)}`;
+        })
+        .join(' · ');
+      if (offer.bookingMode === 'direct') expect(duration.cells[2]).toContain(linked);
+      else expect(duration.cells[2]).toBe(offer.content.duration);
       rowMentioning('E', path);
     }
   });

@@ -1,11 +1,9 @@
 /**
  * Planning half of the aanbod rollout (read-only): what would change, why,
- * what blocks an apply, the offer ↔ booking report and the booking-table
- * guard counts. The writing half (backup, apply, restore) and the full scope
+ * what blocks an apply and the booking-table guard counts. The writing half (backup, apply, restore) and the full scope
  * description are in `aanbod-rollout.mts`.
  */
 import { createHash } from 'node:crypto';
-import { DEFAULT_OFFERS } from '@/lib/offers/defaults';
 import {
   AANBOD_PAGES,
   AANBOD_REDIRECTS,
@@ -73,13 +71,6 @@ export type RedirectPlan = {
   detail: string;
 };
 
-export type CatalogueRow = {
-  offer: string;
-  title: string;
-  services: { slug: string; state: 'bookable' | 'inactive' | 'no-provider' | 'missing' }[];
-  outcome: 'online' | 'aanvraag';
-};
-
 export type GuardCounts = {
   bookings: number;
   services: number;
@@ -95,7 +86,6 @@ export type RolloutPlan = {
   menus: MenuPlan[];
   retire: RetirePlan;
   redirects: RedirectPlan[];
-  catalogue: CatalogueRow[];
   guards: GuardCounts;
 };
 
@@ -301,50 +291,6 @@ async function planRedirects(deps: PlanDeps): Promise<RedirectPlan[]> {
   return plans;
 }
 
-/** Read-only: which offer can be booked online right now, and through what. */
-async function catalogueReport(deps: PlanDeps): Promise<CatalogueRow[]> {
-  const { db, orm, schema, locale } = deps;
-  const { and, eq } = orm;
-  const services = await db
-    .select({
-      id: schema.cmsServices.id,
-      slug: schema.cmsServices.slug,
-      isActive: schema.cmsServices.isActive,
-    })
-    .from(schema.cmsServices)
-    .where(eq(schema.cmsServices.locale, locale));
-  const offered = await db
-    .select({ serviceId: schema.cmsProviderServices.serviceId })
-    .from(schema.cmsProviderServices)
-    .innerJoin(
-      schema.cmsProviders,
-      eq(schema.cmsProviders.id, schema.cmsProviderServices.providerId),
-    )
-    .innerJoin(schema.cmsUsers, eq(schema.cmsUsers.id, schema.cmsProviders.userId))
-    .where(and(eq(schema.cmsProviders.isActive, true), eq(schema.cmsUsers.isActive, true)));
-  const withProvider = new Set(offered.map((row) => row.serviceId));
-
-  return DEFAULT_OFFERS.map((offer) => {
-    const rows = offer.bookingServiceSlugs.map((slug) => {
-      const service = services.find((entry) => entry.slug === slug);
-      const state: CatalogueRow['services'][number]['state'] = !service
-        ? 'missing'
-        : !service.isActive
-          ? 'inactive'
-          : withProvider.has(service.id)
-            ? 'bookable'
-            : 'no-provider';
-      return { slug, state };
-    });
-    return {
-      offer: offer.slug,
-      title: offer.title,
-      services: rows,
-      outcome: rows.some((row) => row.state === 'bookable') ? 'online' : 'aanvraag',
-    };
-  });
-}
-
 export async function planAanbodRollout(deps: PlanDeps): Promise<RolloutPlan> {
   return {
     locale: deps.locale,
@@ -352,7 +298,6 @@ export async function planAanbodRollout(deps: PlanDeps): Promise<RolloutPlan> {
     menus: await planMenus(deps),
     retire: await planRetire(deps),
     redirects: await planRedirects(deps),
-    catalogue: await catalogueReport(deps),
     guards: await guardCounts(deps),
   };
 }
@@ -419,17 +364,6 @@ export function printPlan(plan: RolloutPlan, log: PlanDeps['log']): void {
     const symbol =
       redirect.action === 'conflict' ? '!' : redirect.action === 'unchanged' ? '=' : '+';
     log(symbol, `redirect ${redirect.fromPath} → ${redirect.toPath} — ${redirect.detail}`);
-  }
-  log('→', 'offer ↔ booking services (read-only):');
-  for (const row of plan.catalogue) {
-    const services =
-      row.services.length > 0
-        ? row.services.map((service) => `${service.slug}: ${service.state}`).join(', ')
-        : 'no linked booking service';
-    log(
-      row.outcome === 'online' ? '✓' : '·',
-      `${row.title} — ${row.outcome === 'online' ? 'online booking' : 'enquiry (phone/e-mail)'} (${services})`,
-    );
   }
   const g = plan.guards;
   log(

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { sanitizeRichTextHtml } from '@/lib/cms/actions/sanitize';
 import { validateBlocks } from '@/lib/cms/blocks';
-import { AANBOD_PAGES, FOOTER_MENU, MAIN_MENU } from './aanbod';
+import { AANBOD_PAGES, FOOTER_MENU, MAIN_MENU, OFFER_GROUPS, OTHER_OFFER_GROUP } from './aanbod';
 import { AFSPRAAK_PAGE, OTHER_QUESTION_HTML } from './appointment';
-import { CADEAUBON_AANBOD_SPEC, cadeaubonAanbodBlocks } from './cadeaubon';
+import { CADEAUBON_CARD } from './cadeaubon';
 import before from './page-cleanup.fixture.json';
 import {
   cleanupBlocks,
@@ -65,10 +65,22 @@ describe('page cleanup patch (review 13 Oct 2026)', () => {
       const result = cleanupBlocks(spec, stored(old.blocks));
       expect(result.conflicts).toEqual([]);
       expect(result.changes.length).toBeGreaterThan(0);
-      // The gift voucher patch (same day, `cadeaubon.ts`) runs after this one on /aanbod.
+      // /aanbod also got the Overige group (13 Oct) and the voucher card on its
+      // catalogue block (17 Oct, `cms:migrate-aanbod`); neither is this patch's.
       const next =
-        spec.slug === CADEAUBON_AANBOD_SPEC.slug
-          ? cadeaubonAanbodBlocks(result.next).next
+        spec.slug === 'aanbod'
+          ? result.next.map((block) =>
+              block.type === 'offerCatalogue'
+                ? {
+                    ...block,
+                    data: {
+                      ...block.data,
+                      groups: [...OFFER_GROUPS, OTHER_OFFER_GROUP],
+                      extraCards: [CADEAUBON_CARD],
+                    },
+                  }
+                : block,
+            )
           : result.next;
       expect(next).toEqual(stored(targetPage(spec.slug).blocks));
       expect(pageCleanupProblems(spec.slug, stored(old.blocks)).length).toBeGreaterThan(0);

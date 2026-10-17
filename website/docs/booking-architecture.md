@@ -50,8 +50,9 @@ UTC (`timestamptz`).
 | `src/lib/email/ics.ts` | plain | RFC 5545 `.ics` builder |
 | `src/lib/email/templates.ts` | plain | Dutch confirmation / notification / cancellation mails |
 | `scripts/cms-seed-booking.mts` | script | first provider + hours + subscriptions |
-| `src/lib/offers/offering*.ts`, `offer-catalogue.ts`, `src/lib/offers/repo.ts` | plain / server-only | Beheer → Aanbod: which services an offering is booked as, and whether it is bookable now (§15) |
-| `src/lib/offer-enquiry/*` | plain / server-only | the enquiry form of an offering that is asked for (§15) |
+| `src/lib/offers/offering*.ts`, `offer-catalogue.ts`, `src/lib/offers/repo.ts` | plain / server-only | Beheer → Aanbod: the offer, which services an offering is booked as (written by the same save), and whether it is bookable now (§14) |
+| `src/lib/offer-enquiry/*` | plain / server-only | the enquiry form of an offering that is asked for (§14) |
+| `src/lib/booking/repo-provider-profile.ts` | server-only | the provider profile that comes with the Aanbieder role (`ensureProviderProfile`, `cms-architecture.md` §14) |
 
 \* `settings.ts` imports `@/lib/cms/content` lazily inside `getBookingRules()`,
 so importing the file never pulls in `server-only`.
@@ -100,7 +101,8 @@ Closed sets are `text` validated by zod, like the CMS. The only enum change is
 | `0003_booking.sql` | 8 `CREATE TABLE IF NOT EXISTS`, FKs in `duplicate_object` guards, `CREATE [UNIQUE] INDEX IF NOT EXISTS`. |
 | `0008_cms_rate_limits.sql` | `CREATE TABLE IF NOT EXISTS "cms_rate_limits"` and `CREATE INDEX IF NOT EXISTS` on `updated_at`, nothing else: no foreign key, no data change, `cms_booking_rate_limit` untouched. **Apply before deploying the build that uses it**: until the table exists every public booking attempt fails closed (`error`, "Er ging iets mis bij het boeken", logged as `[booking] create_failed`). |
 | `0009_cms_service_choice_label.sql` | `ALTER TABLE "cms_services" ADD COLUMN IF NOT EXISTS "choice_label" text DEFAULT '' NOT NULL`, nothing else: no data change (existing rows get `''`, so they keep showing their name), no price. **Apply before deploying the build that uses it**: the app selects every `cms_services` column, so until then the widget shows its "bel ons" fallback and the service screens fail. Self-test 14c re-runs it twice. |
-| `0010_cms_offerings.sql` | `cms_offerings` + `cms_offering_variants` (§15, `cms-architecture.md` §15): guarded `CREATE TABLE`s, FKs, indexes; no data change, nothing on `cms_services`, `cms_provider_services` or `cms_bookings`. **Apply before deploying the build that uses it**: the booking actions ask it which services an offering holds back and fail closed without it (every availability and booking request answers "Deze dienst kun je niet online boeken." / the generic error). Self-test 14d re-runs it twice. |
+| `0010_cms_offerings.sql` | `cms_offerings` + `cms_offering_variants` (§14, `cms-architecture.md` §14): guarded `CREATE TABLE`s, FKs, indexes; no data change, nothing on `cms_services`, `cms_provider_services` or `cms_bookings`. **Apply before deploying the build that uses it**: the booking actions ask it which services an offering holds back and fail closed without it (every availability and booking request answers "Deze dienst kun je niet online boeken." / the generic error). Self-test 14d re-runs it twice. |
+| `0011_cms_offerings_content.sql` | the offering IS the offer (17 Oct 2026, §14): guarded `ADD COLUMN IF NOT EXISTS` for the copy (slug, category, order, title, summary, intro, Doel, Inhoud, extra's, Duur, button label, image, meta description), `page_id` nullable, a unique index on (locale, slug). No data change; `cms:migrate-aanbod` fills the rows from the former offer pages (`staging-runbook.md` §19). Apply before the deploy; run the migration right after it. Self-test 14d re-runs it twice. |
 
 All are **additive only** and idempotent (verified by migrating a fresh
 PGlite twice). Note that drizzle's migrator runs *all pending files in one
@@ -135,7 +137,7 @@ guarded by hand; self-test 14b re-runs it twice.
 | `provider.read` / `provider.manage` | all providers | ❌ | ✅ / ❌ | ✅ |
 | `provider.self` | own profile, hours, exceptions, Google | ✅ | ❌ | ✅ |
 | `analytics.read` | GA4 dashboard panel | ❌ | ❌ | ✅ |
-| `offering.manage` | Beheer → Aanbod: shown, variants, prices, direct booking or enquiry (§15) | ❌ | ✅ | ✅ |
+| `offering.manage` | Beheer → Aanbod: the offer, its variants, prices and booking services (§14) | ❌ | ❌ | ✅ |
 
 `ROLE_PERMISSIONS` is now exported. `ROLE_RANK = { provider: 0, editor: 1,
 admin: 2 }`, so `requireCmsUser('editor')` keeps providers out of content
@@ -921,158 +923,80 @@ doomed token key).
 
 ---
 
-## 14. Offer ↔ booking catalogue and service preselection (13 Oct 2026)
+## 14. Offerings decide what is bookable (Beheer → Aanbod, 17 Oct 2026)
 
-The public site now speaks in **offers** (`/aanbod/<slug>`, `cms-architecture.md` §14); booking
-still speaks in **services** (`cms_services`). The two are linked explicitly, never by renaming.
+`cms-architecture.md` §14 has the model and the admin screen; this section is the booking side.
+The public site speaks in **offerings** (`cms_offerings`, served at `/aanbod/<slug>`); booking
+speaks in **services** (`cms_services`). Since 17 Oct 2026 the two are written together: a
+directly bookable offering has one `cms_services` row per variant, created by the first save in
+Beheer → Aanbod (slug `<offering slug>`, `<offering slug>-volwassene`, `<offering slug>-jeugd`;
+name "Titel – Volwassene"; label "Volwassene" / "Jeugd") and updated by id afterwards
+(duration, buffer, location, guardian rule follow the form; the slug and existing bookings
+never change). Beheer → Diensten is gone.
 
-**What did not change.** No migration. No `cms_services` row was created, renamed, re-priced or
-deactivated; no `cms_provider_services` row was added; existing bookings keep their service id
-and name. The staging rollout verifies this (`guardCounts()`: booking count, service ids/slugs/
-durations/active flags hashed, provider and provider-service counts — before and after).
+**What is bookable.** A variant is booked as its `cms_services` row (its id is what
+availability is fetched for and what a booking references). A **direct** offering is bookable
+through `/afspraak?dienst=<slug>` while at least one of its variants' services is active and
+offered by ≥ 1 active provider with an active account — the `listPublicServices()` rule, per
+variant. Who offers it is the providers' own choice (`setProviderServices()`,
+`service.subscribe.own`: own profile, active services only), shown grouped by offering under
+*Mijn agenda → Mijn aanbod* (`listOfferingSubscriptionGroups`).
 
-**The link.** Each `offer` block has `bookingServiceSlugs` (editable, one `cms_services.slug`
-per line). The decisions for the five existing services, with reasons, are in
-`BOOKING_RECONCILIATION` (`src/lib/offers/defaults.ts`) and tested in
-`src/lib/offers/catalogue.test.ts`:
-
-| Booking service | Decision | Offer |
-| --- | --- | --- |
-| `volwassenenfit` (90 min) | linked | Bikefit – huidige fiets |
-| `jeugdfit` (60 min, guardian) | linked | Bikefit – huidige fiets |
-| `gezinspakket` | kept, not in the offer | — |
-| `fit-aan-huis` | kept, not in the offer | — |
-| `inspanningstest` | kept, **not** equated with Lactaattest | — |
-
-"Kept" services stay active and bookable from `/afspraak` without a preselection until Toshoni
-decides otherwise (Admin → Diensten; deactivating is soft). Open decisions:
-`content-placeholders.md` §6.
-
-**Preselection.** The offer page's button goes to `/afspraak?dienst=<offer slug>#boeken`. The
-catch-all route validates `dienst` (`parseServiceParam`: a lower-case slug, ≤ 80 chars, else
-ignored) and the `booking` block resolves it on the server with `resolveBookingSelection()`:
-
-| `?dienst=` | Result |
-| --- | --- |
-| absent / malformed | the normal widget |
-| an offer linked to ≥ 1 bookable service | the widget **narrowed** to those services in the offer's order (preselected when exactly one), with "Je boekt voor <offer>" above the steps |
-| an offer with no bookable service (none linked, inactive, or nobody offers it) | **no widget**: a contact prompt naming the offer (phone; e-mail with the offer in the subject once *Instellingen → Contact → e-mail* is set; links back to the offer and the full offer). Never another service, never invented availability |
-| a booking-service slug (`?dienst=jeugdfit`) | the widget with that service preselected |
-| an unknown slug | the normal widget with "We vonden de gekozen dienst niet terug." |
-
-An offer slug wins over a service slug with the same name. "Opnieuw" after a booking returns to
-the same preselection. The widget's other rules (provider choice, availability, guardian,
-address) are unchanged.
-
-**Making another offer bookable** (since 16 Oct 2026, §15): an **admin** creates the service in
-Admin → Diensten with the real duration (one per variant when Volwassene and Jeugd differ); in
-**Beheer → Aanbod** an editor or admin sets the offer to *Rechtstreeks online boeken*, picks the
-service per variant and, once approved, the price per variant; the provider ticks it under *Mijn
-agenda → Mijn aanbod*. Until a provider does, the offer is shown greyed as "Tijdelijk niet online
-te boeken". No deploy, no migration, no page edit. (Before 16 Oct 2026 the link was the offer
-block's *Online boeken via dienst(en)* field; that field is now hidden and only read for offers
-without saved settings.)
-
-### One offer, its services underneath (16 Oct 2026)
-
-Toshoni's decision for `/afspraak`: **one** "Bikefit – huidige fiets" choice with
-**Volwassene / Jeugd** underneath, not two top-level fits; every other active, bookable
-service stays directly selectable (Gezinspakket, Fit aan huis, Inspanningstest), until Max or
-Toshoni decide otherwise.
-
-*Data model, no duplication.* Three things, each kept in one place:
-
-| What | Where | Managed by |
-| --- | --- | --- |
-| The canonical service: name, **choice label**, duration, buffer, **price** (`price_cents` + `show_price`), location, guardian rule, active | `cms_services` (0009 added `choice_label`) | admin only (§3) |
-| Which services an offer is booked as, in order | the offer block's `bookingServiceSlugs` (*Online boeken via dienst(en)*), on the published offer page | editor / admin, in the page editor |
-| Who offers a service, with an optional location override | `cms_provider_services` (no price, no duration) | the provider for their own profile, or an admin |
-
-No service price is copied to an offer or provider, and no new price exists:
-both services keep `price_cents = null`, `show_price = false`, so the widget
-says "Prijs op aanvraag" until an admin sets and shows an approved amount on
-**that service**. The offer block still stores legacy editorial `priceCents`
-and `priceLabel`, but for any offer linked to booking services the public
-catalogue and detail page ignore those independent fields and show "Prijs op
-aanvraag". Otherwise a CMS editor could disclose a numeric offer price while
-the linked service's `show_price` is false. Once approved prices and their
-presentation are decided, offer-page variants must be derived from the linked
-service rows; no `vanaf` amount is inferred now. Unlinked enquiry offers keep
-their editorial price behavior (`content-placeholders.md` §1). A linked offer
-also emits no editorial price in Service JSON-LD. Its public detail derives
-each bookable variant's named duration from the same active, offered
-`cms_services` rows as `/afspraak`; it ignores the offer's free-text duration.
-Admin →
-Diensten shows per service which published offer links to it.
-
-*The widget.* The `booking` block always reads the published offers (cached; on failure the
-widget is the flat list it was) and passes `groupBookingChoices({ offers, services })`
-(`src/lib/offers/catalogue.ts`) to the widget: a service a published offer links to appears
-once, under that offer, in the offer's order; the offer takes the place of its first service;
-an offer with one bookable service selects it straight away; a service two offers link
-belongs to the first offer in catalogue order. Step 1 then shows the offer's button
-(`aria-expanded`), and under it "Voor wie?" with one button per service, labelled with its
-choice label (else its name), its own duration, "met ouder of voogd" for Jeugdfit and its own
-price or "Prijs op aanvraag". **Only a service is ever selected**: its id is what availability
-is fetched for and what `bookAction` books, so its duration, buffer, guardian form, location
-and booking row follow; the done-line reads "Bikefit – huidige fiets · Jeugd · 60 minuten ·
-met ouder of voogd · Prijs op aanvraag"; *Wijzigen* reopens the offer so switching is one tap;
-the confirmation and the e-mails name the booked service ("Jeugdfit"), as the server stores
-it. The server needs no offer: `createPublicBooking()` re-reads the service by id (§9).
-
-*`?dienst=`, unchanged in meaning.* An offer slug narrows to its bookable services (now shown
-as that offer with its choices, nothing preselected when there are two); a service slug
-(`?dienst=jeugdfit`) preselects it, with its offer open; an offer without a bookable service
-still gets the named contact prompt; an unknown slug the normal widget and the notice.
-
----
-
-## 15. Offerings decide what is bookable (Beheer → Aanbod, 16 Oct 2026)
-
-`cms-architecture.md` §15 has the model and the admin screen; this section is the booking side.
-
-**What is bookable.** A variant of an offering is booked as one `cms_services` row (its id is what
-availability is fetched for and what a booking references; durations, buffers, the guardian form
-and locations are unchanged). A **direct** offering is bookable through `/afspraak?dienst=<offer
-slug>` while at least one of its variants' services is active and offered by ≥ 1 active provider
-with an active account — the `listPublicServices()` rule, now per variant. Who offers it is the
-providers' own choice (`setProviderServices()`, `service.subscribe.own`: own profile, active
-services only; unchanged), shown grouped by offering under *Mijn agenda → Mijn aanbod*.
-
-**Held back services.** A service that is a variant of any saved offering is booked **only through
+**Held back services.** A service that is a variant of any offering is booked **only through
 that offering**, and only while it is shown and direct (`withheldServiceIds()`): otherwise the
 widget leaves it out (also as a standalone choice and for `?dienst=<service slug>`, which then
 gets the "niet teruggevonden" notice), and both booking actions refuse it before anything else
 (`isServiceBookableOnline()` in `availabilityAction` and `bookAction`: "Deze dienst kun je niet
-online boeken.", no rate-limit hit, no booking). Services no offering uses (Gezinspakket, Fit aan
-huis, Inspanningstest) stay directly bookable as before. Offer pages without saved settings derive
-them from their block and never hold anything back, so the widget is unchanged until settings are
-saved. The gate fails closed when the offering tables cannot be read.
+online boeken.", no rate-limit hit, no booking). After `cms:bootstrap` / `cms:migrate-aanbod`
+every service belongs to an offering, the three older ones (Gezinspakket, Fit aan huis,
+Inspanningstest) to hidden offerings — so they are not bookable until an admin shows them. The
+gate fails closed when the offering tables cannot be read.
 
-**Labels and prices in the widget.** Under a saved, shown, direct offering a service is labelled
-by its variant ("Volwassene" / "Jeugd", else its own *Keuzelabel* or name) and priced by the
-variant (empty = "Prijs op aanvraag"); its own `price_cents` / `show_price` no longer show there
-(Beheer → Diensten says so). Without saved settings the service's own price applies, as before.
+**Preselection and the service step.** The offer page's button goes to
+`/afspraak?dienst=<offer slug>#boeken`. The catch-all route validates `dienst`
+(`parseServiceParam`: a lower-case slug, ≤ 80 chars, else ignored) and the `booking` block
+resolves it on the server with `resolveBookingSelection()`:
 
-**`/afspraak?dienst=<offer>` without a bookable variant** names the reason: *Op aanvraag* (on
-purpose) links to the form on the offer page; *Tijdelijk niet online te boeken* (direct, nobody
-offers it now) says so, with phone and mail. Never the widget with another service, never
-invented availability.
+| `?dienst=` | Result |
+| --- | --- |
+| absent / malformed | the normal widget |
+| a shown offering with ≥ 1 bookable variant | the widget **narrowed** to those services in the offering's order (preselected when exactly one), with "Je boekt voor <offer>" above the steps |
+| a shown offering without a bookable variant | **no widget**: *Op aanvraag* links to the form on the offer page; *Tijdelijk niet online te boeken* says so with phone and e-mail. Never another service, never invented availability |
+| a service slug that is bookable on its own | the widget with that service preselected |
+| an unknown or hidden slug | the normal widget with "We vonden de gekozen dienst niet terug." |
+
+On the plain widget an offering appears **once** with its variants as a sub-selection
+("Voor wie?": Volwassene / Jeugd, `groupBookingChoices()`), labelled by the variant and priced
+by the variant's price in Beheer → Aanbod (`variantDisplay`; empty = "Prijs op aanvraag"); the
+service's own `price_cents` / `show_price` no longer show there. The chosen SERVICE is what is
+booked, with its own duration, availability and guardian rule. "Opnieuw" after a booking returns
+to the same preselection. Provider choice, availability, guardian and address are unchanged.
 
 **Enquiries.** An offering set to *Enkel op aanvraag* gets a form on its page
-(`src/lib/offer-enquiry/`): validated like the booking form (raw caps, length before pattern, the
-`+32` phone rule), honeypot, race-free rate limit on `cms_rate_limits` (`aanvraag:` keys, 5 per 15
-min per IP and per hashed e-mail), duplicate marker per request id, mailed through `sendEmail()` to
-the order inbox (env `GIFT_VOUCHER_RECIPIENT`, else Beheer → E-mail → *Ontvanger bestellingen en
-aanvragen*; never `contact.email`), visitor as Reply-To. Nothing is stored; "verstuurd" only when the
-provider accepted the mail.
+(`src/lib/offer-enquiry/`): validated like the booking form, honeypot, race-free rate limit on
+`cms_rate_limits` (`aanvraag:` keys, 5 per 15 min per IP and per hashed e-mail), duplicate marker
+per request id, mailed through `sendEmail()` to the order inbox (env `GIFT_VOUCHER_RECIPIENT`, else
+Beheer → E-mail → *Ontvanger bestellingen en aanvragen*; never `contact.email`), visitor as
+Reply-To. Nothing is stored; "verstuurd" only when the provider accepted the mail.
 
-**Existing bookings** keep their service id and name; no `cms_services`, `cms_provider_services`
-or `cms_bookings` row is created, changed or removed by migration 0010, `cms:migrate-offerings` or a
-save in Beheer → Aanbod (the migration CLI checks `guardCounts()` before and after).
+**Existing bookings** keep their service id and name; no `cms_provider_services` or
+`cms_bookings` row is created, changed or removed by migrations 0010/0011, `cms:migrate-aanbod`
+or a save in Beheer → Aanbod (the migration CLI checks `guardCounts()` before and after; a save
+only adds or updates the services of its own variants; deleting an offering deactivates them
+softly).
 
-**Tests.** `offering.test.ts`, `offer-catalogue.test.ts` (unavailable / bookable / enquiry / hidden,
-held-back services, widget grouping and labels), `public-actions.test.ts` (the gate),
-`offer-enquiry/*.test.ts`, `actions/offerings.test.ts`; self-test 14d on PGlite (migration, CLI,
-permissions, provider self-service, the gate, `availabilityAction`, hidden page 404, enquiry on the
-real store without outbound mail).
+**Making another offering bookable** (once its duration and the people who offer it are
+confirmed): open it in Beheer → Aanbod, choose *Rechtstreeks online boeken*, fill in the duration
+(and buffer, location, guardian rule, price) per variant, save; the provider ticks it under *Mijn
+agenda → Mijn aanbod*. No deploy, no migration, no second screen.
+
+**Tests.** `offering.test.ts`, `offer-catalogue.test.ts`, `catalogue.test.ts` (resolution and
+grouping), `public-actions.test.ts` (the gate), `offer-enquiry/*.test.ts`,
+`actions/offerings.test.ts`; self-test 14d on PGlite.
+
+## 15. Retired: the offer ↔ service reconciliation of 13–16 Oct 2026
+
+Until 17 Oct 2026 an `offer` block carried `bookingServiceSlugs`, `BOOKING_RECONCILIATION`
+recorded which page linked which service, and Beheer → Aanbod (16 Oct) saved those settings per
+page id. §14 replaces it; `cms:migrate-aanbod` converts a database that still holds offer pages
+(`deriveLegacyOffering()` reads the old block one last time).

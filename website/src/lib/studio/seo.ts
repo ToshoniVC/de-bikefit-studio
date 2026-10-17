@@ -1,6 +1,7 @@
 import 'server-only';
 import type { Metadata } from 'next';
 import type { SiteSettings } from '@/lib/cms/blocks';
+import type { OfferingContent } from '@/lib/offers/offering-content';
 import { localeTag, ogLocale, type StudioLocale } from './locale';
 import { OG_IMAGE_ALT, OG_IMAGE_PATH, OG_IMAGE_SIZE } from './og';
 import { absoluteUrl, resolveMedia, type StudioPage } from './site';
@@ -120,5 +121,65 @@ export function notFoundMetadata(settings: SiteSettings): Metadata {
     title: { absolute: applyTitleTemplate(settings.seo.titleTemplate, 'Pagina niet gevonden') },
     description: 'Deze pagina bestaat niet (meer).',
     robots: { index: false, follow: false },
+  };
+}
+
+/**
+ * Metadata for an offering's page (`/aanbod/<slug>`, rendered from Beheer →
+ * Aanbod, not from a CMS page): the same precedence as {@link buildPageMetadata}
+ * with the offering's title, meta description (else its summary) and image.
+ */
+export async function buildOfferMetadata(input: {
+  content: Pick<OfferingContent, 'title' | 'metaDescription' | 'summary' | 'intro' | 'image'>;
+  path: string;
+  settings: SiteSettings;
+  locale: StudioLocale;
+}): Promise<Metadata> {
+  const { content, settings, locale } = input;
+  const canonical = absoluteUrl(input.path);
+  const title = applyTitleTemplate(settings.seo.titleTemplate, content.title);
+  const description =
+    content.metaDescription.trim() ||
+    content.summary.trim() ||
+    content.intro.trim() ||
+    settings.seo.defaultMetaDescription.trim() ||
+    undefined;
+  const index = shouldIndex(settings, false);
+
+  const media = await resolveMedia(
+    content.image.mediaId ?? settings.seo.defaultOgImageMediaId,
+    locale,
+  );
+  const ogImage = media
+    ? {
+        url: absoluteUrl(media.url),
+        alt: media.alt || title,
+        width: media.width ?? undefined,
+        height: media.height ?? undefined,
+      }
+    : content.image.url
+      ? { url: absoluteUrl(content.image.url), alt: content.image.alt || title }
+      : {
+          url: absoluteUrl(OG_IMAGE_PATH),
+          alt: OG_IMAGE_ALT,
+          width: OG_IMAGE_SIZE.width,
+          height: OG_IMAGE_SIZE.height,
+        };
+
+  return {
+    title: { absolute: title },
+    description,
+    alternates: { canonical, languages: languageAlternates(locale, canonical) },
+    robots: { index, follow: index, googleBot: { index, follow: index } },
+    openGraph: {
+      type: 'website',
+      locale: ogLocale(locale),
+      url: canonical,
+      siteName: settings.site.name,
+      title,
+      description,
+      images: [ogImage],
+    },
+    twitter: { card: 'summary_large_image', title, description, images: [ogImage.url] },
   };
 }

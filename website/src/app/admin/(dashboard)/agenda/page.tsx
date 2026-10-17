@@ -8,7 +8,7 @@ import {
   toProviderServiceOption,
 } from '@/components/admin/booking-rows';
 import { BookingsTable } from '@/components/admin/bookings-table';
-import { SectionCard } from '@/components/admin/form';
+import { ActionForm, SectionCard, SubmitButton } from '@/components/admin/form';
 import { GoogleConnectionCard } from '@/components/admin/google-connection-card';
 import { GoogleFlash } from '@/components/admin/google-flash';
 import {
@@ -17,12 +17,11 @@ import {
   ProviderProfileForm,
 } from '@/components/admin/provider-editor';
 import { ProviderServicesForm } from '@/components/admin/provider-services-form';
-import { ServiceCreateForm } from '@/components/admin/services-manager';
 import { PageHeading } from '@/components/admin/shell';
 import { googleConnectSetup } from '@/lib/booking/google';
 import { getOwnProvider, listBookings, listLocations, listServices } from '@/lib/booking/repo';
-import { getBookingRules } from '@/lib/booking/settings';
 import { todayYmd } from '@/lib/booking/time';
+import { createOwnProviderProfileAction } from '@/lib/cms/actions/providers';
 import { requireCmsUser } from '@/lib/cms/auth';
 import { listOfferingSubscriptionGroups, type OfferingSubscriptionGroup } from '@/lib/offers/repo';
 import { can } from '@/lib/cms/permissions';
@@ -39,40 +38,46 @@ export default async function AdminAgendaPage({ searchParams }: { searchParams: 
   const provider = await getOwnProvider();
 
   if (!provider) {
+    // An Aanbieder account made before 17 Oct 2026 (or an admin who also fits):
+    // one click completes it; new Aanbieder accounts get the profile at creation.
     return (
       <>
         <PageHeading title="Mijn agenda" />
         <GoogleFlash {...search} />
         <SectionCard
           title="Nog geen aanbiedersprofiel"
-          description="Je account is nog niet gekoppeld aan een aanbieder, dus er is geen agenda om te beheren."
+          description="Je account heeft nog geen profiel als aanbieder: zonder profiel is er geen agenda, geen aanbod en geen afspraak op jouw naam."
         >
-          <p className="text-sm text-muted-foreground">
-            {can(user.role, 'provider.manage') ? (
-              <>
-                Maak een profiel aan of beheer bestaande aanbieders via{' '}
-                <Link
-                  href="/admin/providers"
-                  className="underline underline-offset-4 hover:text-primary"
-                >
-                  Aanbieders
-                </Link>
-                .
-              </>
-            ) : (
-              'Vraag een beheerder om een aanbiedersprofiel voor je aan te maken.'
-            )}
-          </p>
+          <ActionForm action={createOwnProviderProfileAction} className="max-w-md">
+            <p className="text-sm text-muted-foreground">
+              Maak het nu aan: je naam wordt de weergavenaam, de rest vul je daarna zelf in (uren,
+              aanbod, Google Agenda).
+            </p>
+            <div>
+              <SubmitButton>Mijn aanbiedersprofiel aanmaken</SubmitButton>
+            </div>
+          </ActionForm>
+          {can(user.role, 'provider.manage') ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Of beheer de aanbieders via{' '}
+              <Link
+                href="/admin/providers"
+                className="underline underline-offset-4 hover:text-primary"
+              >
+                Aanbieders
+              </Link>
+              .
+            </p>
+          ) : null}
         </SectionCard>
       </>
     );
   }
 
-  const [bookings, services, locations, rules, groups] = await Promise.all([
+  const [bookings, services, locations, groups] = await Promise.all([
     listBookings({ scope: 'own', range: 'upcoming', limit: 50 }),
     can(user.role, 'service.read') ? listServices({ includeInactive: true }) : Promise.resolve([]),
     can(user.role, 'location.read') ? listLocations() : Promise.resolve([]),
-    getBookingRules(),
     can(user.role, 'service.read')
       ? listOfferingSubscriptionGroups().catch((): OfferingSubscriptionGroup[] => {
           console.error('[cms] offering_groups_unavailable');
@@ -141,21 +146,8 @@ export default async function AdminAgendaPage({ searchParams }: { searchParams: 
           canEdit={can(user.role, 'service.subscribe.own') || can(user.role, 'provider.manage')}
           groups={groups}
           title="Mijn aanbod"
-          description="Vink aan wat je zelf aanbiedt, per aanbod en variant (bv. Volwassene en Jeugd), en kies per dienst eventueel een andere locatie. Een aanbod is pas online te boeken als minstens één aanbieder het aanbiedt. Naam, duur en prijs beheert de beheerder."
+          description="Vink aan wat je zelf aanbiedt, per aanbod en variant (bv. Volwassene en Jeugd), en kies per dienst eventueel een andere locatie. Een aanbod is pas online te boeken als minstens één aanbieder het aanbiedt. Tekst, duur en prijs beheert de beheerder onder Aanbod."
         />
-        {/* The catalogue is the admin's: a provider never sees a create form here. */}
-        {can(user.role, 'service.manage') ? (
-          <SectionCard
-            title="Nieuwe dienst"
-            description="Staat je dienst er niet bij? Maak hem aan en vink hem daarna hierboven aan."
-          >
-            <ServiceCreateForm
-              locations={locationOptions}
-              defaultBuffer={rules.defaultBufferAfterMinutes}
-              idPrefix="agenda-service-new"
-            />
-          </SectionCard>
-        ) : null}
         <ProviderProfileForm
           provider={editor.profile}
           locations={locationOptions}

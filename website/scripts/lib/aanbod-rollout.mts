@@ -3,7 +3,8 @@
  * EXISTING database to the 13 Oct 2026 redesign — and nothing else.
  *
  * Scope (from `src/lib/studio/seed-content/aanbod.ts`):
- *   pages     /, /aanbod, /aanbod/<7 offers>, /voor-wie, /bikefit, /ons-team
+ *   pages     /, /aanbod, /voor-wie, /bikefit, /ons-team (the offerings
+ *             themselves are rows: `cms:bootstrap` / `cms:migrate-aanbod`)
  *   menus     main, footer
  *   retired   /over-ons → unpublished (row and snapshot kept) + 301 → /ons-team
  *
@@ -14,8 +15,7 @@
  * the apply fails loudly if any of those changed.
  *
  * Three steps:
- *   plan     read-only: what would change, why, and the offer ↔ booking
- *            catalogue report (which offer is online bookable)
+ *   plan     read-only: what would change and why
  *   apply    writes a JSON backup of every row it will overwrite FIRST, then
  *            writes through the real repo (permission checks, sanitising,
  *            validation, audit), publishing each page last

@@ -65,7 +65,11 @@ export function UsersManager({
             <Field label="Naam" htmlFor="user-name">
               <Input id="user-name" name="name" required />
             </Field>
-            <Field label="Rol" htmlFor="user-role">
+            <Field
+              label="Rol"
+              htmlFor="user-role"
+              hint="Een aanbieder krijgt meteen een aanbiedersprofiel en een eigen agenda."
+            >
               <Select id="user-role" name="role" defaultValue="editor">
                 <option value="editor">{ROLE_LABELS.editor}</option>
                 <option value="admin">{ROLE_LABELS.admin}</option>

@@ -11,7 +11,7 @@ import {
   type ProviderServiceOption,
   type ProviderSubscription,
 } from '@/components/admin/provider-editor';
-import { locationOptionLabel, type LocationOption } from '@/components/admin/services-manager';
+import { locationOptionLabel, type LocationOption } from '@/components/admin/booking-labels';
 import { badgeTone } from '@/components/admin/tones';
 import { setProviderServicesAction } from '@/lib/cms/actions/providers';
 import { IDLE_STATE } from '@/lib/cms/actions/state';

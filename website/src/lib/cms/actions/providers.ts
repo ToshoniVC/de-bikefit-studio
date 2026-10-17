@@ -7,7 +7,9 @@ import {
   setProviderServices,
   updateProvider,
 } from '@/lib/booking/repo';
+import { ensureProviderProfile } from '@/lib/booking/repo-provider-profile';
 import { isValidTimeZone } from '@/lib/booking/time';
+import { requireCmsUser } from '@/lib/cms/auth';
 import { runAction } from './run';
 import { actionError, actionOk, boolField, field, nullableField, type ActionState } from './state';
 
@@ -54,6 +56,31 @@ export async function createProviderAction(
         ? 'Aanbieder aangemaakt. Geef dit tijdelijke wachtwoord één keer door; bij de eerste aanmelding kiest de aanbieder een eigen wachtwoord en stelt tweestapsverificatie in (authenticator-app).'
         : 'Aanbieder aangemaakt.',
       temporaryPassword ? { temporaryPassword } : undefined,
+    );
+  });
+}
+
+/**
+ * Mijn agenda without a profile (an Aanbieder account from before 17 Oct
+ * 2026): the signed-in user completes their own account with one click. The
+ * repo allows only the own account for `provider.self`, any for `provider.manage`.
+ */
+export async function createOwnProviderProfileAction(
+  _prevState: ActionState,
+  _form: FormData,
+): Promise<ActionState> {
+  void _prevState;
+  void _form;
+  return runAction(async () => {
+    const actor = await requireCmsUser();
+    const result = await ensureProviderProfile(actor.id);
+    if (!result.ok) return actionError(result.message);
+
+    revalidateProviderViews(result.data.providerId);
+    return actionOk(
+      result.data.created
+        ? 'Je aanbiedersprofiel is aangemaakt. Vul hieronder je uren en je aanbod in.'
+        : 'Je had al een aanbiedersprofiel.',
     );
   });
 }

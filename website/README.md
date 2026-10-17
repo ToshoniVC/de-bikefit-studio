@@ -110,14 +110,13 @@ Run inside `website/`. Scripts that touch a database use PGlite unless `DATABASE
 | `npm run db:migrate` | Apply pending migrations (PGlite, or Neon when `DATABASE_URL` is set) |
 | `npm run db:push` | Push the schema without a migration: throwaway local database only, **never Neon** |
 | `npm run db:studio` | Drizzle Studio |
-| `npm run cms:bootstrap` | Idempotent: first admin, site settings, menus, locations, services; fills only an empty service choice label ("Volwassene", "Jeugd", after migration 0009) (`CMS_BOOTSTRAP_PASSWORD` inline) |
+| `npm run cms:bootstrap` | Idempotent: first admin, site settings, menus, locations, services and the default offerings of Beheer → Aanbod; fills only an empty service choice label ("Volwassene", "Jeugd", after migration 0009) (`CMS_BOOTSTRAP_PASSWORD` inline) |
 | `npm run cms:seed` | Idempotent Dutch content, published. `-- --only-missing` leaves existing pages/menus alone; `-- --refresh-slug <slug>` re-seeds and republishes one page |
 | `npm run cms:seed-booking` | Idempotent first provider, hours and service subscriptions (`PROVIDER_EMAIL` / `PROVIDER_NAME` for another) |
 | `npm run cms:rollout-aanbod` | Offer redesign onto an existing database: dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §9 |
 | `npm run cms:patch-booking-cta` | Points existing "Boek je bikefit" buttons that dial (or jump to `#contact`) at `/afspraak`: dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §10 |
 | `npm run cms:patch-page-cleanup` | Applies Toshoni's site review of 13 Oct 2026 to existing content (kickers, headings, "jeugd", `/afspraak` layout, `/contact` → `/afspraak`, menus, public e-mail): dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §11 |
-| `npm run cms:migrate-offerings` | Saves the offering settings (Beheer → Aanbod, migration 0010) that the published offer pages already imply: dry run by default; `-- --apply --expect-host <host>`. See `docs/staging-runbook.md` §18 |
-| `npm run cms:patch-cadeaubon` | Adds the gift voucher of 13 Oct 2026 to existing content (`/aanbod/cadeaubon` created and published, "Overige" on `/aanbod`): dry run by default; `-- --apply --expect-host <host>` (backup first), `-- --restore <backup.json>`. See `docs/staging-runbook.md` §12 |
+| `npm run cms:migrate-aanbod` | Turns the offer pages of an existing database into offerings (Beheer → Aanbod owns the offer since 17 Oct 2026): dry run by default; `-- --apply --expect-host <host>` (backup first). See `docs/staging-runbook.md` §19 |
 | `npm run images:import -- --slot <slot> --src <file>` | Compress a delivered editorial image into `public/images/editorial/` and record it (`docs/editorial-images.md`) |
 | `npm run cms:selftest` | Integration checks on a throwaway PGlite in `.pglite-selftest/` |
 | `npm run cms:retention` | GDPR retention purge, dry run; `-- --apply` deletes, `-- --json` for a report |
@@ -135,7 +134,7 @@ Three layers, all in CI ([`../CLAUDE.md`](../CLAUDE.md) §5):
    first sign-in, resets, role changes), admin session limits and step-up, permissions, block
    registry, publish, the booking schema, the
    provider role, `computeSlots()`, e-mail/ICS/token encryption, the full booking flow, the
-   offer rollout with service preselection, the content patches (booking CTA, page cleanup,
+   offer rollout, Beheer → Aanbod with its migration, the content patches (booking CTA, page cleanup,
    gift voucher) and the e-mail service in `/admin/email`, on a throwaway PGlite. Section list
    in the header of `scripts/cms-selftest.mts`.
 3. **Smoke** — after every preview and staging deployment the DevOps agent (Arend) runs

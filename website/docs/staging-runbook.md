@@ -127,10 +127,13 @@ npm run cms:bootstrap
 Creates only what is missing: the admin `contact@toshoni.be` (`must_change_password =
 true`), the six `nl` site settings (including `seo.allowIndexing = false` and the `booking`
 rules), empty `main` and `footer` menus, the locations "De Bikefit Studio, Ninove" and "Bij
-jou thuis", and the five services. Never overwrites anything. On a database that already has
-the services, the only change it makes is to fill an **empty** `choice_label` of
-`volwassenenfit` ("Volwassene") and `jeugdfit` ("Jeugd") after migration 0009 (printed as
-`~ service nl/… : empty choice label set to …`); a label an admin typed is left alone.
+jou thuis", the five services and the ten offerings of Beheer → Aanbod (the seven offers of the
+brief, shown, Bikefit – huidige fiets booked as Volwassenenfit/Jeugdfit; Gezinspakket, Fit aan
+huis and Inspanningstest as hidden offerings; §19). Never overwrites anything. On a database
+that already has the services, the only change it makes is to fill an **empty** `choice_label`
+of `volwassenenfit` ("Volwassene") and `jeugdfit` ("Jeugd") after migration 0009 (printed as
+`~ service nl/… : empty choice label set to …`); a label an admin typed is left alone. An
+existing offering (by slug) is left alone too.
 
 ### 3.3 Seed content and the first provider
 
@@ -147,10 +150,11 @@ up the authenticator (§6, steps 1–2, on a deployment that uses this database)
 `cms:seed` stops with that explanation and writes nothing. `cms:seed-booking` writes directly
 and does not need it.
 
-`cms:seed` creates, fills and **publishes** the Dutch pages (home, `/aanbod`, its seven
-offer pages and `/aanbod/cadeaubon`, `/voor-wie`, `/bikefit`, `/ons-team`,
-`/veelgestelde-vragen`, `/afspraak`, `/privacy`, `/algemene-voorwaarden`), both menus and the
-redirects (`/bikefit.html`, `/over-ons`, `/contact`), through the real write API. Once real
+`cms:seed` creates, fills and **publishes** the Dutch pages (home, `/aanbod`, `/cadeaubon`,
+`/voor-wie`, `/bikefit`, `/ons-team`, `/veelgestelde-vragen`, `/afspraak`, `/privacy`,
+`/algemene-voorwaarden`), both menus and the redirects (`/bikefit.html`, `/over-ons`,
+`/aanbod/cadeaubon`, `/contact`), through the real write API. The offer itself is not pages but
+the offerings `cms:bootstrap` wrote (§19). Once real
 editing has started use `-- --only-missing` or `-- --refresh-slug <slug>` instead of a full
 run: a full run overwrites the draft blocks of every seeded page.
 
@@ -343,7 +347,7 @@ production step (database, env vars, DNS, deploy) needs an explicit go; Arend ex
 
 ## 9. Rolling out the offer redesign (Aanbod, 13 Oct 2026)
 
-Brings an existing staging database to the redesign: `/`, `/aanbod`, seven `/aanbod/<slug>`,
+Brings an existing staging database to the redesign: `/`, `/aanbod` (since 17 Oct 2026 the offerings are rows, §19, not pages),
 `/voor-wie`, `/bikefit`, `/ons-team`, the `main` and `footer` menus, `/over-ons` unpublished
 (row and snapshot kept) with a 301 to `/ons-team`. Nothing else: no settings (contact, SEO,
 analytics), no legal pages, no `/afspraak`, `/contact` or `/veelgestelde-vragen`, no users, and
@@ -368,7 +372,7 @@ Order (the old build cannot render the new block types, so code goes first):
    DATABASE_URL='<staging pooled url>' npm run cms:rollout-aanbod
    ```
 
-   Expect: `~` for `/` and `/bikefit`, `+` for the ten new pages, `~ menu main/footer`,
+   Expect: `~` for `/` and `/bikefit`, `+` for the three new pages, `~ menu main/footer`,
    `~ page /over-ons — unpublish`, `+ redirect /over-ons → /ons-team`, "Bikefit – huidige
    fiets — online booking", the six others "enquiry", and the booking counts. A line with `!`
    (unpublished draft edits on an overwritten page, a translation-group clash, or an existing
@@ -398,7 +402,7 @@ Order (the old build cannot render the new block types, so code goes first):
    and the first request after that may still serve the old version once. Wait 5 minutes,
    load each page twice, then verify. (A redeploy does not reliably clear Vercel's data cache.)
 7. **Verify** on the stable alias: `site-health`, plus `/aanbod` (two groups, seven cards,
-   "Prijs op aanvraag"), the seven `/aanbod/<slug>` pages, `/voor-wie`, `/bikefit`,
+   "Prijs op aanvraag"), the `/aanbod/<slug>` offerings (§19), `/voor-wie`, `/bikefit`,
    `/ons-team` (Robin and Goran: initials and "Een uitgebreid profiel volgt binnenkort."), `/over-ons` → 308 to `/ons-team`, the main menu (no Home), and
    `/afspraak?dienst=bikefit-huidige-fiets` (widget with Volwassenenfit/Jeugdfit, "Je boekt
    voor …") and `/afspraak?dienst=lactaattest` (contact prompt, no widget). Do not create
@@ -516,7 +520,11 @@ redirect and sets `contact.email` back (other contact fields untouched). Then, i
 code: redeploy `staging@9c655fe`.
 
 
-## 12. Gift voucher patch ("Cadeaubon", 13 Oct 2026)
+## 12. Gift voucher patch ("Cadeaubon", 13 Oct 2026) — superseded
+
+**Superseded on 17 Oct 2026:** `cms:patch-cadeaubon` no longer exists. The voucher page is
+seeded at `/cadeaubon` and its card is on the `/aanbod` catalogue block; an existing database
+gets both through `cms:migrate-aanbod` (§19). Kept for the record.
 
 What it adds, and where:
 
@@ -646,7 +654,7 @@ combined order in §16. The steps below are the detail of that order.
    with the account → dashboard. No lockout: an admin without an authenticator always gets the
    enrolment step after the password. *Gebruikers* shows "Tweestapsverificatie aan".
 5. **CLI scripts** (`cms:seed`, `cms:rollout-aanbod`, `cms:patch-booking-cta`,
-   `cms:patch-page-cleanup`, `cms:patch-cadeaubon`) act only as an admin who has enrolled;
+   `cms:patch-page-cleanup`, `cms:migrate-aanbod`) act only as an admin who has enrolled;
    until step 4 is done they stop, dry runs included, with "no active admin has two-step
    verification yet".
 6. **Checks:** `/admin/login` does **not** show "Tweestapsverificatie is op deze server niet
@@ -954,7 +962,10 @@ them beforehand to have their phone or 1Password at hand.
 
 ---
 
-## 18. Beheer → Aanbod (offering settings, migration 0010, 16 Oct 2026)
+## 18. Beheer → Aanbod (offering settings, migration 0010, 16 Oct 2026) — superseded by §19
+
+**Superseded on 17 Oct 2026:** `cms:migrate-offerings` no longer exists; migration 0010 stays
+required and is followed by 0011 (§19). Kept for the record.
 
 What changes: one place in Beheer to decide per offer page whether it is shown, whether it has
 Volwassene/Jeugd variants, the price per variant and whether it is booked directly online or
@@ -1008,3 +1019,79 @@ autonomous after the release gate, production needs Toshoni's go.
 **Rollback.** Code first: redeploy the previous build; it ignores the two tables. To return a
 page to its derived behaviour on the new build, delete its row
 (`DELETE FROM cms_offerings WHERE page_id = '<id>'`, variants cascade). The tables stay.
+
+
+---
+
+## 19. The offering is the offer (migration 0011 + `cms:migrate-aanbod`, 17 Oct 2026)
+
+What changes: Beheer → Aanbod owns the whole offer (text, image, shown or not, Volwassene/Jeugd,
+duration and price per variant, direct booking or enquiry) and writes the booking services
+itself; the seven offer pages under `/aanbod/` and the Diensten screen are gone; `/aanbod/<slug>`
+is rendered from the offering; the gift voucher page moves to `/cadeaubon`; a user with the role
+Aanbieder gets the provider profile with the account (`cms-architecture.md` §14,
+`booking-architecture.md` §14). Arend executes; staging is autonomous after the release gate,
+production needs Toshoni's go. §12 and §18 are superseded by this section.
+
+1. **Release gate** on the exact SHA (six steps).
+2. **Neon snapshot** of `Staging` (e.g. `staging-pre-aanbod-offerings-2026-10-17`).
+3. **Migrate before the deploy** (0011 widens `cms_offerings`; additive):
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run db:migrate
+   ```
+
+   Check: `cms_offerings` has the columns `slug`, `title`, `contents`, `image`; nothing else
+   changed. The live build ignores the new columns.
+4. **Deploy and migrate at once.** The new build does not serve the offer pages (the block
+   type `offer` no longer exists), and until step 5 ran the offer lists are empty. Run step 5
+   right after the staging build is READY; the dry run can run before the deploy.
+5. **Convert the offer pages:**
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:migrate-aanbod                   # dry run
+   DATABASE_URL='<staging pooled url>' npm run cms:migrate-aanbod -- --apply --expect-host <host>
+   ```
+
+   The dry run is read-only (no session, no audit entry, writes refused) and lists per offer page
+   `+ … create the offering from the page (derived|stored settings), then delete the page`, per
+   service no offering books through `+ service … — hidden offering`, `~ page /aanbod/cadeaubon —
+   move to /cadeaubon`, `+ redirect /aanbod/cadeaubon → /cadeaubon`, `~ page /aanbod — add the
+   voucher card`, the guard counts. A `!` line blocks the apply (a text that does not validate, an
+   unpublished draft on `/aanbod`, a redirect pointing elsewhere): fix it in `/admin` first. The
+   apply writes a backup JSON of every page it deletes or changes
+   (`website/.rollout-backups/aanbod-migrate-<timestamp>.json`) before the first write, acts as
+   the enrolled admin, writes the offerings (audit `offering.create` / `offering.update`), moves
+   the voucher page, creates the redirect, patches and publishes `/aanbod`, deletes the offer
+   pages (audit `page.delete`), verifies the catalogue and the pages, checks the booking tables
+   and audits `migrate.aanbod.apply`. A second run prints `nothing to do`.
+6. **Cache.** As in §9: the readers' fallback revalidation is 5 minutes; wait, load each page
+   twice, then verify.
+7. **Checks** (no booking or enquiry is submitted on staging):
+   - `/admin/aanbod` lists ten offerings: the seven of the brief (shown) and Gezinspakket, Fit
+     aan huis, Inspanningstest (hidden); Bikefit – huidige fiets shows *Volwassene en Jeugd
+     apart*, *Rechtstreeks online boeken*, 90 and 60 minutes, no prices, the provider under
+     "Aangeboden door". Open one: the text of the former page is there.
+   - `/admin/pages` shows one *Aanbod* page and *Cadeaubon* at `/cadeaubon`; no page under
+     `/aanbod/`. The admin menu has no *Diensten*.
+   - `/aanbod`: three groups, seven cards with their status, "Prijs op aanvraag", the Cadeaubon
+     card under Overige → `/cadeaubon`; `/aanbod/bikefit-huidige-fiets` renders with breadcrumb,
+     "Volwassene: 1 u 30 min · Jeugd: 1 uur", the booking button; `/aanbod/lactaattest` shows
+     the enquiry form; `/aanbod/gezinspakket` and `/aanbod/onbekend` answer 404;
+     `/aanbod/cadeaubon` → 308 to `/cadeaubon`; the sitemap lists the seven offerings.
+   - `/afspraak`: "Bikefit – huidige fiets" once with Volwassene / Jeugd; Gezinspakket, Fit aan
+     huis and Inspanningstest are no longer offered (hidden offerings; show them in Beheer →
+     Aanbod if Toshoni wants them back); `?dienst=bikefit-huidige-fiets` narrows,
+     `?dienst=lactaattest` links to the form.
+   - The provider sees *Mijn aanbod* grouped by offering under *Mijn agenda*; a new user with the
+     role Aanbieder (Gebruikers) gets "Het aanbiedersprofiel is meteen aangemaakt." and an agenda
+     at the first sign-in.
+   - Audit log: `offering.create` per converted page, `page.delete` per deleted page,
+     `migrate.aanbod.apply` once.
+
+**Rollback.** Restore the Neon snapshot of step 2, then redeploy the previous build (the old
+build needs the offer pages the migration deleted; the backup JSON holds them for reference,
+there is no `--restore`). The schema change is additive and can stay.
+
+**Production** (after Toshoni's go): the same steps against Neon `production`, right after
+`main` is deployed.

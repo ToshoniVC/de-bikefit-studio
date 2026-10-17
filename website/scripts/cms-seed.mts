@@ -26,10 +26,13 @@
  * Nothing is invented: no prices, no street address, no commercial claims, no
  * testimonials. The one e-mail address is the confirmed CONTACT_EMAIL.
  *
- *   /, /aanbod, /aanbod/*, src/lib/studio/seed-content/aanbod.ts — the 13 Oct 2026
+ *   /, /aanbod,            src/lib/studio/seed-content/aanbod.ts — the 13 Oct 2026
  *   /voor-wie, /bikefit,   redesign (work block 2026-10-13-aanbod-staging-brief.md
  *   /ons-team, menus       + the earlier prototype copy); provenance is in that
- *                          file's header. Also used by `cms:rollout-aanbod`.
+ *                          file's header. Also used by `cms:rollout-aanbod`. The
+ *                          offerings themselves are rows, not pages, since
+ *                          17 Oct 2026 (`src/lib/offers/defaults.ts`, written
+ *                          by `cms:bootstrap`); /cadeaubon is `cadeaubon.ts`.
  *                          `/over-ons` is no longer seeded: it redirects to
  *                          `/ons-team`.
  *   /veelgestelde-vragen   content/about.html §2 = prototype/bikefit.html

@@ -8,8 +8,10 @@ import {
 
 /**
  * The settings an offer page had before Beheer → Aanbod existed, derived from
- * its `offer` block. Split from `./offering.ts` (size limit); re-exported
- * there. Plain module, unit-tested in `offering.test.ts`.
+ * its `offer` block. Since 17 Oct 2026 offer pages are retired; this is read
+ * only by `cms:migrate-aanbod` (`scripts/lib/aanbod-migrate.mts`), which turns
+ * each page into an offering row. Plain module, unit-tested in
+ * `offering.test.ts`.
  */
 
 /** The legacy fields of an `offer` block (structural, so tests need no registry). */
@@ -18,6 +20,28 @@ export type LegacyOfferFields = {
   priceCents: number | null;
   priceLabel: string;
 };
+
+type LegacyBlockData = {
+  bookingServiceSlugs?: unknown;
+  priceCents?: unknown;
+  priceLabel?: unknown;
+};
+
+/** The legacy fields of a stored `offer` block, read defensively. */
+export function legacyFieldsOf(data: unknown): {
+  bookingServiceSlugs: string[];
+  priceCents: number | null;
+  priceLabel: string;
+} {
+  const value = (data ?? {}) as LegacyBlockData;
+  return {
+    bookingServiceSlugs: Array.isArray(value.bookingServiceSlugs)
+      ? value.bookingServiceSlugs.filter((slug): slug is string => typeof slug === 'string')
+      : [],
+    priceCents: typeof value.priceCents === 'number' ? value.priceCents : null,
+    priceLabel: typeof value.priceLabel === 'string' ? value.priceLabel : '',
+  };
+}
 
 export type LegacyDerivation = {
   settings: OfferingSettings;

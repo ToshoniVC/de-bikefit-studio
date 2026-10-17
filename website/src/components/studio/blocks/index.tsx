@@ -9,7 +9,6 @@ import { FaqBlock } from './faq';
 import { GiftVoucherBlock } from './gift-voucher';
 import { HeroBlock } from './hero';
 import { ImageTextBlock } from './image-text';
-import { OfferBlock } from './offer';
 import { OfferCatalogueBlock } from './offer-catalogue';
 import { PricingBlock } from './pricing';
 import { ProcessBlock } from './process';
@@ -26,9 +25,9 @@ import type { BlockPageContext } from './types';
  *
  * Three invariants it enforces for the whole page:
  *
- *  1. **One `<h1>`.** The first hero owns it; if a page has no hero (an offer
- *     page is a single `offer` block), the first visible section does. Every
- *     other section heading is an `<h2>`.
+ *  1. **One `<h1>`.** The first hero owns it; if a page has no hero (the
+ *     gift voucher page is a single `giftVoucher` block), the first visible
+ *     section does. Every other section heading is an `<h2>`.
  *  2. **Placeholders never reach a visitor.** `visibleBlocks()` drops the
  *     `pricing` and `testimonial` blocks while `isPlaceholder` is set.
  *  3. **Stable anchors.** `sectionAnchors()` gives each section a readable
@@ -106,8 +105,6 @@ function StudioBlock({
       return <TestimonialBlock data={block.data} {...common} />;
     case 'booking':
       return <BookingBlock data={block.data} {...common} />;
-    case 'offer':
-      return <OfferBlock data={block.data} {...common} />;
     case 'offerCatalogue':
       return <OfferCatalogueBlock data={block.data} {...common} />;
     case 'giftVoucher':

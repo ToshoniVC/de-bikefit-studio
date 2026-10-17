@@ -14,7 +14,7 @@ import type { GiftVoucherOrder } from './order';
 
 /**
  * The e-mail the studio gets when a visitor clicks "Bestel nu" on
- * `/aanbod/cadeaubon`. Internal: it goes to the studio, never to the visitor.
+ * `/cadeaubon`. Internal: it goes to the studio, never to the visitor.
  * Everything the visitor typed is escaped in the HTML part; the subject holds
  * only the amount and the reference (no personal data: subjects show up in
  * inbox lists and the provider's dashboard; the mail helper never logs them).

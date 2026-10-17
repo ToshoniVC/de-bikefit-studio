@@ -3,7 +3,8 @@ import { formatDuration, formatPrice } from '@/lib/booking/format';
 import { OFFER_DURATION_FALLBACK, OFFER_PRICE_FALLBACK, offerDurationLabel } from './catalogue';
 
 /**
- * Offering settings — what Beheer → Aanbod decides per offer page.
+ * Offering settings — what Beheer → Aanbod decides per offering (its copy is
+ * `./offering-content.ts`; both live on the same `cms_offerings` row).
  *
  * Plain module: no I/O, no Next, no `server-only`. Unit-tested in
  * `offering.test.ts`; shared by the public blocks, the booking block, the
@@ -80,8 +81,35 @@ export type OfferingSource = 'stored' | 'legacy';
 // Validation (Beheer → Aanbod)
 // ---------------------------------------------------------------------------
 
+/**
+ * The booking facts of one variant, written to its `cms_services` row by the
+ * same save (17 Oct 2026: Diensten folded into Aanbod). Name, label and slug
+ * of that row follow the offering; these four are the admin's per variant.
+ */
+export const variantServiceInputSchema = z.object({
+  durationMinutes: z
+    .number()
+    .int('De duur moet een geheel aantal minuten zijn.')
+    .min(5, 'De duur is minstens 5 minuten.')
+    .max(720, 'De duur is maximaal 12 uur.'),
+  /** `null` → the `booking` setting's default buffer. */
+  bufferAfterMinutes: z
+    .number()
+    .int('De buffer moet een geheel aantal minuten zijn.')
+    .min(0, 'De buffer kan niet negatief zijn.')
+    .max(240, 'De buffer is maximaal 4 uur.')
+    .nullable()
+    .default(null),
+  /** `null` → the provider's default location. */
+  locationId: z.string().trim().min(1).max(64, 'Ongeldige locatie.').nullable().default(null),
+  requiresGuardian: z.boolean().default(false),
+});
+
+export type VariantServiceInput = z.infer<typeof variantServiceInputSchema>;
+
 const variantSchema = z.object({
   audience: z.enum(OFFERING_AUDIENCES),
+  /** The existing service row of this variant, if any (kept; never re-created). */
   serviceId: z.string().trim().max(64, 'Ongeldige dienst.').nullable().default(null),
   priceCents: z
     .number()
@@ -90,6 +118,8 @@ const variantSchema = z.object({
     .max(OFFERING_MAX_PRICE_CENTS, 'De prijs is te hoog.')
     .nullable()
     .default(null),
+  /** Required for direct booking; ignored (kept as it was) for an enquiry. */
+  service: variantServiceInputSchema.nullable().default(null),
 });
 
 export const offeringInputSchema = z
@@ -111,13 +141,13 @@ export const offeringInputSchema = z
     }
     if (value.bookingMode === 'direct') {
       for (const variant of value.variants) {
-        if (!variant.serviceId) {
+        if (!variant.service) {
           const which = AUDIENCE_LABELS[variant.audience];
           ctx.addIssue({
             code: 'custom',
             message: which
-              ? `Kies voor ${which} de dienst waarmee het online geboekt wordt.`
-              : 'Kies de dienst waarmee dit aanbod online geboekt wordt.',
+              ? `Vul voor ${which} de duur in om het online te boeken.`
+              : 'Vul de duur in om dit aanbod online te boeken.',
           });
         }
       }
@@ -135,9 +165,15 @@ export const offeringInputSchema = z
 
 export type OfferingInput = z.input<typeof offeringInputSchema>;
 
+export type ValidatedOfferingInput = {
+  settings: OfferingSettings;
+  /** Per audience of the mode: the service facts to write, or `null` (enquiry, nothing given). */
+  services: Partial<Record<OfferingAudience, VariantServiceInput | null>>;
+};
+
 export function validateOfferingInput(
   raw: unknown,
-): { ok: true; data: OfferingSettings } | { ok: false; message: string } {
+): { ok: true; data: ValidatedOfferingInput } | { ok: false; message: string } {
   const parsed = offeringInputSchema.safeParse(raw);
   if (!parsed.success) {
     return {
@@ -146,17 +182,22 @@ export function validateOfferingInput(
     };
   }
   const data = parsed.data;
+  const services: ValidatedOfferingInput['services'] = {};
+  for (const variant of data.variants) services[variant.audience] = variant.service;
   return {
     ok: true,
     data: {
-      isListed: data.isListed,
-      bookingMode: data.bookingMode,
-      variantMode: data.variantMode,
-      variants: data.variants.map((variant) => ({
-        audience: variant.audience,
-        serviceId: variant.serviceId || null,
-        priceCents: variant.priceCents,
-      })),
+      settings: {
+        isListed: data.isListed,
+        bookingMode: data.bookingMode,
+        variantMode: data.variantMode,
+        variants: data.variants.map((variant) => ({
+          audience: variant.audience,
+          serviceId: variant.serviceId || null,
+          priceCents: variant.priceCents,
+        })),
+      },
+      services,
     },
   };
 }

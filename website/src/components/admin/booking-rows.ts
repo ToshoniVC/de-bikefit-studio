@@ -9,11 +9,10 @@ import type {
   ProviderServiceOption,
   ProviderSubscription,
 } from '@/components/admin/provider-editor';
-import type { LocationOption, ServiceRow } from '@/components/admin/services-manager';
-import type { CmsLocation, CmsUserPublic } from '@/db/cms-schema';
+import type { LocationOption } from '@/components/admin/booking-labels';
+import type { CmsLocation } from '@/db/cms-schema';
 import type { BookingListItem, ProviderDetail, ServiceListItem } from '@/lib/booking/repo';
 import { BOOKING_TIMEZONE, formatDateLong, formatSlot, formatTime } from '@/lib/booking/time';
-import { can } from '@/lib/cms/permissions';
 
 /**
  * Maps `@/lib/booking/repo` results onto the plain, serialisable props the
@@ -75,45 +74,6 @@ export function toLocationOption(location: CmsLocation): LocationOption {
     name: location.name,
     kind: location.kind,
     isActive: location.isActive,
-  };
-}
-
-export function toServiceRow(
-  service: ServiceListItem,
-  user: CmsUserPublic,
-  offerings: readonly {
-    title: string;
-    stored: boolean;
-    variants: readonly { serviceId: string }[];
-  }[] = [],
-): ServiceRow {
-  const using = offerings.filter((offering) =>
-    offering.variants.some((variant) => variant.serviceId === service.id),
-  );
-  return {
-    id: service.id,
-    name: service.name,
-    choiceLabel: service.choiceLabel,
-    slug: service.slug,
-    description: service.description,
-    durationMinutes: service.durationMinutes,
-    bufferAfterMinutes: service.bufferAfterMinutes,
-    priceCents: service.priceCents,
-    showPrice: service.showPrice,
-    locationId: service.locationId,
-    requiresGuardian: service.requiresGuardian,
-    isActive: service.isActive,
-    sortOrder: service.sortOrder,
-    color: service.color,
-    providerCount: service.providerCount,
-    // Mirrors `requireServiceManage()` in the repo, which is the real check.
-    // `created_by` grants nothing: a provider who once created a service
-    // cannot edit, price or deactivate it.
-    editable: can(user.role, 'service.manage'),
-    offers: using.map((offering) => offering.title),
-    // A variant of an offering saved in Beheer → Aanbod: its public price and
-    // label come from there, so this screen does not offer a second one.
-    managedByOffering: using.some((offering) => offering.stored),
   };
 }
 

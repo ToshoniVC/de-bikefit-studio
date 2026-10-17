@@ -11,16 +11,22 @@
  *   4. booking: the `booking` setting (defaults), the default studio location
  *      "De Bikefit Studio, Ninove", the "Bij jou thuis" location (kind
  *      `customer`, for Fit aan huis) and the five initial services
+ *   5. the offer (Beheer → Aanbod): the seven offerings of 13 Oct 2026 plus the
+ *      three older services as hidden offerings, each linked to its services
+ *      (`src/lib/offers/defaults.ts`, `scripts/lib/offerings-bootstrap.mts`)
  *
  * Running it twice changes nothing and exits 0. It never overwrites an
- * existing password, existing settings, an existing menu, location or service.
+ * existing password, existing settings, an existing menu, location, service
+ * or offering.
  */
 import { config } from 'dotenv';
-import { and, eq } from 'drizzle-orm';
+import * as orm from 'drizzle-orm';
 
 config({ path: '.env.local' });
 
 import { getCmsDb, cmsDriver } from '@/db/cms';
+import * as offeringSchema from '@/db/cms-offering-schema';
+import { ensureDefaultOfferings } from './lib/offerings-bootstrap.mjs';
 import {
   cmsLocations,
   cmsNavigation,
@@ -126,7 +132,7 @@ async function main() {
   const [existingAdmin] = await db
     .select({ id: cmsUsers.id, role: cmsUsers.role })
     .from(cmsUsers)
-    .where(eq(cmsUsers.email, ADMIN_EMAIL))
+    .where(orm.eq(cmsUsers.email, ADMIN_EMAIL))
     .limit(1);
 
   if (existingAdmin) {
@@ -151,7 +157,9 @@ async function main() {
     const [existing] = await db
       .select({ key: cmsSiteSettings.key })
       .from(cmsSiteSettings)
-      .where(and(eq(cmsSiteSettings.locale, DEFAULT_LOCALE), eq(cmsSiteSettings.key, key)))
+      .where(
+        orm.and(orm.eq(cmsSiteSettings.locale, DEFAULT_LOCALE), orm.eq(cmsSiteSettings.key, key)),
+      )
       .limit(1);
 
     if (existing) {
@@ -171,7 +179,12 @@ async function main() {
     const [existing] = await db
       .select({ id: cmsNavigation.id })
       .from(cmsNavigation)
-      .where(and(eq(cmsNavigation.locale, DEFAULT_LOCALE), eq(cmsNavigation.menuKey, menuKey)))
+      .where(
+        orm.and(
+          orm.eq(cmsNavigation.locale, DEFAULT_LOCALE),
+          orm.eq(cmsNavigation.menuKey, menuKey),
+        ),
+      )
       .limit(1);
 
     if (existing) {
@@ -190,7 +203,7 @@ async function main() {
     const [existing] = await db
       .select({ id: cmsLocations.id })
       .from(cmsLocations)
-      .where(and(eq(cmsLocations.name, spec.name), eq(cmsLocations.kind, spec.kind)))
+      .where(orm.and(orm.eq(cmsLocations.name, spec.name), orm.eq(cmsLocations.kind, spec.kind)))
       .limit(1);
     if (existing) {
       console.log(`= location “${spec.name}” already exists — left untouched`);
@@ -200,7 +213,7 @@ async function main() {
       const [otherDefault] = await db
         .select({ id: cmsLocations.id, name: cmsLocations.name })
         .from(cmsLocations)
-        .where(eq(cmsLocations.isDefault, true))
+        .where(orm.eq(cmsLocations.isDefault, true))
         .limit(1);
       if (otherDefault) {
         console.log(
@@ -223,7 +236,9 @@ async function main() {
     const [existing] = await db
       .select({ id: cmsServices.id, choiceLabel: cmsServices.choiceLabel })
       .from(cmsServices)
-      .where(and(eq(cmsServices.locale, DEFAULT_LOCALE), eq(cmsServices.slug, service.slug)))
+      .where(
+        orm.and(orm.eq(cmsServices.locale, DEFAULT_LOCALE), orm.eq(cmsServices.slug, service.slug)),
+      )
       .limit(1);
     if (existing) {
       // Migration 0009 added `choice_label` empty. Fill the default label only
@@ -233,7 +248,7 @@ async function main() {
         await db
           .update(cmsServices)
           .set({ choiceLabel: service.choiceLabel })
-          .where(and(eq(cmsServices.id, existing.id), eq(cmsServices.choiceLabel, '')));
+          .where(orm.and(orm.eq(cmsServices.id, existing.id), orm.eq(cmsServices.choiceLabel, '')));
         console.log(
           `~ service ${DEFAULT_LOCALE}/${service.slug}: empty choice label set to “${service.choiceLabel}”`,
         );
@@ -261,6 +276,15 @@ async function main() {
       `+ service ${DEFAULT_LOCALE}/${service.slug} created (${service.durationMinutes} min)`,
     );
   }
+
+  // 5. The offer (Beheer → Aanbod) ---------------------------------------------
+  await ensureDefaultOfferings({
+    db,
+    orm,
+    schema: { cmsServices, DEFAULT_LOCALE },
+    offerings: offeringSchema,
+    log: (symbol, message) => console.log(`${symbol} ${message}`),
+  });
 
   console.log('');
   console.log('✓ bootstrap complete');

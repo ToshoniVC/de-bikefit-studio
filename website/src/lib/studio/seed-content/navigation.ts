@@ -46,4 +46,11 @@ export const AANBOD_REDIRECTS = [
     statusCode: 301 as const,
     notes: 'Over ons is vervangen door Ons team (aanbod-rollout 13 okt 2026).',
   },
+  // The gift voucher page left /aanbod/ when the offer pages were retired (17 Oct 2026).
+  {
+    fromPath: '/aanbod/cadeaubon',
+    toPath: '/cadeaubon',
+    statusCode: 301 as const,
+    notes: 'De cadeaubon staat sinds 17 okt 2026 op /cadeaubon (aanbod zonder subpagina’s).',
+  },
 ];

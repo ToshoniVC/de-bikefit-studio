@@ -71,9 +71,7 @@ export async function findEnquiryOffer(
 ): Promise<EnquiryOffer | null> {
   if (!slug) return null;
   const catalogue = await loadOfferCatalogue(locale);
-  const offer = catalogue.offers.find(
-    (entry) => entry.slug === slug && entry.kind === 'service' && entry.status === 'enquiry',
-  );
+  const offer = catalogue.offers.find((entry) => entry.slug === slug && entry.status === 'enquiry');
   if (!offer) return null;
   const audiences = offer.variants
     .map((variant) => variant.audience)

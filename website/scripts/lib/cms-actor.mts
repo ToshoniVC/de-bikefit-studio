@@ -1,6 +1,6 @@
 /**
  * Which admin the CMS CLIs (`cms:seed`, `cms:rollout-aanbod`,
- * `cms:patch-booking-cta`, `cms:patch-page-cleanup`, `cms:patch-cadeaubon`)
+ * `cms:patch-booking-cta`, `cms:patch-page-cleanup`, `cms:migrate-aanbod`)
  * act as when they write through the real repo with a short-lived session:
  * the oldest active admin who has chosen their own password AND enrolled
  * two-step verification.

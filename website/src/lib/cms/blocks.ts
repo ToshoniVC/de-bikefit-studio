@@ -291,12 +291,6 @@ export type BlockDefinition<S extends z.ZodType = z.ZodType> = {
   description: string;
   /** One line shown above the fields in the admin editor (e.g. where open placeholders are tracked). */
   editorHint?: string;
-  /**
-   * Top-level fields kept in the schema (old content stays valid and keeps its
-   * values) but not shown in the block editor, because another screen owns
-   * them (the `offer` block's booking and price fields: Beheer → Aanbod).
-   */
-  managedFields?: readonly string[];
   schema: S;
   defaultData: z.infer<S>;
 };
@@ -688,7 +682,7 @@ export const blockRegistry = {
     },
   },
 
-  // `offer`, `offerCatalogue`, `team` — see `blocks-aanbod.ts`.
+  // `offerCatalogue`, `giftVoucher`, `team` — see `blocks-aanbod.ts`.
   ...aanbodBlockRegistry,
 } as const satisfies Record<string, BlockDefinition>;
 

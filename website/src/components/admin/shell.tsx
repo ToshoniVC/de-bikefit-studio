@@ -33,11 +33,10 @@ const NAV: Array<
   { href: '/admin', label: 'Overzicht' },
   { href: '/admin/bookings', label: 'Afspraken', anyOf: ['booking.read', 'booking.read.own'] },
   { href: '/admin/agenda', label: 'Mijn agenda', permission: 'provider.self' },
-  // Per offer: shown, variants, prices, direct booking or enquiry (editors and admins).
+  // The offer: copy, shown or not, variants with their booking services and
+  // prices, direct booking or enquiry (admin). A provider chooses what they
+  // offer under Mijn agenda.
   { href: '/admin/aanbod', label: 'Aanbod', permission: 'offering.manage' },
-  // The catalogue is the admin's (read-only for editors). A provider chooses
-  // their services under Mijn agenda and never edits the catalogue.
-  { href: '/admin/services', label: 'Diensten', permission: 'service.read', notFor: ['provider'] },
   { href: '/admin/locations', label: 'Locaties', permission: 'location.read' },
   { href: '/admin/providers', label: 'Aanbieders', permission: 'provider.read' },
   { href: '/admin/pages', label: 'Pagina’s', permission: 'page.read' },

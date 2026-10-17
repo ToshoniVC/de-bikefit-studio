@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SERVICES } from '@/lib/booking/defaults';
 import { formatPrice } from '@/lib/booking/format';
-import { DEFAULT_OFFERS, offerBlockData } from './defaults';
+import { DEFAULT_OFFERS } from './defaults';
 import {
   offeringBookingSlugs,
   offeringDurationLabel,
@@ -13,8 +13,7 @@ import {
   type OfferingServiceInfo,
   type OfferingSettings,
 } from './offering';
-import { deriveLegacyOffering } from './offering-legacy';
-import { legacyFieldsOf } from './offer-catalogue';
+import { deriveLegacyOffering, legacyFieldsOf } from './offering-legacy';
 
 /** The five bootstrap services, as the offering code sees them. */
 const SERVICES: OfferingServiceInfo[] = DEFAULT_SERVICES.map((service) => ({
@@ -32,11 +31,23 @@ const SERVICES: OfferingServiceInfo[] = DEFAULT_SERVICES.map((service) => ({
 const ADULT = 'svc-volwassenenfit';
 const YOUTH = 'svc-jeugdfit';
 
+/** The legacy `offer` block of a seeded offer page (before 17 Oct 2026). */
 function seeded(slug: string) {
-  const offer = DEFAULT_OFFERS.find((entry) => entry.slug === slug);
+  const offer = DEFAULT_OFFERS.find((entry) => entry.content.slug === slug);
   if (!offer) throw new Error(slug);
-  return legacyFieldsOf(offerBlockData(offer));
+  return legacyFieldsOf({
+    bookingServiceSlugs: offer.variants.map((variant) => variant.serviceSlug).filter(Boolean),
+    priceCents: null,
+    priceLabel: 'Prijs op aanvraag',
+  });
 }
+
+const FACTS = {
+  durationMinutes: 90,
+  bufferAfterMinutes: null,
+  locationId: null,
+  requiresGuardian: false,
+};
 
 const audienceDirect: OfferingSettings = {
   isListed: true,
@@ -49,49 +60,66 @@ const audienceDirect: OfferingSettings = {
 };
 
 describe('validateOfferingInput (Beheer → Aanbod)', () => {
-  it('accepts Volwassene/Jeugd booked directly, each its own service and price', () => {
+  it('accepts Volwassene/Jeugd booked directly, each its own service facts and price', () => {
+    const youthFacts = { ...FACTS, durationMinutes: 60, requiresGuardian: true };
     const result = validateOfferingInput({
       ...audienceDirect,
       variants: [
-        { audience: 'adult', serviceId: ADULT, priceCents: 15000 },
-        { audience: 'youth', serviceId: YOUTH, priceCents: null },
+        { audience: 'adult', serviceId: ADULT, priceCents: 15000, service: FACTS },
+        { audience: 'youth', serviceId: YOUTH, priceCents: null, service: youthFacts },
       ],
     });
     expect(result).toEqual({
       ok: true,
       data: {
-        ...audienceDirect,
-        variants: [
-          { audience: 'adult', serviceId: ADULT, priceCents: 15000 },
-          { audience: 'youth', serviceId: YOUTH, priceCents: null },
-        ],
+        settings: {
+          ...audienceDirect,
+          variants: [
+            { audience: 'adult', serviceId: ADULT, priceCents: 15000 },
+            { audience: 'youth', serviceId: YOUTH, priceCents: null },
+          ],
+        },
+        services: { adult: FACTS, youth: youthFacts },
       },
     });
   });
 
-  it('direct booking needs a service for every variant', () => {
+  it('direct booking needs the service facts (a duration) for every variant', () => {
     const result = validateOfferingInput({
       ...audienceDirect,
       variants: [
-        { audience: 'adult', serviceId: ADULT, priceCents: null },
-        { audience: 'youth', serviceId: null, priceCents: null },
+        { audience: 'adult', serviceId: ADULT, priceCents: null, service: FACTS },
+        { audience: 'youth', serviceId: null, priceCents: null, service: null },
       ],
     });
     expect(result).toEqual({
       ok: false,
-      message: 'Kies voor Jeugd de dienst waarmee het online geboekt wordt.',
+      message: 'Vul voor Jeugd de duur in om het online te boeken.',
     });
+    expect(
+      validateOfferingInput({
+        ...audienceDirect,
+        variants: [
+          {
+            audience: 'adult',
+            serviceId: ADULT,
+            priceCents: null,
+            service: { ...FACTS, durationMinutes: 3 },
+          },
+          { audience: 'youth', serviceId: YOUTH, priceCents: null, service: FACTS },
+        ],
+      }),
+    ).toMatchObject({ ok: false, message: expect.stringContaining('minstens 5 minuten') });
   });
 
   it('an enquiry needs no service', () => {
-    expect(
-      validateOfferingInput({
-        isListed: true,
-        bookingMode: 'enquiry',
-        variantMode: 'single',
-        variants: [{ audience: 'all', serviceId: null, priceCents: 9900 }],
-      }).ok,
-    ).toBe(true);
+    const result = validateOfferingInput({
+      isListed: true,
+      bookingMode: 'enquiry',
+      variantMode: 'single',
+      variants: [{ audience: 'all', serviceId: null, priceCents: 9900 }],
+    });
+    expect(result).toMatchObject({ ok: true, data: { services: { all: null } } });
   });
 
   it('refuses one service for both audiences, variants that do not match the mode, € 0 and junk', () => {
@@ -99,8 +127,8 @@ describe('validateOfferingInput (Beheer → Aanbod)', () => {
       validateOfferingInput({
         ...audienceDirect,
         variants: [
-          { audience: 'adult', serviceId: ADULT, priceCents: null },
-          { audience: 'youth', serviceId: ADULT, priceCents: null },
+          { audience: 'adult', serviceId: ADULT, priceCents: null, service: FACTS },
+          { audience: 'youth', serviceId: ADULT, priceCents: null, service: FACTS },
         ],
       }),
     ).toMatchObject({ ok: false, message: expect.stringContaining('eigen dienst') });
@@ -163,8 +191,11 @@ describe('deriveLegacyOffering (the settings an offer page had before Beheer →
   });
 
   it('every other seeded offer is asked for, one option, "Prijs op aanvraag", exactly', () => {
-    for (const offer of DEFAULT_OFFERS.filter((entry) => entry.bookingServiceSlugs.length === 0)) {
-      expect(deriveLegacyOffering(seeded(offer.slug), SERVICES), offer.slug).toEqual({
+    for (const offer of DEFAULT_OFFERS.filter((entry) => entry.bookingMode === 'enquiry')) {
+      expect(
+        deriveLegacyOffering(seeded(offer.content.slug), SERVICES),
+        offer.content.slug,
+      ).toEqual({
         settings: {
           isListed: true,
           bookingMode: 'enquiry',

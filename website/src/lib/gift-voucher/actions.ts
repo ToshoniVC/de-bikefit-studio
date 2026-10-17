@@ -8,7 +8,7 @@ import { GIFT_VOUCHER_MESSAGES } from './order';
 import { requestGiftVoucher } from './service';
 
 /**
- * Server action behind the "Bestel nu" button on `/aanbod/cadeaubon`.
+ * Server action behind the "Bestel nu" button on `/cadeaubon`.
  *
  * Public-endpoint hygiene only: the argument is untrusted (validated in
  * `delivery.ts`), the client IP comes from the request headers, and the

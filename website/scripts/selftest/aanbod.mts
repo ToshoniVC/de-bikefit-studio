@@ -9,10 +9,10 @@
  *    and bookings byte-identical and cannot write (read-only db); plan =
  *    read-only; apply refuses the draft edit, then applies with
  *    `allowDraftOverwrite`; the booking tables are byte-for-byte the same;
- * 3. the published result: home starts with the offer, seven offer pages,
- *    the catalogue reader, menus, /over-ons unpublished + 301;
- * 4. `?dienst=` resolution against the live public services;
- * 5. a second apply changes nothing; restore brings the legacy site back.
+ * 3. the published result: home starts with the offer catalogue, menus,
+ *    /over-ons unpublished + 301 (the offerings themselves are rows, not
+ *    pages: section 14d);
+ * 4. a second apply changes nothing; restore brings the legacy site back.
  *
  * Imported lazily by `cms-selftest.mts` after its request-context stubs.
  */
@@ -47,11 +47,7 @@ export async function aanbodSection(ctx: {
   const repo = await import('@/lib/cms/repo');
   const auth = await import('@/lib/cms/auth');
   const { createSession } = await import('@/lib/cms/session');
-  const { listPublishedOffers } = await import('@/lib/cms/offers-content');
   const { getPublishedPage, getNavigation, findRedirect } = await import('@/lib/cms/content');
-  const bookingContent = await import('@/lib/booking/content');
-  const { resolveBookingSelection } = await import('@/lib/offers/catalogue');
-  const { DEFAULT_OFFERS } = await import('@/lib/offers/defaults');
 
   const session = await createSession(
     db,
@@ -189,8 +185,8 @@ export async function aanbodSection(ctx: {
     .length;
   check('plan: writes nothing (audit log unchanged)', auditAfterPlan === auditBefore);
   check(
-    'plan: creates 10 pages, updates home + /bikefit',
-    plan.pages.filter((page) => page.action === 'create').length === 10 &&
+    'plan: creates 3 pages (/aanbod, /voor-wie, /ons-team), updates home + /bikefit',
+    plan.pages.filter((page) => page.action === 'create').length === 3 &&
       plan.pages
         .filter((page) => page.action === 'update')
         .map((page) => page.path)
@@ -204,14 +200,6 @@ export async function aanbodSection(ctx: {
     'plan: /over-ons unpublish + new 301 redirect',
     plan.retire.action === 'unpublish' && plan.redirects[0]?.action === 'create',
   );
-  const huidige = plan.catalogue.find((row) => row.offer === 'bikefit-huidige-fiets');
-  check(
-    'plan: catalogue report — huidige fiets online, the rest by enquiry',
-    huidige?.outcome === 'online' &&
-      plan.catalogue.filter((row) => row.outcome === 'aanvraag').length === 6,
-    huidige?.services.map((service) => `${service.slug}:${service.state}`).join(', '),
-  );
-
   let refused = false;
   try {
     await applyAanbodRollout(deps, {
@@ -255,16 +243,6 @@ export async function aanbodSection(ctx: {
     homeTypes[0] === 'hero' && homeTypes[1] === 'offerCatalogue',
     homeTypes.join(' → '),
   );
-  const offers = await listPublishedOffers(locale);
-  check(
-    'catalogue reader: seven published offers, 5 Bikefit + 2 Begeleiding, in order',
-    offers.map((offer) => offer.slug).join() === DEFAULT_OFFERS.map((offer) => offer.slug).join() &&
-      offers.filter((offer) => offer.category === 'begeleiding').length === 2,
-  );
-  check(
-    'catalogue reader: every card says "Prijs op aanvraag"',
-    offers.every((offer) => offer.priceLabel === 'Prijs op aanvraag'),
-  );
   const mainMenu = await getNavigation(locale, 'main');
   check(
     'menu: Aanbod, Voor wie, Bikefit, Ons team, Contact',
@@ -284,31 +262,7 @@ export async function aanbodSection(ctx: {
     redirect?.toPath === '/ons-team' && redirect.statusCode === 301,
   );
 
-  // --- 4. ?dienst= against the live public services --------------------------------
-  const publicServices = await bookingContent.listPublicServices(locale);
-  const services = publicServices.map((service) => ({ id: service.id, slug: service.slug }));
-  const adult = publicServices.find((service) => service.slug === 'volwassenenfit');
-  const youth = publicServices.find((service) => service.slug === 'jeugdfit');
-  const linked = resolveBookingSelection({ requested: 'bikefit-huidige-fiets', offers, services });
-  check(
-    '?dienst=bikefit-huidige-fiets → widget narrowed to Volwassenenfit + Jeugdfit',
-    linked.kind === 'offer' &&
-      adult !== undefined &&
-      youth !== undefined &&
-      linked.serviceIds.join() === [adult.id, youth.id].join(),
-  );
-  const enquiry = resolveBookingSelection({ requested: 'lactaattest', offers, services });
-  check(
-    '?dienst=lactaattest → enquiry, no fallback service',
-    enquiry.kind === 'offer' && enquiry.serviceIds.length === 0,
-  );
-  const legacy = resolveBookingSelection({ requested: 'jeugdfit', offers, services });
-  check(
-    '?dienst=jeugdfit (booking slug) → that service preselected',
-    legacy.kind === 'service' && legacy.serviceId === youth?.id,
-  );
-
-  // --- 5. idempotent, and reversible ---------------------------------------------
+  // --- 4. idempotent, and reversible ---------------------------------------------
   const again = await applyAanbodRollout(deps, {
     backupDir: ctx.backupDir,
     driver: 'pglite',

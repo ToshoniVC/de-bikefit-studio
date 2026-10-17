@@ -32,7 +32,7 @@ import type { BlockProps } from './types';
  *  - an unknown slug → the normal widget with a short notice.
  *
  * Offers are the public vocabulary on the plain widget too: services that a
- * published offer links to appear once, under that offer, as a sub-selection
+ * shown offering links to appear once, under that offer, as a sub-selection
  * (`groupBookingChoices()`: "Bikefit – huidige fiets" → Volwassene / Jeugd);
  * services no offer links to stay directly selectable. The chosen SERVICE is
  * what is booked, with its own duration, availability and guardian rule.

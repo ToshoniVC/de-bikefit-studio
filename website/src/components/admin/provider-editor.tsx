@@ -2,7 +2,6 @@
 
 import { useActionState, useState } from 'react';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -16,12 +15,13 @@ import {
 } from '@/components/admin/form';
 import {
   EXCEPTION_KIND_LABELS,
+  locationOptionLabel,
   WEEKDAY_LABELS,
   WEEKDAY_ORDER,
+  type LocationOption,
 } from '@/components/admin/booking-labels';
 import { FLASH_TONES } from '@/components/admin/tones';
 import { hhmmToMinutes as timeToMinutes, minutesToHhmm as minutesToTime } from '@/lib/booking/time';
-import { locationOptionLabel, type LocationOption } from '@/components/admin/services-manager';
 import {
   setAvailabilityExceptionsAction,
   setBusinessHoursAction,

@@ -104,25 +104,19 @@ const LABELS: Record<string, string> = {
   quoteAttribution: 'Citaat — wie',
   rotating: 'Roterend tonen',
   secondaryCta: 'Secundaire knop',
-  // `offer`, `offerCatalogue`, `team` blocks
-  bookingServiceSlugs:
-    'Online boeken via dienst(en) — slug uit Afspraken → Diensten, één per regel; leeg = aanvraag via telefoon of e-mail',
+  // `offerCatalogue`, `team` blocks
   bio: 'Bio (alinea’s, enkel gecontroleerde tekst)',
   category: 'Categorie',
-  contents: 'Inhoud (één punt per regel)',
-  ctaLabel: 'Tekst van de boekknop',
-  extras: 'Mogelijke extra’s (één per regel)',
-  extrasNote: 'Uitleg bij de extra’s',
-  goal: 'Doel',
+  extraCards: 'Extra kaarten (geen aanbod, bv. de cadeaubon)',
   groups: 'Groepen',
   internalNote: 'Interne notitie (niet publiek)',
   intro: 'Inleiding',
   members: 'Teamleden',
   name: 'Naam',
   role: 'Rol',
-  showPrices: 'Prijzen tonen (enkel op /aanbod en de dienstpagina’s)',
-  sortOrder: 'Volgorde binnen de categorie',
-  summary: 'Korte omschrijving (overzicht; leeg = inleiding)',
+  showPrices: 'Prijzen tonen (enkel op /aanbod en de aanbodpagina’s)',
+  sortOrder: 'Volgorde',
+  summary: 'Korte omschrijving',
   // `giftVoucher` block
   formTitle: 'Titel boven het formulier',
   sentTitle: 'Titel na versturen',
@@ -317,11 +311,7 @@ export function blockSpec(type: BlockType): BlockSpec {
     label: definition.label,
     description: definition.description,
     hint: definition.editorHint ?? '',
-    // Fields another screen owns are left out; the editor keeps their stored values.
-    fields:
-      def?.type === 'object'
-        ? objectFields(def).filter((field) => !definition.managedFields?.includes(field.name))
-        : [],
+    fields: def?.type === 'object' ? objectFields(def) : [],
   };
 }
 

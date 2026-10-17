@@ -4,14 +4,11 @@ import {
   bookingChoiceLabel,
   GIFT_VOUCHER_PRICE_LABEL,
   groupBookingChoices,
-  linkedOfferDurationLabel,
   OFFER_CTA_LABEL,
   OFFER_PRICE_FALLBACK,
   offerBookingHref,
-  offerFromPage,
+  offerFromOffering,
   offerPagePath,
-  offerPriceLabel,
-  offerSlugFromPageSlug,
   offersInCategory,
   parseServiceParam,
   resolveBookingSelection,
@@ -19,13 +16,14 @@ import {
   sortOffers,
   type CatalogueOffer,
 } from './catalogue';
-import { BOOKING_RECONCILIATION, DEFAULT_OFFERS, offerBlockData } from './defaults';
+import { DEFAULT_OFFERINGS, DEFAULT_OFFERS, LEGACY_OFFERINGS } from './defaults';
+import { resolveOffering, type OfferingServiceInfo } from './offering';
 
 const emptyImage = { mediaId: null, url: null, alt: '', decorative: false };
 
 function offer(partial: Partial<CatalogueOffer> & { slug: string }): CatalogueOffer {
   return {
-    kind: 'service',
+    id: `off-${partial.slug}`,
     path: offerPagePath(partial.slug),
     category: 'bikefit',
     sortOrder: 0,
@@ -41,18 +39,21 @@ function offer(partial: Partial<CatalogueOffer> & { slug: string }): CatalogueOf
   };
 }
 
-describe('offer paths', () => {
-  it('maps offer slugs to /aanbod/<slug> and back', () => {
-    expect(offerPagePath('voetanalyse')).toBe('/aanbod/voetanalyse');
-    expect(offerSlugFromPageSlug('aanbod/voetanalyse')).toBe('voetanalyse');
-    expect(offerSlugFromPageSlug('/aanbod/voetanalyse/')).toBe('voetanalyse');
-  });
+const SERVICES: OfferingServiceInfo[] = DEFAULT_SERVICES.map((service) => ({
+  id: `svc-${service.slug}`,
+  slug: service.slug,
+  name: service.name,
+  choiceLabel: service.choiceLabel,
+  durationMinutes: service.durationMinutes,
+  isActive: true,
+  requiresGuardian: service.requiresGuardian,
+  priceCents: null,
+  showPrice: false,
+}));
 
-  it('rejects pages outside /aanbod and nested or malformed paths', () => {
-    expect(offerSlugFromPageSlug('aanbod')).toBeNull();
-    expect(offerSlugFromPageSlug('bikefit')).toBeNull();
-    expect(offerSlugFromPageSlug('aanbod/a/b')).toBeNull();
-    expect(offerSlugFromPageSlug('aanbodx/voetanalyse')).toBeNull();
+describe('offer paths', () => {
+  it('serves an offering at /aanbod/<slug>', () => {
+    expect(offerPagePath('voetanalyse')).toBe('/aanbod/voetanalyse');
   });
 
   it('shows offer prices only on /aanbod and the offer pages under it', () => {
@@ -73,7 +74,7 @@ describe('offer paths', () => {
   });
 });
 
-describe('parseServiceParam (query-string boundary)', () => {
+describe('parseServiceParam (query-string and route boundary)', () => {
   it('accepts a slug and normalises case and whitespace', () => {
     expect(parseServiceParam('lactaattest')).toBe('lactaattest');
     expect(parseServiceParam('  Bikefit-Huidige-Fiets ')).toBe('bikefit-huidige-fiets');
@@ -102,159 +103,89 @@ describe('parseServiceParam (query-string boundary)', () => {
   });
 });
 
-describe('offerPriceLabel', () => {
-  it('does not leak independent editorial amounts for a service-linked offer', () => {
-    const bookingServiceSlugs = ['volwassenenfit', 'jeugdfit'];
-    expect(offerPriceLabel({ priceCents: 12000, priceLabel: '', bookingServiceSlugs })).toBe(
-      'Prijs op aanvraag',
+describe('offerFromOffering (the card and labels of one offering)', () => {
+  const resolved = (slug: string, bookable = new Set(SERVICES.map((s) => s.id))) => {
+    const entry = DEFAULT_OFFERINGS.find((d) => d.content.slug === slug)!;
+    const settings = {
+      isListed: entry.isListed,
+      bookingMode: entry.bookingMode,
+      variantMode: entry.variantMode,
+      variants: entry.variants.map((variant) => ({
+        audience: variant.audience,
+        serviceId: variant.serviceSlug ? `svc-${variant.serviceSlug}` : null,
+        priceCents: null,
+      })),
+    };
+    return offerFromOffering(
+      { id: `off-${slug}`, content: entry.content },
+      resolveOffering({
+        settings,
+        source: 'stored',
+        services: SERVICES,
+        bookableServiceIds: bookable,
+      }),
     );
-    expect(
-      offerPriceLabel({ priceCents: 12000, priceLabel: 'vanaf € 120', bookingServiceSlugs }),
-    ).toBe('Prijs op aanvraag');
-  });
+  };
 
-  it('shows "Prijs op aanvraag" while nothing is confirmed, never € 0', () => {
-    expect(offerPriceLabel({ priceCents: null, priceLabel: '' })).toBe('Prijs op aanvraag');
-    expect(offerPriceLabel({ priceCents: null, priceLabel: '   ' })).toBe('Prijs op aanvraag');
-  });
-
-  it('formats a confirmed amount in cents and lets free text win', () => {
-    expect(offerPriceLabel({ priceCents: 12000, priceLabel: '' })).toMatch(/120,00/);
-    expect(offerPriceLabel({ priceCents: 12000, priceLabel: 'vanaf € 120' })).toBe('vanaf € 120');
-  });
-
-  it('never lets the "Prijs op aanvraag" placeholder hide a confirmed amount', () => {
-    expect(offerPriceLabel({ priceCents: null, priceLabel: 'Prijs op aanvraag' })).toBe(
-      'Prijs op aanvraag',
-    );
-    expect(offerPriceLabel({ priceCents: 12000, priceLabel: 'Prijs op aanvraag' })).toMatch(
-      /120,00/,
-    );
-    expect(offerPriceLabel({ priceCents: 12000, priceLabel: ' prijs op aanvraag ' })).toMatch(
-      /120,00/,
-    );
-  });
-});
-
-describe('linkedOfferDurationLabel', () => {
-  it('names the linked CMS variants in offer order and follows changed service durations', () => {
-    const services = [
-      { slug: 'jeugdfit', name: 'Jeugdfit', choiceLabel: 'Jeugd', durationMinutes: 75 },
-      {
-        slug: 'volwassenenfit',
-        name: 'Volwassenenfit',
-        choiceLabel: 'Volwassene',
-        durationMinutes: 90,
-      },
-    ];
-    expect(linkedOfferDurationLabel(['volwassenenfit', 'jeugdfit'], services)).toBe(
-      'Volwassene: 1 u 30 min · Jeugd: 1 u 15 min',
-    );
-    services[0].durationMinutes = 60;
-    expect(linkedOfferDurationLabel(['volwassenenfit', 'jeugdfit'], services)).toBe(
-      'Volwassene: 1 u 30 min · Jeugd: 1 uur',
-    );
-  });
-
-  it('omits missing and repeated services; never invents a linked duration', () => {
-    const services = [{ slug: 'jeugdfit', name: 'Jeugdfit', choiceLabel: '', durationMinutes: 60 }];
-    expect(linkedOfferDurationLabel(['missing', ' jeugdfit ', 'jeugdfit'], services)).toBe(
-      'Jeugdfit: 1 uur',
-    );
-    expect(linkedOfferDurationLabel(['missing'], services)).toBeNull();
-  });
-});
-
-describe('offerFromPage', () => {
-  const blocks = [
-    { type: 'hero', data: {} },
-    {
-      type: 'offer',
-      data: {
-        ...offerBlockData(DEFAULT_OFFERS[0]),
-        image: emptyImage,
-      },
-    },
-  ];
-
-  it('derives a catalogue entry from an offer page', () => {
-    const entry = offerFromPage({ slug: 'aanbod/bikefit-nieuwe-fiets', blocks });
-    expect(entry).toMatchObject({
-      slug: 'bikefit-nieuwe-fiets',
-      path: '/aanbod/bikefit-nieuwe-fiets',
+  it('a directly bookable offering: services, durations from them, no invented price', () => {
+    const card = resolved('bikefit-huidige-fiets');
+    expect(card).toMatchObject({
+      slug: 'bikefit-huidige-fiets',
+      path: '/aanbod/bikefit-huidige-fiets',
       category: 'bikefit',
-      title: 'Bikefit – aankoop nieuwe fiets',
-      priceLabel: 'Prijs op aanvraag',
-      durationLabel: 'Duur in overleg',
+      title: 'Bikefit – huidige fiets',
+      status: 'bookable',
+      bookingServiceSlugs: ['volwassenenfit', 'jeugdfit'],
+      durationLabel: 'Volwassene: 1 u 30 min · Jeugd: 1 uur',
+      priceLabel: OFFER_PRICE_FALLBACK,
     });
+    expect(card.summary).toBe('Comfortabeler fietsen op de fiets die je al hebt.');
   });
 
-  it('keeps a linked Bikefit catalogue card at request-price despite editorial cents', () => {
-    const current = DEFAULT_OFFERS.find((entry) => entry.slug === 'bikefit-huidige-fiets');
-    expect(current).toBeDefined();
-    const entry = offerFromPage({
-      slug: 'aanbod/bikefit-huidige-fiets',
-      blocks: [
-        {
-          type: 'offer',
-          data: { ...offerBlockData(current!), priceCents: 12000, priceLabel: 'vanaf € 120' },
-        },
-      ],
-    });
-    expect(entry?.priceLabel).toBe('Prijs op aanvraag');
+  it('an enquiry offering: its editorial duration, no booking service', () => {
+    const card = resolved('coaching');
+    expect(card.status).toBe('enquiry');
+    expect(card.bookingServiceSlugs).toEqual([]);
+    expect(card.durationLabel).toBe('Traject en opvolging in overleg');
+  });
+
+  it('nobody offers it: temporarily unavailable, never routed to another service', () => {
+    const card = resolved('bikefit-huidige-fiets', new Set());
+    expect(card.status).toBe('unavailable');
+    expect(card.bookingServiceSlugs).toEqual([]);
   });
 
   it('falls back to the intro when the summary is empty', () => {
-    const entry = offerFromPage({
-      slug: 'aanbod/x',
-      blocks: [{ type: 'offer', data: { ...blocks[1].data, summary: '' } }],
-    });
-    expect(entry?.summary).toBe(DEFAULT_OFFERS[0].intro);
-  });
-
-  it('ignores pages outside /aanbod and pages without an offer block', () => {
-    expect(offerFromPage({ slug: 'bikefit', blocks })).toBeNull();
-    expect(offerFromPage({ slug: 'aanbod/x', blocks: [blocks[0]] })).toBeNull();
-  });
-
-  it('lists the gift voucher page under Overige, amount of choice, never bookable', () => {
-    const voucher = {
-      type: 'giftVoucher',
-      data: { sortOrder: 0, title: 'Cadeaubon', summary: '', intro: 'Schenk fietsplezier.' },
-    };
-    const entry = offerFromPage({ slug: 'aanbod/cadeaubon', blocks: [voucher] });
-    expect(entry).toMatchObject({
-      kind: 'giftVoucher',
-      slug: 'cadeaubon',
-      path: '/aanbod/cadeaubon',
-      category: 'overige',
-      summary: 'Schenk fietsplezier.',
-      priceLabel: GIFT_VOUCHER_PRICE_LABEL,
-      bookingServiceSlugs: [],
-    });
-    // An offer block on the same page still wins.
-    expect(offerFromPage({ slug: 'aanbod/x', blocks: [voucher, blocks[1]] })?.kind).toBe('service');
+    const entry = DEFAULT_OFFERS[0];
+    const card = offerFromOffering(
+      { id: 'x', content: { ...entry.content, summary: '' } },
+      resolveOffering({
+        settings: {
+          isListed: true,
+          bookingMode: 'enquiry',
+          variantMode: 'single',
+          variants: [{ audience: 'all', serviceId: null, priceCents: null }],
+        },
+        source: 'stored',
+        services: SERVICES,
+        bookableServiceIds: new Set(),
+      }),
+    );
+    expect(card.summary).toBe(entry.content.intro);
   });
 });
 
 describe('sorting and grouping', () => {
-  it('orders Bikefit before Begeleiding, then by sortOrder', () => {
+  it('orders Bikefit before Begeleiding before Overige, then by sortOrder, then title', () => {
     const sorted = sortOffers([
-      offer({ slug: 'coaching', category: 'begeleiding', sortOrder: 20 }),
-      offer({ slug: 'zadel', category: 'bikefit', sortOrder: 40 }),
-      offer({ slug: 'lactaat', category: 'begeleiding', sortOrder: 10 }),
-      offer({ slug: 'nieuw', category: 'bikefit', sortOrder: 10 }),
+      offer({ slug: 'z', category: 'begeleiding', sortOrder: 10 }),
+      offer({ slug: 'b', category: 'bikefit', sortOrder: 20 }),
+      offer({ slug: 'o', category: 'overige', sortOrder: 0 }),
+      offer({ slug: 'a', category: 'bikefit', sortOrder: 20 }),
+      offer({ slug: 'c', category: 'bikefit', sortOrder: 10 }),
     ]);
-    expect(sorted.map((entry) => entry.slug)).toEqual(['nieuw', 'zadel', 'lactaat', 'coaching']);
-    const withOther = sortOffers([
-      offer({ slug: 'bon', category: 'overige', kind: 'giftVoucher' }),
-      ...sorted,
-    ]);
-    expect(withOther.map((entry) => entry.slug).at(-1)).toBe('bon');
-    expect(offersInCategory(sorted, 'begeleiding').map((entry) => entry.slug)).toEqual([
-      'lactaat',
-      'coaching',
-    ]);
+    expect(sorted.map((entry) => entry.slug)).toEqual(['c', 'a', 'b', 'z', 'o']);
+    expect(offersInCategory(sorted, 'begeleiding').map((entry) => entry.slug)).toEqual(['z']);
   });
 });
 
@@ -270,9 +201,18 @@ describe('resolveBookingSelection (service preselection)', () => {
       title: 'Bikefit – huidige fiets',
       bookingServiceSlugs: ['volwassenenfit', 'jeugdfit'],
     }),
-    offer({ slug: 'lactaattest', title: 'Lactaattest', category: 'begeleiding' }),
-    offer({ slug: 'one', title: 'Eén dienst', bookingServiceSlugs: ['fit-aan-huis'] }),
-    offer({ slug: 'gone', title: 'Weg', bookingServiceSlugs: ['inspanningstest'] }),
+    offer({
+      slug: 'voetanalyse',
+      title: 'Voetanalyse',
+      bookingServiceSlugs: ['voetanalyse-dienst'],
+    }),
+    offer({ slug: 'lactaattest', title: 'Lactaattest', status: 'enquiry' }),
+    offer({ slug: 'zadelanalyse', title: 'Zadelanalyse', status: 'unavailable' }),
+    offer({
+      slug: 'jeugdfit',
+      title: 'Een aanbod met de naam van een dienst',
+      bookingServiceSlugs: ['jeugdfit'],
+    }),
   ];
 
   it('without a parameter: the normal widget', () => {
@@ -282,12 +222,9 @@ describe('resolveBookingSelection (service preselection)', () => {
   });
 
   it('an offer linked to several services narrows to them, in the offer order', () => {
-    const result = resolveBookingSelection({
-      requested: 'bikefit-huidige-fiets',
-      offers,
-      services,
-    });
-    expect(result).toEqual({
+    expect(
+      resolveBookingSelection({ requested: 'bikefit-huidige-fiets', offers, services }),
+    ).toEqual({
       kind: 'offer',
       offer: {
         slug: 'bikefit-huidige-fiets',
@@ -300,137 +237,117 @@ describe('resolveBookingSelection (service preselection)', () => {
     });
   });
 
-  it('an offer linked to one service preselects it', () => {
-    const result = resolveBookingSelection({ requested: 'one', offers, services });
-    expect(result).toMatchObject({
+  it('an offer whose service is not bookable keeps the offer and offers NO other service', () => {
+    const selection = resolveBookingSelection({ requested: 'voetanalyse', offers, services });
+    expect(selection).toMatchObject({ kind: 'offer', serviceIds: [], initialServiceId: null });
+  });
+
+  it('enquiry and unavailable offers carry their status, so the page can say why', () => {
+    expect(resolveBookingSelection({ requested: 'lactaattest', offers, services })).toMatchObject({
       kind: 'offer',
-      serviceIds: ['svc-home'],
-      initialServiceId: 'svc-home',
+      offer: { status: 'enquiry' },
+      serviceIds: [],
+    });
+    expect(resolveBookingSelection({ requested: 'zadelanalyse', offers, services })).toMatchObject({
+      kind: 'offer',
+      offer: { status: 'unavailable' },
     });
   });
 
-  it('an offer without a bookable service keeps the offer and offers NO other service', () => {
-    for (const requested of ['lactaattest', 'gone']) {
-      const result = resolveBookingSelection({ requested, offers, services });
-      expect(result.kind).toBe('offer');
-      if (result.kind === 'offer') {
-        expect(result.serviceIds).toEqual([]);
-        expect(result.initialServiceId).toBeNull();
-      }
-    }
-  });
-
   it('a booking-service slug (legacy link) preselects that service', () => {
-    expect(resolveBookingSelection({ requested: 'jeugdfit', offers, services })).toEqual({
+    expect(resolveBookingSelection({ requested: 'fit-aan-huis', offers, services })).toEqual({
       kind: 'service',
-      serviceId: 'svc-youth',
+      serviceId: 'svc-home',
     });
   });
 
   it('an unknown slug is reported, not mapped to a default', () => {
-    expect(resolveBookingSelection({ requested: 'iets-anders', offers, services })).toEqual({
+    expect(resolveBookingSelection({ requested: 'onbekend', offers, services })).toEqual({
       kind: 'unknown',
-      requested: 'iets-anders',
+      requested: 'onbekend',
     });
   });
 
   it('an offer slug wins over a booking-service slug with the same name', () => {
-    const clash = [...offers, offer({ slug: 'jeugdfit', title: 'Jeugd (aanbod)' })];
-    expect(resolveBookingSelection({ requested: 'jeugdfit', offers: clash, services }).kind).toBe(
-      'offer',
-    );
-  });
-
-  it('never turns the gift voucher into a booking or an enquiry', () => {
-    const withVoucher = [
-      ...offers,
-      offer({ slug: 'cadeaubon', category: 'overige', kind: 'giftVoucher' }),
-    ];
-    expect(
-      resolveBookingSelection({ requested: 'cadeaubon', offers: withVoucher, services }),
-    ).toEqual({ kind: 'unknown', requested: 'cadeaubon' });
+    const selection = resolveBookingSelection({ requested: 'jeugdfit', offers, services });
+    expect(selection.kind).toBe('offer');
+    if (selection.kind === 'offer') expect(selection.initialServiceId).toBe('svc-youth');
   });
 });
 
-describe('default offers and booking reconciliation', () => {
-  const legacySlugs = DEFAULT_SERVICES.map((service) => service.slug);
-
-  it('has the seven offers: five Bikefit, two Begeleiding, unique slugs', () => {
+describe('default offerings (what cms:bootstrap writes)', () => {
+  it('has the seven offers (five Bikefit, two Begeleiding) plus three hidden legacy services, unique slugs', () => {
     expect(DEFAULT_OFFERS).toHaveLength(7);
-    expect(DEFAULT_OFFERS.filter((entry) => entry.category === 'bikefit')).toHaveLength(5);
-    expect(DEFAULT_OFFERS.filter((entry) => entry.category === 'begeleiding')).toHaveLength(2);
-    expect(new Set(DEFAULT_OFFERS.map((entry) => entry.slug)).size).toBe(7);
-    expect(DEFAULT_OFFERS.map((entry) => entry.title)).toEqual([
-      'Bikefit – aankoop nieuwe fiets',
-      'Bikefit – huidige fiets',
-      'Voetanalyse',
-      'Zadelanalyse',
-      'Afstellen schoenplaatjes',
-      'Lactaattest',
-      'Coaching',
+    expect(DEFAULT_OFFERS.filter((entry) => entry.content.category === 'bikefit')).toHaveLength(5);
+    expect(DEFAULT_OFFERS.filter((entry) => entry.content.category === 'begeleiding')).toHaveLength(
+      2,
+    );
+    expect(LEGACY_OFFERINGS.map((entry) => entry.content.slug)).toEqual([
+      'gezinspakket',
+      'fit-aan-huis',
+      'inspanningstest',
     ]);
+    expect(
+      LEGACY_OFFERINGS.every((entry) => !entry.isListed && entry.bookingMode === 'direct'),
+    ).toBe(true);
+    const slugs = DEFAULT_OFFERINGS.map((entry) => entry.content.slug);
+    expect(new Set(slugs).size).toBe(slugs.length);
   });
 
-  it('every offer block carries the exact CTA, no price and an honest duration', () => {
+  it('every offer carries the default CTA, no price and an honest duration', () => {
     for (const entry of DEFAULT_OFFERS) {
-      const data = offerBlockData(entry);
-      expect(data.ctaLabel).toBe(OFFER_CTA_LABEL);
-      expect(data.priceCents).toBeNull();
-      expect(data.priceLabel).toBe(OFFER_PRICE_FALLBACK);
-      expect(String(data.duration)).toMatch(/in overleg$/);
-      expect(JSON.stringify(data)).not.toMatch(/€|\b\d+\s*(min|minuten|uur)\b/);
+      expect(entry.content.ctaLabel).toBe('');
+      expect(entry.content.duration).toMatch(/in overleg$/);
+      expect(entry.content.title).not.toMatch(/€/);
+      expect(entry.isListed).toBe(true);
     }
-    expect(DEFAULT_OFFERS.find((entry) => entry.slug === 'coaching')?.duration).toBe(
-      'Traject en opvolging in overleg',
-    );
+    expect(OFFER_CTA_LABEL).toBe('Boek een afspraak voor deze dienst');
+    expect(GIFT_VOUCHER_PRICE_LABEL).toBe('Bedrag naar keuze');
   });
 
-  it('only links offers to booking services that exist', () => {
-    for (const entry of DEFAULT_OFFERS) {
-      for (const slug of entry.bookingServiceSlugs) expect(legacySlugs).toContain(slug);
+  it('only links offerings to booking services that exist, each service at most once', () => {
+    const known = new Set(DEFAULT_SERVICES.map((service) => service.slug));
+    const used: string[] = [];
+    for (const entry of DEFAULT_OFFERINGS) {
+      for (const variant of entry.variants) {
+        if (!variant.serviceSlug) continue;
+        expect(known.has(variant.serviceSlug), variant.serviceSlug).toBe(true);
+        used.push(variant.serviceSlug);
+      }
     }
+    expect(new Set(used).size).toBe(used.length);
+    expect(used.sort()).toEqual([...known].sort());
   });
 
-  it('records a decision for every existing booking service, matching the offers', () => {
-    expect(BOOKING_RECONCILIATION.map((row) => row.serviceSlug).sort()).toEqual(
-      [...legacySlugs].sort(),
-    );
-    for (const row of BOOKING_RECONCILIATION) {
-      const linkedFrom = DEFAULT_OFFERS.filter((entry) =>
-        entry.bookingServiceSlugs.includes(row.serviceSlug),
-      ).map((entry) => entry.slug);
-      expect(linkedFrom).toEqual(row.offerSlugs);
-      expect(row.decision === 'linked').toBe(row.offerSlugs.length > 0);
-    }
-  });
-
-  it('keeps the real scheduling length on the linked services (no new numbers)', () => {
-    const adult = DEFAULT_SERVICES.find((service) => service.slug === 'volwassenenfit');
-    const youth = DEFAULT_SERVICES.find((service) => service.slug === 'jeugdfit');
-    expect(adult?.durationMinutes).toBe(90);
-    expect(youth?.durationMinutes).toBe(60);
-    expect(youth?.requiresGuardian).toBe(true);
+  it('the current-bike fit is booked directly as Volwassene + Jeugd; the other six are asked for', () => {
+    const current = DEFAULT_OFFERS.find((entry) => entry.content.slug === 'bikefit-huidige-fiets')!;
+    expect(current.bookingMode).toBe('direct');
+    expect(current.variantMode).toBe('audience');
+    expect(current.variants.map((v) => `${v.audience}:${v.serviceSlug}`)).toEqual([
+      'adult:volwassenenfit',
+      'youth:jeugdfit',
+    ]);
+    expect(DEFAULT_OFFERS.filter((entry) => entry.bookingMode === 'enquiry')).toHaveLength(6);
   });
 });
 
-describe("groupBookingChoices (the widget's first step, 16 Oct 2026)", () => {
-  // The five bootstrap services in their admin order, all bookable.
-  const services = DEFAULT_SERVICES.map((service) => ({
-    id: `id-${service.slug}`,
-    slug: service.slug,
-  }));
-  const seeded = DEFAULT_OFFERS.map((entry) =>
-    offer({
-      slug: entry.slug,
-      title: entry.title,
-      category: entry.category,
-      sortOrder: entry.sortOrder,
-      bookingServiceSlugs: entry.bookingServiceSlugs,
-    }),
-  );
+describe("groupBookingChoices (the widget's first step)", () => {
+  const services = [
+    { id: 'svc-adult', slug: 'volwassenenfit' },
+    { id: 'svc-youth', slug: 'jeugdfit' },
+    { id: 'svc-family', slug: 'gezinspakket' },
+    { id: 'svc-home', slug: 'fit-aan-huis' },
+  ];
+  const bikefit = offer({
+    slug: 'bikefit-huidige-fiets',
+    title: 'Bikefit – huidige fiets',
+    category: 'bikefit',
+    sortOrder: 20,
+    bookingServiceSlugs: ['volwassenenfit', 'jeugdfit'],
+  });
 
   it('shows "Bikefit – huidige fiets" once, Volwassene and Jeugd under it, the rest directly', () => {
-    expect(groupBookingChoices({ offers: seeded, services })).toEqual([
+    expect(groupBookingChoices({ offers: [bikefit], services })).toEqual([
       {
         kind: 'offer',
         offer: {
@@ -438,106 +355,49 @@ describe("groupBookingChoices (the widget's first step, 16 Oct 2026)", () => {
           title: 'Bikefit – huidige fiets',
           path: '/aanbod/bikefit-huidige-fiets',
         },
-        serviceIds: ['id-volwassenenfit', 'id-jeugdfit'],
+        serviceIds: ['svc-adult', 'svc-youth'],
       },
-      { kind: 'service', serviceId: 'id-gezinspakket' },
-      { kind: 'service', serviceId: 'id-fit-aan-huis' },
-      { kind: 'service', serviceId: 'id-inspanningstest' },
+      { kind: 'service', serviceId: 'svc-family' },
+      { kind: 'service', serviceId: 'svc-home' },
     ]);
   });
 
-  it('never lists a linked service twice, and keeps every bookable service reachable', () => {
-    const choices = groupBookingChoices({ offers: seeded, services });
-    const ids = choices.flatMap((choice) =>
-      choice.kind === 'service' ? [choice.serviceId] : choice.serviceIds,
-    );
-    expect([...ids].sort()).toEqual(services.map((service) => service.id).sort());
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
   it('without offers (catalogue unavailable) the widget is the flat list it was', () => {
-    expect(groupBookingChoices({ offers: [], services })).toEqual(
-      services.map((service) => ({ kind: 'service', serviceId: service.id })),
-    );
-  });
-
-  it("takes the place of its first service and keeps the offer's own order", () => {
-    const choices = groupBookingChoices({
-      offers: [offer({ slug: 'combi', bookingServiceSlugs: ['inspanningstest', 'gezinspakket'] })],
-      services,
-    });
-    expect(
-      choices.map((choice) => (choice.kind === 'offer' ? choice.offer.slug : choice.serviceId)),
-    ).toEqual(['id-volwassenenfit', 'id-jeugdfit', 'combi', 'id-fit-aan-huis']);
-    expect(choices[2]).toMatchObject({ serviceIds: ['id-inspanningstest', 'id-gezinspakket'] });
-  });
-
-  it('skips unbookable slugs; an offer with none adds nothing (its page shows the contact prompt)', () => {
-    const choices = groupBookingChoices({
-      offers: [
-        offer({ slug: 'lactaattest', bookingServiceSlugs: [] }),
-        offer({ slug: 'kapot', bookingServiceSlugs: ['bestaat-niet'] }),
-        offer({ slug: 'half', bookingServiceSlugs: ['bestaat-niet', ' jeugdfit '] }),
-      ],
-      services,
-    });
-    expect(choices.filter((choice) => choice.kind === 'offer')).toEqual([
-      {
-        kind: 'offer',
-        offer: { slug: 'half', title: 'half', path: '/aanbod/half' },
-        serviceIds: ['id-jeugdfit'],
-      },
+    expect(groupBookingChoices({ offers: [], services }).map((choice) => choice.kind)).toEqual([
+      'service',
+      'service',
+      'service',
+      'service',
     ]);
   });
 
   it('a service two offers link belongs to the first offer in catalogue order only', () => {
-    const choices = groupBookingChoices({
-      offers: [
-        offer({
-          slug: 'later',
-          sortOrder: 50,
-          bookingServiceSlugs: ['volwassenenfit', 'gezinspakket'],
-        }),
-        offer({ slug: 'eerst', sortOrder: 10, bookingServiceSlugs: ['volwassenenfit'] }),
-      ],
-      services,
+    const other = offer({
+      slug: 'ander',
+      title: 'Ander',
+      category: 'begeleiding',
+      sortOrder: 0,
+      bookingServiceSlugs: ['jeugdfit', 'gezinspakket'],
     });
-    expect(choices.filter((choice) => choice.kind === 'offer')).toEqual([
-      expect.objectContaining({
-        offer: expect.objectContaining({ slug: 'eerst' }),
-        serviceIds: ['id-volwassenenfit'],
-      }),
-      expect.objectContaining({
-        offer: expect.objectContaining({ slug: 'later' }),
-        serviceIds: ['id-gezinspakket'],
-      }),
+    const choices = groupBookingChoices({ offers: [other, bikefit], services });
+    expect(choices).toEqual([
+      expect.objectContaining({ kind: 'offer', serviceIds: ['svc-adult', 'svc-youth'] }),
+      expect.objectContaining({ kind: 'offer', serviceIds: ['svc-family'] }),
+      { kind: 'service', serviceId: 'svc-home' },
     ]);
   });
 
-  it('ignores the gift voucher', () => {
-    const choices = groupBookingChoices({
-      offers: [
-        offer({ slug: 'cadeaubon', kind: 'giftVoucher', bookingServiceSlugs: ['jeugdfit'] }),
-      ],
-      services,
-    });
-    expect(choices.every((choice) => choice.kind === 'service')).toBe(true);
+  it('skips unbookable slugs; an offer with none adds nothing', () => {
+    const ghost = offer({ slug: 'spook', bookingServiceSlugs: ['bestaat-niet'] });
+    expect(
+      groupBookingChoices({ offers: [ghost], services }).every((c) => c.kind === 'service'),
+    ).toBe(true);
   });
 
   it("labels a choice with the catalogue's choice label, else the service name", () => {
-    expect(bookingChoiceLabel({ name: 'Jeugdfit', choiceLabel: 'Jeugd' })).toBe('Jeugd');
-    expect(bookingChoiceLabel({ name: 'Jeugdfit', choiceLabel: '  ' })).toBe('Jeugdfit');
-  });
-
-  it('the bootstrap labels the two linked services Volwassene and Jeugd, nothing else', () => {
-    expect(
-      DEFAULT_SERVICES.filter((service) => service.choiceLabel).map((service) => [
-        service.slug,
-        service.choiceLabel,
-      ]),
-    ).toEqual([
-      ['volwassenenfit', 'Volwassene'],
-      ['jeugdfit', 'Jeugd'],
-    ]);
+    expect(bookingChoiceLabel({ name: 'Volwassenenfit', choiceLabel: 'Volwassene' })).toBe(
+      'Volwassene',
+    );
+    expect(bookingChoiceLabel({ name: 'Gezinspakket', choiceLabel: '  ' })).toBe('Gezinspakket');
   });
 });

@@ -12,9 +12,13 @@ vaste ID; IDs worden nooit hergebruikt of hernummerd.
 - Wijzig je de inhoud, pas dan in hetzelfde werk de rij aan. Zet de status op *afgerond* met datum
   zodra de definitieve inhoud gepubliceerd is. Verwijder geen rijen.
 - "CMS" betekent: `/admin` → **Pagina's** → de pagina (titel zoals in de lijst) → het blok →
-  **Inhoud bewerken** → het veld → **Blok opslaan** → **Publiceren**. De blokken *Dienst (aanbod)*
-  en *Team* tonen bovenaan een korte hint die naar dit register verwijst.
-- De seedtekst staat in `src/lib/offers/defaults.ts` (diensten) en `src/lib/studio/seed-content/`
+  **Inhoud bewerken** → het veld → **Blok opslaan** → **Publiceren**. Het blok *Team* toont
+  bovenaan een korte hint die naar dit register verwijst.
+- **Sinds 17 okt 2026** is het aanbod geen pagina meer: alles over een dienst uit het aanbod
+  (tekst, beeld, tonen, Volwassene/Jeugd, duur en prijs per variant, online boeken of op aanvraag)
+  staat op één scherm, **Beheer → Aanbod** (`/admin/aanbod`) → de dienst → **Opslaan** (meteen
+  live, geen publicatie). De paden `/aanbod/<slug>` hieronder zijn de publieke adressen.
+- De seedtekst staat in `src/lib/offers/defaults.ts` (aanbod) en `src/lib/studio/seed-content/`
   (pagina's, team). Pas die mee aan zodat een nieuwe omgeving dezelfde inhoud krijgt.
   `src/lib/studio/seed-content/placeholders.test.ts` faalt als een dienst, teamlid of beeld uit de
   seed hier geen rij heeft.
@@ -39,14 +43,10 @@ datum).
 
 ## 1. Prijzen (P)
 
-**Sinds 16 okt 2026:** prijzen, varianten (Volwassene/Jeugd), tonen en online boeken of op aanvraag
-stel je in bij **Beheer → Aanbod** (`/admin/aanbod`), per variant een bedrag of leeg = "Prijs op
-aanvraag" (`cms-architecture.md` §15). De velden hieronder (Prijslabel, Prijs in eurocent, Online
-boeken via dienst(en)) staan niet meer in het blok; ze bepalen enkel nog wat een dienstpagina toont
-zolang haar instellingen niet in Aanbod bewaard zijn. Er is geen enkel bedrag ingevuld of verzonnen.
-
-Vroeger (en voor een dienst zonder bewaarde instellingen): CMS → de dienstpagina → blok *Dienst (aanbod)* → veld **Prijslabel** (vrije tekst) of
-**Prijs in eurocent** (bedrag, bv. `12000` = € 120,00).
+Plaats: **Beheer → Aanbod** → de dienst → per variant het veld **Prijs (euro)**; leeg = "Prijs op
+aanvraag" (`cms-architecture.md` §14). Er is geen enkel bedrag ingevuld of verzonnen. Tot 16 okt
+2026 stonden deze velden in het blok *Dienst (aanbod)* van de dienstpagina; die pagina's bestaan
+niet meer.
 
 - Nu staat in **Prijslabel** de bewerkbare tekst "Prijs op aanvraag"; **Prijs in eurocent** is
   leeg. Voor een aanbod gekoppeld aan boekingsdiensten zijn deze twee redactionele velden
@@ -83,10 +83,9 @@ aanbodpagina beide varianten uit de gekoppelde diensten afleiden.
 
 ## 2. Duur (D)
 
-Plaats: CMS → de dienstpagina → blok *Dienst (aanbod)* → veld **Duur** (vrije tekst, bv. "ongeveer
-90 minuten"). Voor niet-gekoppeld aanbod getoond bovenaan en bij **Duur**; een leeg veld toont
-"Duur in overleg". Voor gekoppeld aanbod wordt die tekst publiek vervangen door de duur per
-boekbare dienst uit `cms_services`.
+Plaats: **Beheer → Aanbod** → de dienst. Op aanvraag: het veld **Duur (tekst)** (vrije tekst, bv.
+"ongeveer 90 minuten"; leeg = "Duur in overleg"). Rechtstreeks online te boeken: per variant het
+veld **Duur in de agenda (minuten)**, dat zowel de agenda als de getoonde duur bepaalt.
 
 | ID | Pagina (titel in CMS) | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
@@ -107,8 +106,8 @@ de planningsduur van een dienst niet.
 
 ## 3. Inhoud, mogelijke extra's en pakketten (E)
 
-Plaats: CMS → de dienstpagina → blok *Dienst (aanbod)* → velden **Doel**, **Inhoud (één punt per
-regel)**, **Mogelijke extra's (één per regel)** en **Uitleg bij de extra's**. De tekst is het
+Plaats: **Beheer → Aanbod** → de dienst → velden **Doel**, **Inhoud** (één punt per regel),
+**Mogelijke extra's** (één per regel) en **Uitleg bij de extra's**. De tekst is het
 voorstel uit de werkopdracht van 13 oktober ("Suggested service content"). De uitleg bij de extra's
 is overal: "Wat er precies bij komt en wat het kost, spreken we altijd vooraf samen met je af."
 
@@ -177,17 +176,15 @@ Vervangen kan op twee manieren:
 
 ## 6. Online boeken per dienst (K)
 
-**Sinds 16 okt 2026:** rechtstreeks online boeken of enkel op aanvraag, en welke dienst per variant,
-kies je in **Beheer → Aanbod**; aanbieders vinken zelf aan wat ze aanbieden (**Mijn agenda → Mijn
-aanbod**). Zonder aanbieder staat een online te boeken aanbod grijs als "Tijdelijk niet online te
-boeken"; een aanbod op aanvraag toont een aanvraagformulier op zijn pagina (naar de ontvanger uit
-**Beheer → E-mail**, C-02). De stand hieronder is wat de pagina's vóór die instellingen afleidden,
-en wat `cms:migrate-offerings` letterlijk overneemt.
-
-Zie [`booking-architecture.md`](./booking-architecture.md) §14. Plaats: CMS → de dienstpagina →
-blok *Dienst (aanbod)* → veld **Online boeken via dienst(en)** (slug uit `/admin` → **Diensten**,
-één per regel). Leeg = de knop "Boek een afspraak voor deze dienst" leidt naar een contactvraag
-(bellen of mailen naar het adres uit G-01) die de dienst noemt.
+Plaats: **Beheer → Aanbod** → de dienst → *Rechtstreeks online boeken* (met per variant de duur in
+de agenda, buffer, locatie, ouderregel en prijs) of *Enkel op aanvraag*; de boekingsdienst erachter
+wordt bij het opslaan aangemaakt of bijgewerkt (geen apart scherm Diensten meer). Aanbieders
+vinken zelf aan wat ze aanbieden (**Mijn agenda → Mijn aanbod**). Zonder aanbieder staat een online
+te boeken aanbod grijs als "Tijdelijk niet online te boeken"; een aanbod op aanvraag toont een
+aanvraagformulier op zijn pagina (naar de ontvanger uit **Beheer → E-mail**, C-02). Zie
+[`booking-architecture.md`](./booking-architecture.md) §14. Een aanbod dat niet getoond wordt, is
+ook niet boekbaar: zo staan Gezinspakket, Fit aan huis en Inspanningstest sinds 17 okt 2026 als
+verborgen aanbod klaar (K-03, K-04).
 
 | ID | Onderwerp | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
@@ -213,7 +210,7 @@ blok *Dienst (aanbod)* → veld **Online boeken via dienst(en)** (slug uit `/adm
 ## 8. Cadeaubon (C)
 
 Sinds 13 oktober 2026 (vraag van Toshoni): `/aanbod` → groep **Overige** → kaart *Cadeaubon* →
-`/aanbod/cadeaubon`, met een bestelformulier (bedrag naar keuze, persoonlijke boodschap,
+`/cadeaubon` (tot 17 okt 2026 `/aanbod/cadeaubon`, nu een doorverwijzing), met een bestelformulier (bedrag naar keuze, persoonlijke boodschap,
 contactgegevens). **Bestel nu** mailt de aanvraag naar de studio; factuur en betaallink maakt de
 studio zelf op. Er is geen betaling, factuur, boncode of automatische mail naar de klant. Zolang
 C-01 of C-02 open is, krijgt elke bezoeker "Je bestelling is niet verstuurd" met het
@@ -224,5 +221,5 @@ telefoonnummer, en blijft alles wat de bezoeker invulde staan. Uitleg en instell
 | --- | --- | --- | --- | --- |
 | C-01 | E-mailverzending (Resend): **Beheer → E-mail** (`/admin/email`: API-sleutel en afzender), of de omgevingsvariabelen `RESEND_API_KEY` en `EMAIL_FROM` in Vercel (Arend; hebben voorrang) | niet ingesteld op staging en productie (preflight Arend, 13 okt 2026): elke bestelling meldt "niet verstuurd" | Resend-account, een afzenderdomein dat in Resend geverifieerd is (DNS), dan sleutel en afzender in `/admin/email` (of de variabelen) en een testbericht; de afzender is nooit het adres van de bezoeker | open |
 | C-02 | Ontvanger van de bestellingen: **Beheer → E-mail** (`/admin/email`) → *Ontvanger bestellingen en aanvragen*, of omgevingsvariabele `GIFT_VOUCHER_RECIPIENT` (heeft voorrang). Bewust los van het publieke adres (G-01): geen automatische terugval op `info@debikefitstudio.be` | leeg: elke bestelling meldt "niet verstuurd". Het gevraagde publieke adres `info@debikefitstudio.be` blijft in footer en contacttekst; het domein gaf op 13 okt 2026 geen DNS (NXDOMAIN), dus mail daarheen zou niet aankomen | een werkende mailbox kiezen (Toshoni) en die in de instelling of de variabele zetten | open |
-| C-03 | `/aanbod/cadeaubon` (*Cadeaubon*) → blok *Cadeaubon (bestelformulier)* → **Inleiding**, **Korte omschrijving**, **Titel boven het formulier** | neutraal geschreven door de implementatie: bedrag en boodschap naar keuze, factuur en betaallink na de bestelling | nakijken door Toshoni | te bevestigen |
+| C-03 | `/cadeaubon` (*Cadeaubon*) → blok *Cadeaubon (bestelformulier)* → **Inleiding**, **Korte omschrijving**, **Titel boven het formulier** | neutraal geschreven door de implementatie: bedrag en boodschap naar keuze, factuur en betaallink na de bestelling | nakijken door Toshoni | te bevestigen |
 | C-04 | Voorwaarden van de bon: geldigheid, vorm (digitaal of op papier), levering, minimum- en maximumbedrag | nergens vermeld; het formulier aanvaardt technisch € 1 tot € 5.000 (daarboven: "bel ons best even") | beslissing van de studio; daarna in de **Inleiding** en zo nodig in de algemene voorwaarden | open |

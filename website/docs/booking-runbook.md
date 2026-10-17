@@ -874,7 +874,7 @@ These are not code; they make the texts true.
 
 ## 12. Cadeaubon — order requests by e-mail
 
-`/aanbod/cadeaubon` (block *Cadeaubon (bestelformulier)*) lets a visitor order a gift voucher:
+`/cadeaubon` (block *Cadeaubon (bestelformulier)*; until 17 Oct 2026 `/aanbod/cadeaubon`) lets a visitor order a gift voucher:
 amount of their choice in euro, an optional personal message (plain text, max. 500 characters),
 name, e-mail and optionally phone. **Bestel nu** sends one e-mail **to the studio**; nothing is
 paid, invoiced or issued on the site and the visitor gets no automatic mail.
