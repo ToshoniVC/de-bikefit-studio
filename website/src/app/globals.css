@@ -612,6 +612,7 @@
     margin-bottom: var(--ds-space-md);
   }
   .studio-hero__title em {
+    display: block;
     font-style: italic;
     color: var(--ds-color-fg-subtle);
   }
