@@ -407,7 +407,6 @@
     display: inline-flex;
     align-items: center;
     gap: var(--ds-space-sm);
-    color: var(--ds-color-fg);
     text-decoration: none;
   }
   .studio-logo__mark {
@@ -423,11 +422,14 @@
     text-transform: uppercase;
     line-height: 1;
   }
+  /* Palette tokens are the `--color-ds-*` variables; on a dark ground both
+     lines take the inverse foreground, so "Studio" never sinks into the
+     burgundy (the first cut used undefined `--ds-*` names and inherited ink). */
   .studio-logo__name {
     font-weight: 800;
     font-size: 1.375rem;
     letter-spacing: 0.06em;
-    color: var(--ds-burgundy-700);
+    color: var(--color-ds-burgundy-700);
   }
   .studio-logo__kind {
     margin-top: 0.3rem;
@@ -435,13 +437,11 @@
     font-style: italic;
     font-size: 0.8125rem;
     letter-spacing: 0.36em;
-    color: var(--ds-mauve-500);
+    color: var(--color-ds-mauve-500);
   }
-  .studio-logo--dark .studio-logo__name {
-    color: var(--ds-color-fg-inverse);
-  }
+  .studio-logo--dark .studio-logo__name,
   .studio-logo--dark .studio-logo__kind {
-    color: var(--ds-rose-400);
+    color: var(--ds-color-fg-inverse);
   }
   .studio-nav__menu {
     display: flex;
