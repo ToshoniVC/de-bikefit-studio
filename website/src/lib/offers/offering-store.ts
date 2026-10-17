@@ -28,6 +28,13 @@ import { contentFromRow, type OfferingRecord } from './offering-content';
 export const OFFERING_TAG = 'cms:offerings';
 
 const REVALIDATE_SECONDS = 300;
+/** A thrown error's class name (`TypeError`, `NeonDbError`); anything else is `unknown`. */
+const ERROR_NAME_RE = /^[A-Za-z]{1,64}$/;
+
+function errorName(error: unknown): string {
+  const name = error instanceof Error ? error.name : '';
+  return ERROR_NAME_RE.test(name) ? name : 'unknown';
+}
 
 export type OfferingStore = {
   offerings: OfferingRecord[];
@@ -94,9 +101,10 @@ export async function getOfferingStore(locale: string = DEFAULT_LOCALE): Promise
           readServices(locale),
         ]);
         return { offerings, services, storeAvailable: true };
-      } catch {
-        // A fixed code, never the error: a failed query's message holds its SQL.
-        console.error('[aanbod] offerings_unavailable');
+      } catch (error) {
+        // A fixed code and at most the error's class name, never its message:
+        // a failed query's message holds its SQL and bound values.
+        console.error('[aanbod] offerings_unavailable', { error: errorName(error) });
         return { offerings: [], services: [], storeAvailable: false };
       }
     },

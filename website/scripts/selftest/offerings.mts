@@ -451,6 +451,22 @@ export async function offeringsSection(ctx: {
     'cms:migrate-aanbod: a second apply finds nothing to do',
     !second.changed && lines.some((line) => line.includes('nothing to do')),
   );
+  lines.length = 0;
+  writeCalls.length = 0;
+  const verifyAuditBefore = (await db.select().from(schema.cmsAuditLog)).length;
+  const verified = await runAanbodMigration(
+    { apply: false, verify: true, backupDir },
+    { ...context, db: watchedDb },
+  );
+  check(
+    'cms:migrate-aanbod --verify: re-checks every stored offering, writes nothing, no audit entry',
+    verified.problems.length === 0 &&
+      !verified.changed &&
+      writeCalls.length === 0 &&
+      lines.some((line) => line.startsWith('✓ verified:')) &&
+      (await db.select().from(schema.cmsAuditLog)).length === verifyAuditBefore,
+    writeCalls.join() || lines.join(' | '),
+  );
 
   // --- 3: permissions --------------------------------------------------------
   const newOffering = (overrides: Record<string, unknown> = {}) => ({

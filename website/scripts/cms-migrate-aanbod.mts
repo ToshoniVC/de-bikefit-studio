@@ -4,11 +4,17 @@
  *
  *   npm run cms:migrate-aanbod                          # dry run (default): plan only
  *   npm run cms:migrate-aanbod -- --apply --expect-host <host>
+ *   npm run cms:migrate-aanbod -- --verify              # re-run the final check, read-only
  *
  * Options
  *   --apply                  write: backup first, then the offerings, the
  *                            gift voucher's move and redirect, the voucher
- *                            card on /aanbod; the offer pages are deleted last
+ *                            card on /aanbod; the offer pages are deleted last;
+ *                            the audit entry `migrate.aanbod.apply` is written
+ *                            before the final check decides the exit code
+ *   --verify                 only the final check (every stored offering in
+ *                            the public catalogue, no offer page left, the
+ *                            voucher page and card), no session, no writes
  *   --expect-host <host>     REQUIRED for --apply against Neon: must equal the
  *                            host in DATABASE_URL
  *   --backup-dir <dir>       where --apply writes its backup
@@ -41,8 +47,13 @@ function log(symbol: string, message: string) {
 
 async function main() {
   const args = process.argv.slice(2);
-  rejectUnknownOptions(args, ['--apply', '--expect-host', '--backup-dir']);
+  rejectUnknownOptions(args, ['--apply', '--verify', '--expect-host', '--backup-dir']);
   const apply = args.includes('--apply');
+  const verify = args.includes('--verify');
+  if (apply && verify) {
+    console.error('✗ choose --apply or --verify, not both');
+    process.exit(1);
+  }
   const expectHost = valueOf(args, '--expect-host');
   const backupDir = valueOf(args, '--backup-dir') ?? '.rollout-backups';
 
@@ -50,10 +61,20 @@ async function main() {
   const driver = cmsDriver();
   const host = databaseHost();
   log('→', `driver: ${driver}${host ? ` (${host})` : ''}`);
-  log('→', apply ? 'mode: APPLY' : 'mode: dry run (nothing is written)');
+  log(
+    '→',
+    apply
+      ? 'mode: APPLY'
+      : verify
+        ? 'mode: verify (read-only)'
+        : 'mode: dry run (nothing is written)',
+  );
   if (apply) assertWriteTarget(driver, host, expectHost);
 
-  await runAanbodMigration({ apply, backupDir }, { db: await getCmsDb(), driver, cookieJar, log });
+  await runAanbodMigration(
+    { apply, verify, backupDir },
+    { db: await getCmsDb(), driver, cookieJar, log },
+  );
   if (apply) {
     console.log(
       '  Deployed sites pick this up within 5 minutes (cache fallback); see docs/staging-runbook.md §19.',
