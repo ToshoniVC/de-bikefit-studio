@@ -587,7 +587,12 @@ export function orphanOffering(service: {
   };
 }
 
-export type AanbodMigrationResult = { changed: boolean; backupPath: string | null };
+export type AanbodMigrationResult = {
+  changed: boolean;
+  backupPath: string | null;
+  /** What `verifyAanbodMigration()` found; empty when everything checked out. */
+  problems: string[];
+};
 
 export async function applyAanbodMigration(
   deps: RolloutDeps,
@@ -599,7 +604,7 @@ export async function applyAanbodMigration(
   if (blockers.length > 0) throw new Error(`migration refused:\n  - ${blockers.join('\n  - ')}`);
   if (!aanbodMigrationHasChanges(plan)) {
     log('=', 'nothing to do: the offer is already migrated');
-    return { changed: false, backupPath: null };
+    return { changed: false, backupPath: null, problems: [] };
   }
 
   // 1. Backup FIRST. No backup, no write.
@@ -671,18 +676,20 @@ export async function applyAanbodMigration(
     log('-', `page ${page.path} — deleted (in the backup)`);
   }
 
-  // 6. Verify on what visitors get, and that the booking tables were not touched.
-  const problems = await verifyAanbodMigration(deps, converted);
-  if (problems.length > 0) throw new Error(`verification failed:\n  - ${problems.join('\n  - ')}`);
-  log('✓', `offerings, /${GIFT_VOUCHER_PAGE_SLUG} and /${OFFER_PAGE_PREFIX} verified`);
+  // 6. The booking tables were not touched (a data concern: stop before anything else).
   if (stable(await guardCounts(deps)) !== stable(plan.guards)) {
     throw new Error('booking tables changed during the migration!');
   }
   log('✓', 'bookings, services and providers unchanged');
+
+  // 7. Verify on what visitors get. Every write is done and stands, so the
+  // audit entry is written first, with the outcome; only then does a problem
+  // fail the run (exit 1), and `--verify` re-checks without writing anything.
+  const problems = await verifyAanbodMigration(deps, converted);
   await deps.auth.recordAudit(deps.db, deps.actor, {
     action: 'migrate.aanbod.apply',
     entityType: 'cms_rollout',
-    summary: 'offer pages → offerings (17 Oct 2026)',
+    summary: `offer pages → offerings (17 Oct 2026)${problems.length ? ' — verification reported problems' : ''}`,
     metadata: {
       backup: backupFile,
       pages: plan.offerPages.map((page) => page.path),
@@ -691,9 +698,42 @@ export async function applyAanbodMigration(
       voucher: plan.voucher.action,
       redirect: plan.redirect.action,
       aanbod: plan.aanbod.action,
+      verified: problems.length === 0,
+      problems,
     },
   });
-  return { changed: true, backupPath };
+  if (problems.length > 0) {
+    for (const problem of problems) log('!', problem);
+    throw new Error(
+      `every write succeeded and is audited, but the verification found problems (above); ` +
+        `check them and run \`npm run cms:migrate-aanbod -- --verify\` again`,
+    );
+  }
+  log('✓', `offerings, /${GIFT_VOUCHER_PAGE_SLUG} and /${OFFER_PAGE_PREFIX} verified`);
+  return { changed: true, backupPath, problems };
+}
+
+/** How often, and how long apart, the store is read before it counts as unreadable. */
+const STORE_READ_ATTEMPTS = 3;
+const STORE_READ_PAUSE_MS = 750;
+
+/**
+ * The offering store as the public readers see it, read again after a pause
+ * when it reports itself unavailable. `getOfferingStore()` swallows a failed
+ * query on purpose (a page must not crash), so one transient refusal right
+ * after a burst of writes on neon-http (17 Oct 2026 on staging) would
+ * otherwise read as "no offerings at all".
+ */
+async function readStoreWithRetry(
+  locale: string,
+): Promise<{ available: boolean; attempts: number }> {
+  const { getOfferingStore } = await import('@/lib/offers/offering-store');
+  for (let attempt = 1; ; attempt += 1) {
+    const store = await getOfferingStore(locale);
+    if (store.storeAvailable) return { available: true, attempts: attempt };
+    if (attempt >= STORE_READ_ATTEMPTS) return { available: false, attempts: attempt };
+    await new Promise((resolve) => setTimeout(resolve, STORE_READ_PAUSE_MS));
+  }
 }
 
 /** Invariants after an apply (and in the self-test): the violations, empty when all is well. */
@@ -704,10 +744,18 @@ export async function verifyAanbodMigration(
   const { db, orm, schema, locale } = deps;
   const { and, eq, like } = orm;
   const problems: string[] = [];
-  const { loadOfferCatalogue } = await import('@/lib/cms/offers-content');
-  const catalogue = await loadOfferCatalogue(locale);
-  for (const slug of convertedSlugs) {
-    if (!catalogue.bySlug[slug]) problems.push(`offering ${slug} is not in the catalogue`);
+  // One clear problem when the store cannot be read, never one line per offering.
+  const store = await readStoreWithRetry(locale);
+  if (!store.available) {
+    problems.push(
+      `the offering store could not be read (${store.attempts} attempts; see "[aanbod] offerings_unavailable" above) — the offerings were not checked`,
+    );
+  } else {
+    const { loadOfferCatalogue } = await import('@/lib/cms/offers-content');
+    const catalogue = await loadOfferCatalogue(locale);
+    for (const slug of convertedSlugs) {
+      if (!catalogue.bySlug[slug]) problems.push(`offering ${slug} is not in the catalogue`);
+    }
   }
   const leftovers = await db
     .select({ slug: schema.cmsPages.slug, snapshot: schema.cmsPages.publishedSnapshot })
@@ -742,10 +790,13 @@ export async function verifyAanbodMigration(
 /**
  * Mode dispatch shared by the CLI and the self-test. The dry run plans against
  * `readOnlyDb()` and opens no session; `--apply` acts as the CLIs' admin
- * (`findActor()`) in a short-lived session, revoked afterwards.
+ * (`findActor()`) in a short-lived session, revoked afterwards; `--verify`
+ * re-runs the apply's final check on every stored offering, read-only, no
+ * session, no audit entry (for a run whose apply finished but whose check
+ * failed, or to confirm a database later).
  */
 export async function runAanbodMigration(
-  options: { apply: boolean; backupDir: string },
+  options: { apply: boolean; backupDir: string; verify?: boolean },
   context: RolloutRunContext,
 ): Promise<AanbodMigrationResult> {
   const schema = await import('@/db/cms-schema');
@@ -757,6 +808,22 @@ export async function runAanbodMigration(
     locale: schema.DEFAULT_LOCALE,
     log: context.log,
   };
+
+  if (options.verify) {
+    const { readStoredOfferings } = await import('@/lib/offers/offering-store');
+    const slugs = (await readStoredOfferings(planDeps.locale)).map(
+      (offering) => offering.content.slug,
+    );
+    const problems = await verifyAanbodMigration(planDeps, slugs);
+    for (const problem of problems) context.log('!', problem);
+    if (problems.length > 0) throw new Error('verification found problems (above)');
+    context.log(
+      '✓',
+      `verified: ${slugs.length} offerings in the catalogue, no offer page left, /${GIFT_VOUCHER_PAGE_SLUG} renders, /${OFFER_PAGE_PREFIX} has the voucher card`,
+    );
+    return { changed: false, backupPath: null, problems };
+  }
+
   const actor = await findActor(planDeps);
 
   if (!options.apply) {
@@ -772,7 +839,7 @@ export async function runAanbodMigration(
         ? `dry run: ${blockers.length > 0 ? 'blocked — fix the items marked ! first' : 'run again with --apply to write'}`
         : 'dry run: nothing to do',
     );
-    return { changed: false, backupPath: null };
+    return { changed: false, backupPath: null, problems: [] };
   }
 
   context.log('=', `acting as ${actor.email}`);

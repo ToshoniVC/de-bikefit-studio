@@ -1066,8 +1066,23 @@ production needs Toshoni's go. §12 and §18 are superseded by this section.
    (`website/.rollout-backups/aanbod-migrate-<timestamp>.json`) before the first write, acts as
    the enrolled admin, writes the offerings (audit `offering.create` / `offering.update`), moves
    the voucher page, creates the redirect, patches and publishes `/aanbod`, deletes the offer
-   pages (audit `page.delete`), verifies the catalogue and the pages, checks the booking tables
-   and audits `migrate.aanbod.apply`. A second run prints `nothing to do`.
+   pages (audit `page.delete`), checks the booking tables, audits `migrate.aanbod.apply` (with
+   `verified` and any `problems` in its metadata) and only then lets the final check decide the
+   exit code: every stored offering in the public catalogue, no offer page left, `/cadeaubon`
+   renders, `/aanbod` has the voucher card. A second run prints `nothing to do`.
+
+   **If the apply ends in "verification found problems"** (staging, 17 Oct 2026: one read of
+   the offering store failed right after the writes, so every offering was reported "not in
+   the catalogue"), the writes are complete and stand. Run the check again, read-only and
+   without a session:
+
+   ```bash
+   DATABASE_URL='<staging pooled url>' npm run cms:migrate-aanbod -- --verify
+   ```
+
+   Since that day the check reads the store up to three times before it reports it unreadable,
+   as one line, and the audit entry is written before the check (on staging the run of 17 Oct
+   wrote none; the 21 `offering.create` / `page.*` / `redirect.create` rows are the record).
 6. **Cache.** As in §9: the readers' fallback revalidation is 5 minutes; wait, load each page
    twice, then verify.
 7. **Checks** (no booking or enquiry is submitted on staging):
