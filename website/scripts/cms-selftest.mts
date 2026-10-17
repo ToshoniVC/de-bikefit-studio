@@ -1568,11 +1568,7 @@ async function bookingSections(
       provider: { id: providerId, userId: providerUserId },
       studioId: studio.data.id,
       homeId: home.data.id,
-      services: {
-        adultFitId: adultFit.data.id,
-        youthFitId: youthFit.data.id,
-        homeFitId: homeFit.data.id,
-      },
+      services: { adultFitId: adultFit.data.id, youthFitId: youthFit.data.id },
       weekHours,
       tz: TZ,
     });

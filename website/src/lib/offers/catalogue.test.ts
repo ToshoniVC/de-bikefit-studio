@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SERVICES } from '@/lib/booking/defaults';
+import { DEFAULT_SERVICES, RETIRED_SERVICE_SLUGS } from '@/lib/booking/defaults';
 import {
   bookingChoiceLabel,
   GIFT_VOUCHER_PRICE_LABEL,
@@ -16,7 +16,7 @@ import {
   sortOffers,
   type CatalogueOffer,
 } from './catalogue';
-import { DEFAULT_OFFERINGS, DEFAULT_OFFERS, LEGACY_OFFERINGS } from './defaults';
+import { DEFAULT_OFFERINGS, DEFAULT_OFFERS } from './defaults';
 import { resolveOffering, type OfferingServiceInfo } from './offering';
 
 const emptyImage = { mediaId: null, url: null, alt: '', decorative: false };
@@ -276,22 +276,28 @@ describe('resolveBookingSelection (service preselection)', () => {
 });
 
 describe('default offerings (what cms:bootstrap writes)', () => {
-  it('has the seven offers (five Bikefit, two Begeleiding) plus three hidden legacy services, unique slugs', () => {
+  it('has the seven offers (five Bikefit, two Begeleiding) and nothing else, unique slugs', () => {
     expect(DEFAULT_OFFERS).toHaveLength(7);
     expect(DEFAULT_OFFERS.filter((entry) => entry.content.category === 'bikefit')).toHaveLength(5);
     expect(DEFAULT_OFFERS.filter((entry) => entry.content.category === 'begeleiding')).toHaveLength(
       2,
     );
-    expect(LEGACY_OFFERINGS.map((entry) => entry.content.slug)).toEqual([
-      'gezinspakket',
-      'fit-aan-huis',
-      'inspanningstest',
-    ]);
-    expect(
-      LEGACY_OFFERINGS.every((entry) => !entry.isListed && entry.bookingMode === 'direct'),
-    ).toBe(true);
+    expect(DEFAULT_OFFERINGS).toBe(DEFAULT_OFFERS);
     const slugs = DEFAULT_OFFERINGS.map((entry) => entry.content.slug);
     expect(new Set(slugs).size).toBe(slugs.length);
+  });
+
+  it('the two booking services are the fits; the older three are retired, not default', () => {
+    expect(DEFAULT_SERVICES.map((service) => service.slug)).toEqual(['volwassenenfit', 'jeugdfit']);
+    expect([...RETIRED_SERVICE_SLUGS]).toEqual(['gezinspakket', 'fit-aan-huis', 'inspanningstest']);
+    const defaults = new Set(DEFAULT_SERVICES.map((service) => service.slug));
+    expect(RETIRED_SERVICE_SLUGS.some((slug) => defaults.has(slug))).toBe(false);
+    // Every service an offer books through exists in the defaults.
+    for (const entry of DEFAULT_OFFERS) {
+      for (const variant of entry.variants) {
+        if (variant.serviceSlug) expect(defaults.has(variant.serviceSlug)).toBe(true);
+      }
+    }
   });
 
   it('every offer carries the default CTA, no price and an honest duration', () => {

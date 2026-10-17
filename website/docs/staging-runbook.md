@@ -127,9 +127,10 @@ npm run cms:bootstrap
 Creates only what is missing: the admin `contact@toshoni.be` (`must_change_password =
 true`), the six `nl` site settings (including `seo.allowIndexing = false` and the `booking`
 rules), empty `main` and `footer` menus, the locations "De Bikefit Studio, Ninove" and "Bij
-jou thuis", the five services and the ten offerings of Beheer → Aanbod (the seven offers of the
-brief, shown, Bikefit – huidige fiets booked as Volwassenenfit/Jeugdfit; Gezinspakket, Fit aan
-huis and Inspanningstest as hidden offerings; §19). Never overwrites anything. On a database
+jou thuis", the two services (Volwassenenfit, Jeugdfit) and the seven offerings of Beheer →
+Aanbod (the offers of the brief, shown, Bikefit – huidige fiets booked as Volwassenenfit/
+Jeugdfit; Gezinspakket, Fit aan huis and Inspanningstest are retired since 17 Oct 2026: not
+created, deactivated by `cms:migrate-aanbod` where they exist; §19). Never overwrites anything. On a database
 that already has the services, the only change it makes is to fill an **empty** `choice_label`
 of `volwassenenfit` ("Volwassene") and `jeugdfit` ("Jeugd") after migration 0009 (printed as
 `~ service nl/… : empty choice label set to …`); a label an admin typed is left alone. An
@@ -1058,8 +1059,9 @@ production needs Toshoni's go. §12 and §18 are superseded by this section.
 
    The dry run is read-only (no session, no audit entry, writes refused) and lists per offer page
    `+ … create the offering from the page (derived|stored settings), then delete the page`, per
-   service no offering books through `+ service … — hidden offering`, `~ page /aanbod/cadeaubon —
-   move to /cadeaubon`, `+ redirect /aanbod/cadeaubon → /cadeaubon`, `~ page /aanbod — add the
+   retired service `- offering … — retired: delete the hidden offering` and `- service … —
+   retired: deactivate (existing bookings keep it)`, per other service no offering books through
+   `+ service … — hidden offering`, `~ page /aanbod/cadeaubon — move to /cadeaubon`, `+ redirect /aanbod/cadeaubon → /cadeaubon`, `~ page /aanbod — add the
    voucher card`, the guard counts. A `!` line blocks the apply (a text that does not validate, an
    unpublished draft on `/aanbod`, a redirect pointing elsewhere): fix it in `/admin` first. The
    apply writes a backup JSON of every page it deletes or changes
@@ -1086,8 +1088,9 @@ production needs Toshoni's go. §12 and §18 are superseded by this section.
 6. **Cache.** As in §9: the readers' fallback revalidation is 5 minutes; wait, load each page
    twice, then verify.
 7. **Checks** (no booking or enquiry is submitted on staging):
-   - `/admin/aanbod` lists ten offerings: the seven of the brief (shown) and Gezinspakket, Fit
-     aan huis, Inspanningstest (hidden); Bikefit – huidige fiets shows *Volwassene en Jeugd
+   - `/admin/aanbod` lists the seven offerings of the brief (shown); Gezinspakket, Fit aan huis
+     and Inspanningstest are gone (retired: their services inactive, existing bookings keep
+     them); Bikefit – huidige fiets shows *Volwassene en Jeugd
      apart*, *Rechtstreeks online boeken*, 90 and 60 minutes, no prices, the provider under
      "Aangeboden door". Open one: the text of the former page is there.
    - `/admin/pages` shows one *Aanbod* page and *Cadeaubon* at `/cadeaubon`; no page under
@@ -1098,8 +1101,8 @@ production needs Toshoni's go. §12 and §18 are superseded by this section.
      the enquiry form; `/aanbod/gezinspakket` and `/aanbod/onbekend` answer 404;
      `/aanbod/cadeaubon` → 308 to `/cadeaubon`; the sitemap lists the seven offerings.
    - `/afspraak`: "Bikefit – huidige fiets" once with Volwassene / Jeugd; Gezinspakket, Fit aan
-     huis and Inspanningstest are no longer offered (hidden offerings; show them in Beheer →
-     Aanbod if Toshoni wants them back); `?dienst=bikefit-huidige-fiets` narrows,
+     huis and Inspanningstest are no longer offered (retired; a new offering in Beheer → Aanbod
+     brings one back); `?dienst=bikefit-huidige-fiets` narrows,
      `?dienst=lactaattest` links to the form.
    - The provider sees *Mijn aanbod* grouped by offering under *Mijn agenda*; a new user with the
      role Aanbieder (Gebruikers) gets "Het aanbiedersprofiel is meteen aangemaakt." and an agenda

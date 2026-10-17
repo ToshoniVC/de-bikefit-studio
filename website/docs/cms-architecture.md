@@ -1658,7 +1658,8 @@ the prices. Booking links: `/afspraak?dienst=<slug>#boeken`, resolved on the ser
 `getOfferingForAdmin`, `createOffering`, `updateOffering`, `deleteOffering`,
 `listOfferingSubscriptionGroups`; writes the services of direct variants, audits
 `offering.create|update|delete` + `service.create`), `defaults.ts` (the seven offers of the
-brief plus the three older services as hidden offerings, written by `cms:bootstrap`),
+brief, written by `cms:bootstrap`; the older services are retired, `RETIRED_SERVICE_SLUGS` in
+`src/lib/booking/defaults.ts`),
 `offering-legacy.ts` (only for `cms:migrate-aanbod`), `src/lib/cms/offers-content.ts`
 (`loadOfferCatalogue`, `getPublishedOffer`, `isServiceBookableOnline`),
 `src/lib/cms/actions/offerings.ts`, `src/components/admin/offering-form.tsx`,
@@ -1680,9 +1681,11 @@ for making an admin or editor bookable, or login and profile in one go.
 slug); `cms:seed` writes the pages (`/aanbod` with the voucher card, `/cadeaubon`, …) and the
 redirects. An existing database with offer pages is converted once by `npm run cms:migrate-aanbod`
 (dry run by default, read-only; `--apply --expect-host`): every offer page becomes an offering
-with its text and its saved or derived settings, services no offering books through become
-hidden offerings, the voucher page moves, the voucher card is put on `/aanbod`, the pages are
-deleted (backed up first). Procedure: `staging-runbook.md` §19. The older one-off tools
+with its text and its saved or derived settings, the retired services (Gezinspakket, Fit aan
+huis, Inspanningstest; Toshoni, 17 Oct 2026) lose their hidden offering and are deactivated
+(soft, existing bookings keep them; a shown offering booking through one is left alone), any
+other service no offering books through becomes a hidden offering, the voucher page moves, the
+voucher card is put on `/aanbod`, the pages are deleted (backed up first). Procedure: `staging-runbook.md` §19. The older one-off tools
 `cms:patch-cadeaubon` and `cms:migrate-offerings` are retired; `cms:rollout-aanbod` still
 applies the five pages, menus and redirects.
 
@@ -1697,10 +1700,11 @@ PGlite self-test section 14d (`scripts/selftest/offerings.mts`: migrations, boot
 migration CLI, permissions, the admin write with its services, provider self-service, the
 booking gate, the enquiry form, the provider profile).
 
-**Decisions to confirm (Toshoni).** `offering.manage` is admin-only (it writes the booking
-catalogue). The three older services (Gezinspakket, Fit aan huis, Inspanningstest) are hidden
-offerings and therefore not bookable until shown. The env name `GIFT_VOUCHER_RECIPIENT` is kept
-although the inbox also receives enquiries.
+**Decisions (Toshoni, 17 Oct 2026).** `offering.manage` is admin-only (it writes the booking
+catalogue; to confirm). The three older services (Gezinspakket, Fit aan huis, Inspanningstest)
+are **retired**: not part of the offer, deactivated by `cms:migrate-aanbod`, no longer created by
+`cms:bootstrap`; showing one again means a new offering in Beheer → Aanbod (a new service row).
+The env name `GIFT_VOUCHER_RECIPIENT` is kept although the inbox also receives enquiries.
 
 ---
 

@@ -174,13 +174,13 @@ export async function offeringsSection(ctx: {
   const youthId = publicServices.find((s) => s.slug === 'jeugdfit')?.id;
   const homeId = publicServices.find((s) => s.slug === 'fit-aan-huis')?.id;
   check(
-    'bootstrap: ten offerings created once (seven shown), kept on a second run',
-    first.created.length === 10 &&
+    'bootstrap: seven offerings created once (all shown, no hidden legacy ones), kept on a second run',
+    first.created.length === 7 &&
       first.kept.length === 0 &&
       again.created.length === 0 &&
-      again.kept.length === 10 &&
+      again.kept.length === 7 &&
       seeded.offers.length === 7 &&
-      seeded.hiddenSlugs.length === 3,
+      seeded.hiddenSlugs.length === 0,
     `${first.created.length} created, ${seeded.offers.length} shown, hidden ${seeded.hiddenSlugs.join(',')}`,
   );
   check(
@@ -194,11 +194,10 @@ export async function offeringsSection(ctx: {
   );
   const withheld = new Set(seeded.withheldServiceIds);
   check(
-    'bootstrap: the hidden Fit aan huis is held back from /afspraak; the fits are not',
+    'bootstrap: nothing is held back yet; the fits and the (not yet retired) Fit aan huis are bookable',
     homeId !== undefined &&
-      withheld.has(homeId) &&
-      !withheld.has(adultId ?? '') &&
-      !(await isServiceBookableOnline(homeId, locale)) &&
+      withheld.size === 0 &&
+      (await isServiceBookableOnline(homeId, locale)) &&
       (await isServiceBookableOnline(adultId ?? '', locale)),
   );
   const offered = publicServices.filter((service) => !withheld.has(service.id));
@@ -218,13 +217,13 @@ export async function offeringsSection(ctx: {
     services: offered,
   });
   check(
-    '?dienst=: the current-bike fit narrows to Volwassene + Jeugd; Lactaattest is an enquiry; a hidden one is unknown',
+    '?dienst=: the current-bike fit narrows to Volwassene + Jeugd; Lactaattest is an enquiry; a service on its own stays a service',
     linked.kind === 'offer' &&
       linked.serviceIds.join() === [adultId, youthId].join() &&
       asked.kind === 'offer' &&
       asked.serviceIds.length === 0 &&
       asked.offer.status === 'enquiry' &&
-      hiddenOne.kind === 'unknown',
+      hiddenOne.kind === 'service',
     JSON.stringify({ linked, asked, hiddenOne }),
   );
 
@@ -382,6 +381,7 @@ export async function offeringsSection(ctx: {
       ) &&
       lines.some((line) => line.startsWith('~ page /aanbod/cadeaubon — move')) &&
       lines.some((line) => line.startsWith('~ page /aanbod — add the voucher card')) &&
+      lines.some((line) => line.startsWith('- service fit-aan-huis (Fit aan huis) — retired')) &&
       lines.at(-1)?.includes('run again with --apply') === true &&
       (await db.select().from(schema.cmsAuditLog)).length === auditBefore &&
       cookieJar.get('cms_session') === previousCookie,
@@ -419,6 +419,27 @@ export async function offeringsSection(ctx: {
       concept?.offering.isListed === false &&
       catalogueAfter.hiddenSlugs.includes('selftest-concept'),
     JSON.stringify({ stored: stored?.offer, concept: concept?.offering }),
+  );
+  const [homeAfter] = await db
+    .select({ isActive: schema.cmsServices.isActive })
+    .from(schema.cmsServices)
+    .where(eq(schema.cmsServices.id, homeId ?? ''));
+  const retiredAudit = await db
+    .select()
+    .from(schema.cmsAuditLog)
+    .where(
+      and(
+        eq(schema.cmsAuditLog.action, 'service.delete'),
+        eq(schema.cmsAuditLog.entityId, homeId ?? ''),
+      ),
+    );
+  check(
+    'apply: the retired Fit aan huis is deactivated (audited service.delete), out of /afspraak, no hidden offering for it',
+    homeAfter?.isActive === false &&
+      retiredAudit.length === 1 &&
+      !(await listPublicServices(locale)).some((service) => service.slug === 'fit-aan-huis') &&
+      catalogueAfter.bySlug['fit-aan-huis'] === undefined,
+    JSON.stringify({ active: homeAfter?.isActive, audits: retiredAudit.length }),
   );
   const voucherNew = await getPublishedPage(locale, 'cadeaubon');
   const redirect = await findRedirect('/aanbod/cadeaubon');

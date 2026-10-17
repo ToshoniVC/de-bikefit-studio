@@ -15,18 +15,48 @@ import {
 } from './offering';
 import { deriveLegacyOffering, legacyFieldsOf } from './offering-legacy';
 
-/** The five bootstrap services, as the offering code sees them. */
-const SERVICES: OfferingServiceInfo[] = DEFAULT_SERVICES.map((service) => ({
-  id: `svc-${service.slug}`,
-  slug: service.slug,
-  name: service.name,
-  choiceLabel: service.choiceLabel,
-  durationMinutes: service.durationMinutes,
-  isActive: true,
-  requiresGuardian: service.requiresGuardian,
-  priceCents: null,
-  showPrice: false,
-}));
+/**
+ * The three services retired on 17 Oct 2026, as a database that still has
+ * them (active, no offering) looks: a fixture here, no longer a default.
+ */
+const RETIRED_SERVICES = [
+  {
+    slug: 'gezinspakket',
+    name: 'Gezinspakket',
+    choiceLabel: '',
+    durationMinutes: 150,
+    requiresGuardian: false,
+  },
+  {
+    slug: 'fit-aan-huis',
+    name: 'Fit aan huis',
+    choiceLabel: '',
+    durationMinutes: 120,
+    requiresGuardian: false,
+  },
+  {
+    slug: 'inspanningstest',
+    name: 'Inspanningstest',
+    choiceLabel: '',
+    durationMinutes: 60,
+    requiresGuardian: false,
+  },
+];
+
+/** The two bootstrap services plus the three retired ones, as the offering code sees them. */
+const SERVICES: OfferingServiceInfo[] = [...DEFAULT_SERVICES, ...RETIRED_SERVICES].map(
+  (service) => ({
+    id: `svc-${service.slug}`,
+    slug: service.slug,
+    name: service.name,
+    choiceLabel: service.choiceLabel,
+    durationMinutes: service.durationMinutes,
+    isActive: true,
+    requiresGuardian: service.requiresGuardian,
+    priceCents: null,
+    showPrice: false,
+  }),
+);
 
 const ADULT = 'svc-volwassenenfit';
 const YOUTH = 'svc-jeugdfit';

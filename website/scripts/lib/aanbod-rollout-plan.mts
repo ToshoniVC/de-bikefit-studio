@@ -114,7 +114,15 @@ export function seoOf(spec: SeedPage) {
   };
 }
 
-export async function guardCounts(deps: PlanDeps): Promise<GuardCounts> {
+/**
+ * `options.deactivated`: service ids counted as inactive whatever the row says,
+ * so a plan can state the fingerprint it expects AFTER it deactivates them
+ * (`cms:migrate-aanbod` retiring the older services, 17 Oct 2026).
+ */
+export async function guardCounts(
+  deps: PlanDeps,
+  options: { deactivated?: ReadonlySet<string> } = {},
+): Promise<GuardCounts> {
   const { db, schema } = deps;
   const [bookings, services, providerServices, providers] = await Promise.all([
     db.select({ id: schema.cmsBookings.id }).from(schema.cmsBookings),
@@ -129,8 +137,12 @@ export async function guardCounts(deps: PlanDeps): Promise<GuardCounts> {
     db.select({ id: schema.cmsProviderServices.serviceId }).from(schema.cmsProviderServices),
     db.select({ id: schema.cmsProviders.id }).from(schema.cmsProviders),
   ]);
+  const deactivated = options.deactivated ?? new Set<string>();
   const fingerprint = services
-    .map((row) => `${row.id}:${row.slug}:${row.duration}:${row.active}`)
+    .map(
+      (row) =>
+        `${row.id}:${row.slug}:${row.duration}:${deactivated.has(row.id) ? false : row.active}`,
+    )
     .sort()
     .join('\n');
   return {

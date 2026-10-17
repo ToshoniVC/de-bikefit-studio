@@ -40,7 +40,7 @@ export async function assignmentSection(ctx: {
   provider: { id: string; userId: string };
   studioId: string;
   homeId: string;
-  services: { adultFitId: string; youthFitId: string; homeFitId: string };
+  services: { adultFitId: string; youthFitId: string };
   weekHours: { weekday: number; startMinute: number; endMinute: number }[];
   tz: string;
 }) {
@@ -169,13 +169,22 @@ export async function assignmentSection(ctx: {
   });
   check('repo: service pinned to the first studio created', pinned.ok);
   if (!pinned.ok) return;
+  // Section 14's "Fit aan huis" is retired by 14d (deactivated), so a fresh
+  // customer-kind service stands in for "bij de klant" here.
+  const atHome = await repo.createService({
+    name: 'Thuisfit (test)',
+    durationMinutes: 60,
+    locationId: homeId,
+  });
+  check("repo: service at the customer's created", atHome.ok);
+  if (!atHome.ok) return;
   const subscribed = await repo.setProviderServices(provider.id, [
     { serviceId: services.adultFitId },
     { serviceId: services.youthFitId },
-    { serviceId: services.homeFitId },
     { serviceId: pinned.data.id },
+    { serviceId: atHome.data.id },
   ]);
-  check('repo: first provider also offers the pinned service', subscribed.ok);
+  check('repo: first provider also offers the pinned and the at-home service', subscribed.ok);
   const pinnedAvail = await content.getAvailability({
     serviceId: pinned.data.id,
     providerId: provider.id,
@@ -189,7 +198,7 @@ export async function assignmentSection(ctx: {
       pinnedSlots.every((slot) => slot.locationId === studioId),
   );
   const homeAvail = await content.getAvailability({
-    serviceId: services.homeFitId,
+    serviceId: atHome.data.id,
     providerId: provider.id,
     ...window,
   });
@@ -454,10 +463,11 @@ export async function assignmentSection(ctx: {
   await repo.setProviderServices(provider.id, [
     { serviceId: services.adultFitId },
     { serviceId: services.youthFitId },
-    { serviceId: services.homeFitId },
   ]);
   // `repo.deleteService` only deactivates; the rows go for real so later sections see the catalogue of before.
-  await db.delete(cmsServices).where(inArray(cmsServices.id, [pinned.data.id, solo.data.id]));
+  await db
+    .delete(cmsServices)
+    .where(inArray(cmsServices.id, [pinned.data.id, solo.data.id, atHome.data.id]));
   const restored = await repo.setBusinessHours(provider.id, weekHours);
   await db.delete(cmsLocations).where(eq(cmsLocations.id, aalstId));
   const leftover = await db
