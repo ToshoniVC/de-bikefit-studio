@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 160" width="200" height="160" fill="none">
+  <!-- Centered Stamp (64x64) -->
+  <g transform="translate(68, 12)">
+    <rect x="0" y="0" width="64" height="64" fill="#3B1821" />
+    <circle cx="18" cy="44" r="10" stroke="#D5C7BC" stroke-width="3.2" />
+    <circle cx="46" cy="44" r="10" stroke="#D5C7BC" stroke-width="3.2" />
+    <path d="M18 44 L27 28 L43 28 L31 44 L23 22 C28 15 36 15 41 22 L46 44" stroke="#FBF9F5" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" />
+    <circle cx="40" cy="14" r="4" fill="#FBF9F5" />
+  </g>
+
+  <!-- Centered Wordmark -->
+  <text x="100" y="112" text-anchor="middle" fill="#3B1821" font-family="&#39;Bebas Neue&#39;, &#39;Oswald&#39;, &#39;Impact&#39;, sans-serif" font-size="28" font-weight="800" letter-spacing="2">DE BIKEFIT</text>
+  <text x="100" y="134" text-anchor="middle" fill="#7A6467" font-family="&#39;Bebas Neue&#39;, &#39;Oswald&#39;, &#39;Impact&#39;, sans-serif" font-size="16" font-weight="700" font-style="italic" letter-spacing="6.5">STUDIO</text>
+</svg>

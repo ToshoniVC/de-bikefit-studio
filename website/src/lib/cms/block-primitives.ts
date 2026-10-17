@@ -30,7 +30,7 @@ export const optionalLinkSchema = linkSchema.nullable().default(null);
 
 /**
  * Image reference. `mediaId` points at `cms_media`; `url` is only used for
- * assets that live outside the media library (e.g. `/logo.svg` in /public).
+ * assets that live outside the media library (e.g. `/brand/…` in /public).
  * `alt` is the per-block override; it falls back to `cms_media.alt[locale]`.
  */
 export const imageRefSchema = z.object({

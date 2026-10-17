@@ -4,6 +4,7 @@ import { ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { AdminNav, type AdminNavItem } from '@/components/admin/nav';
+import { StudioLogo } from '@/components/studio/logo';
 import { logoutAction } from '@/lib/cms/actions/auth';
 import { can, ROLE_LABELS, type CmsPermission } from '@/lib/cms/permissions';
 import { cn } from '@/lib/utils';
@@ -72,7 +73,7 @@ export function AdminShell({ user, children }: { user: CmsUserPublic; children: 
               <p className="mb-2 font-ds-display text-xs tracking-[0.22em] text-ds-mauve-400 uppercase">
                 Beheer
               </p>
-              <span className="studio-wordmark">De Bikefit Studio</span>
+              <StudioLogo siteName="De Bikefit Studio" tone="dark" />
             </div>
 
             <Link
