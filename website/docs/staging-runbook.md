@@ -1035,14 +1035,17 @@ production needs Toshoni's go. §12 and §18 are superseded by this section.
 
 1. **Release gate** on the exact SHA (six steps).
 2. **Neon snapshot** of `Staging` (e.g. `staging-pre-aanbod-offerings-2026-10-17`).
-3. **Migrate before the deploy** (0011 widens `cms_offerings`; additive):
+3. **Migrate before the deploy** (0011 widens `cms_offerings`; 0012 adds
+   `cms_business_hours.location_id` and `cms_bookings.assignment` / `assigned_at`; both additive,
+   `booking-architecture.md` §2 and §16):
 
    ```bash
    DATABASE_URL='<staging pooled url>' npm run db:migrate
    ```
 
-   Check: `cms_offerings` has the columns `slug`, `title`, `contents`, `image`; nothing else
-   changed. The live build ignores the new columns.
+   Check: `cms_offerings` has the columns `slug`, `title`, `contents`, `image`; `cms_bookings`
+   has `assignment` (every row `assigned`) and `cms_business_hours` has `location_id` (every row
+   null); nothing else changed. The live build ignores the new columns.
 4. **Deploy and migrate at once.** The new build does not serve the offer pages (the block
    type `offer` no longer exists), and until step 5 ran the offer lists are empty. Run step 5
    right after the staging build is READY; the dry run can run before the deploy.

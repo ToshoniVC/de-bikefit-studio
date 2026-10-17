@@ -36,12 +36,26 @@ import {
  * The buffer may run past closing time: with hours until 18:00 a 90-minute fit
  * can start at 16:30. It only has to be free of busy time and other bookings.
  *
+ * Where (17 Oct 2026): a business-hours row may name the location the
+ * provider is at during that range; a row without one is at
+ * `defaultLocationId` (the caller resolves it: the service's pinned location,
+ * else the provider's default, else the studio default). Ranges are kept
+ * apart per location, so every slot carries the `locationId` the fit would
+ * be at. An `open` exception adds a range at the default location; a
+ * `closed` one closes every location.
+ *
  * "All providers" is the caller's job: run this per provider, concatenate, and
- * use {@link mergeSlots} to de-duplicate by start while keeping every free
- * provider id.
+ * use {@link mergeSlots} to de-duplicate by start and location while keeping
+ * every free provider id.
  */
 
-export type BusinessHoursRow = { weekday: number; startMinute: number; endMinute: number };
+export type BusinessHoursRow = {
+  weekday: number;
+  startMinute: number;
+  endMinute: number;
+  /** Where the provider is during this range; `null`/absent = the default location. */
+  locationId?: string | null;
+};
 
 export type AvailabilityExceptionRow = {
   /** `YYYY-MM-DD`, local. */
@@ -74,9 +88,20 @@ export type SlotRules = Pick<
   'slotStepMinutes' | 'minNoticeHours' | 'horizonDays' | 'defaultBufferAfterMinutes'
 >;
 
-export type Slot = { startsAt: string; endsAt: string; providerId: string };
+export type Slot = {
+  startsAt: string;
+  endsAt: string;
+  providerId: string;
+  /** Where the fit would be; `null` when no location is known at all. */
+  locationId: string | null;
+};
 
-export type MergedSlot = { startsAt: string; endsAt: string; providerIds: string[] };
+export type MergedSlot = {
+  startsAt: string;
+  endsAt: string;
+  locationId: string | null;
+  providerIds: string[];
+};
 
 export type ComputeSlotsInput = {
   /** Local date, `YYYY-MM-DD`. */
@@ -91,6 +116,8 @@ export type ComputeSlotsInput = {
   tz?: string;
   /** Copied onto every slot. */
   providerId?: string;
+  /** Location of hours rows without one and of `open` exceptions; `null` = unknown. */
+  defaultLocationId?: string | null;
 };
 
 type Range = [number, number];
@@ -131,32 +158,62 @@ export function subtractRanges(ranges: ReadonlyArray<Range>, cuts: ReadonlyArray
 }
 
 /**
- * Open ranges (local minutes) for one date: weekday hours, then exceptions.
- * A `closed` exception without minutes closes the whole day; with minutes it
- * cuts only that range. An `open` exception adds a range (also on a closed day).
+ * Open ranges (local minutes) for one date, per location: weekday hours, then
+ * exceptions. A `closed` exception without minutes closes the whole day (every
+ * location); with minutes it cuts that range out of every location. An `open`
+ * exception adds a range at `defaultLocationId` (also on a closed day). Hours
+ * rows without a location are at `defaultLocationId` too. Insertion order is
+ * the order of the hours rows, so the caller's sort carries through.
  */
-export function openRangesForDate(
+export function openRangesByLocation(
   date: string,
   hours: ReadonlyArray<BusinessHoursRow>,
   exceptions: ReadonlyArray<AvailabilityExceptionRow> = [],
-): Range[] {
+  defaultLocationId: string | null = null,
+): Map<string | null, Range[]> {
   const weekday = weekdayOfYmd(date);
   const today = exceptions.filter((e) => e.date === date);
   const closedAllDay = today.some(
     (e) => e.kind === 'closed' && (e.startMinute == null || e.endMinute == null),
   );
 
-  const base: Range[] = closedAllDay
-    ? []
-    : hours.filter((h) => h.weekday === weekday).map((h) => [h.startMinute, h.endMinute] as Range);
-  const extra: Range[] = today
-    .filter((e) => e.kind === 'open' && e.startMinute != null && e.endMinute != null)
-    .map((e) => [e.startMinute as number, e.endMinute as number]);
+  const base = new Map<string | null, Range[]>();
+  const add = (locationId: string | null, range: Range) => {
+    const list = base.get(locationId) ?? [];
+    list.push(range);
+    base.set(locationId, list);
+  };
+  if (!closedAllDay) {
+    for (const h of hours) {
+      if (h.weekday === weekday) {
+        add(h.locationId ?? defaultLocationId, [h.startMinute, h.endMinute]);
+      }
+    }
+  }
+  for (const e of today) {
+    if (e.kind === 'open' && e.startMinute != null && e.endMinute != null) {
+      add(defaultLocationId, [e.startMinute, e.endMinute]);
+    }
+  }
   const cuts: Range[] = today
     .filter((e) => e.kind === 'closed' && e.startMinute != null && e.endMinute != null)
     .map((e) => [e.startMinute as number, e.endMinute as number]);
 
-  return subtractRanges([...base, ...extra], cuts);
+  const result = new Map<string | null, Range[]>();
+  for (const [locationId, ranges] of base) {
+    const open = subtractRanges(ranges, cuts);
+    if (open.length) result.set(locationId, open);
+  }
+  return result;
+}
+
+/** The open ranges of {@link openRangesByLocation} merged across locations. */
+export function openRangesForDate(
+  date: string,
+  hours: ReadonlyArray<BusinessHoursRow>,
+  exceptions: ReadonlyArray<AvailabilityExceptionRow> = [],
+): Range[] {
+  return normalizeRanges([...openRangesByLocation(date, hours, exceptions).values()].flat());
 }
 
 function ms(instant: Instant): number {
@@ -196,41 +253,59 @@ export function computeSlots(input: ComputeSlotsInput): Slot[] {
   }
 
   const slots: Slot[] = [];
-  for (const [rangeStart, rangeEnd] of openRangesForDate(date, input.hours, input.exceptions)) {
-    const rangeEndMs = localMinutesToInstant(date, rangeEnd, tz).getTime();
-    for (let m = Math.ceil(rangeStart / step) * step; m < rangeEnd; m += step) {
-      if (!isExactLocalTime(date, m, tz)) continue;
-      const start = localMinutesToInstant(date, m, tz).getTime();
-      const end = start + duration * MINUTE;
-      if (end > rangeEndMs) continue;
-      if (start < earliestStart) continue;
-      const occupiedUntil = end + buffer * MINUTE;
-      if (blocked.some(([bs, be]) => start < be && bs < occupiedUntil)) continue;
-      slots.push({
-        startsAt: new Date(start).toISOString(),
-        endsAt: new Date(end).toISOString(),
-        providerId,
-      });
+  const byLocation = openRangesByLocation(
+    date,
+    input.hours,
+    input.exceptions,
+    input.defaultLocationId ?? null,
+  );
+  const locationRank = [...byLocation.keys()];
+  for (const [locationId, ranges] of byLocation) {
+    for (const [rangeStart, rangeEnd] of ranges) {
+      const rangeEndMs = localMinutesToInstant(date, rangeEnd, tz).getTime();
+      for (let m = Math.ceil(rangeStart / step) * step; m < rangeEnd; m += step) {
+        if (!isExactLocalTime(date, m, tz)) continue;
+        const start = localMinutesToInstant(date, m, tz).getTime();
+        const end = start + duration * MINUTE;
+        if (end > rangeEndMs) continue;
+        if (start < earliestStart) continue;
+        const occupiedUntil = end + buffer * MINUTE;
+        if (blocked.some(([bs, be]) => start < be && bs < occupiedUntil)) continue;
+        slots.push({
+          startsAt: new Date(start).toISOString(),
+          endsAt: new Date(end).toISOString(),
+          providerId,
+          locationId,
+        });
+      }
     }
   }
-  return slots.sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  // By start; two locations at one start keep the order of the hours rows.
+  return slots.sort(
+    (a, b) =>
+      a.startsAt.localeCompare(b.startsAt) ||
+      locationRank.indexOf(a.locationId) - locationRank.indexOf(b.locationId),
+  );
 }
 
 /**
  * "Iedereen": collapses slots of several providers that start at the same
- * instant into one entry listing every free provider (sorted by start).
+ * instant at the same location into one entry listing every free provider
+ * (sorted by start; between locations the first slot's order is kept).
  */
 export function mergeSlots(slots: ReadonlyArray<Slot>): MergedSlot[] {
   const byStart = new Map<string, MergedSlot>();
   for (const slot of slots) {
-    const existing = byStart.get(slot.startsAt);
+    const key = `${slot.startsAt}|${slot.locationId ?? ''}`;
+    const existing = byStart.get(key);
     if (existing) {
       if (!existing.providerIds.includes(slot.providerId))
         existing.providerIds.push(slot.providerId);
     } else {
-      byStart.set(slot.startsAt, {
+      byStart.set(key, {
         startsAt: slot.startsAt,
         endsAt: slot.endsAt,
+        locationId: slot.locationId,
         providerIds: [slot.providerId],
       });
     }
@@ -251,15 +326,18 @@ export function groupSlotsByDay<T extends { startsAt: string }>(
   return days;
 }
 
-/** True when `startsAt` is one of `slots` (same instant, optional provider). */
+/** True when `startsAt` is one of `slots` (same instant; optionally one provider and one location). */
 export function isSlotAvailable(
   slots: ReadonlyArray<Slot>,
   startsAt: Instant,
   providerId?: string,
+  locationId?: string | null,
 ): boolean {
   const target = ms(startsAt);
   return slots.some(
     (slot) =>
-      ms(slot.startsAt) === target && (providerId === undefined || slot.providerId === providerId),
+      ms(slot.startsAt) === target &&
+      (providerId === undefined || slot.providerId === providerId) &&
+      (locationId === undefined || slot.locationId === locationId),
   );
 }

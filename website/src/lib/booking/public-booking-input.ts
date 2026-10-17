@@ -46,6 +46,7 @@ export const PUBLIC_BOOKING_LIMITS = {
 export const PUBLIC_BOOKING_RAW_LIMITS = {
   serviceId: 64,
   providerId: 64,
+  locationId: 64,
   startsAt: 64,
   customerName: 500,
   customerEmail: 400,
@@ -85,8 +86,14 @@ const text = (cap: number, message: string) =>
  */
 export const publicBookingInputSchema = z.object({
   serviceId: text(RAW.serviceId, INVALID),
-  /** Empty / null = "Iedereen": the first free provider (admin order) is chosen. */
+  /**
+   * Empty / null = "Iedereen": the first free provider (admin order) holds the
+   * slot; with more than one provider offering the service the beheerder
+   * assigns the booking afterwards (`assignment = 'pending'`).
+   */
   providerId: z.string(TYPE_ERROR).max(RAW.providerId, TYPE_ERROR).trim().nullable().default(null),
+  /** The slot's location as `getAvailability()` returned it; null = any location at that start. */
+  locationId: z.string(TYPE_ERROR).max(RAW.locationId, TYPE_ERROR).trim().nullable().default(null),
   /** ISO instant of the chosen slot, exactly as returned by `getAvailability()`. */
   startsAt: text(RAW.startsAt, INVALID),
   customerName: text(RAW.customerName, tooLong(LIMITS.customerName)),

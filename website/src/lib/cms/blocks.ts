@@ -261,13 +261,15 @@ export const testimonialSchema = z.object({
 });
 
 /**
- * `booking` — the online booking widget on `/afspraak` (service → provider →
- * day → slot → details → confirmation). The block carries copy and a service
- * filter only; services, providers, rules and live availability are read at
- * render time through `@/lib/booking/content`, so nothing here goes stale.
+ * `booking` — the online booking widget on `/afspraak` (provider or
+ * "Iedereen" → service → day → slot → details → confirmation). The block
+ * carries copy and a service filter only; services, providers, rules and live
+ * availability are read at render time through `@/lib/booking/content`, so
+ * nothing here goes stale.
  *
  * `showProviderChoice` is AND-ed with the `booking.showProviderChoice` site
- * setting and only matters when more than one provider offers the service.
+ * setting and only matters when more than one provider is bookable. A booking
+ * made as "Iedereen" waits for the beheerder's assignment (17 Oct 2026).
  * An empty `successText` falls back to `booking.confirmationText`.
  */
 export const bookingSchema = z.object({

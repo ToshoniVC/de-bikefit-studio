@@ -1,18 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { availabilityAction, bookAction } from '@/lib/booking/public-actions';
+import { bookAction } from '@/lib/booking/public-actions';
 import { Confirmation } from './confirmation';
 import {
   addDays,
   addMonths,
-  firstDayOfMonth,
   instantToTime,
   instantToYmd,
-  lastDayOfMonth,
   longDate,
-  maxYmd,
-  minYmd,
   monthOf,
   monthTitle,
   shortDate,
@@ -32,30 +28,41 @@ import {
 import { DetailsForm } from './details-form';
 import { MonthCalendar } from './month-calendar';
 import { ProviderPicker, type ProviderChoice } from './provider-picker';
-import { serviceSummary } from './service-choice';
+import { narrowChoices, serviceSummary } from './service-choice';
 import { ServicePicker } from './service-picker';
+import { groupDaySlots, slotLocationIds } from './slot-grouping';
 import { SlotList, slotKey } from './slot-list';
 import { StepItem, type BookingStep as Step, type StepState } from './step-item';
+import { useMonthAvailability } from './use-month-availability';
 import { useServiceChoice } from './use-service-choice';
-import type {
-  AvailabilityActionResult,
-  BookActionResult,
-  BookingLocationOption,
-  BookingServiceOption,
-  BookingSlot,
-  BookingWidgetProps,
+import {
+  PENDING_PROVIDER_TEXT,
+  type BookActionResult,
+  type BookingLocationOption,
+  type BookingProviderOption,
+  type BookingServiceOption,
+  type BookingSlot,
+  type BookingWidgetProps,
 } from './types';
 
 /**
  * The public booking flow:
  *
- *   dienst → (aanbieder of "Iedereen") → dag in de maandkalender → uur →
+ *   (aanbieder of "Iedereen") → dienst → dag in de maandkalender → uur →
  *   gegevens → bevestiging
  *
  * The current step is *derived* from what has been chosen, never stored, so
  * "Wijzigen" on an earlier step is just clearing that choice. Availability is
- * fetched per (service, provider, month) through `availabilityAction` and kept
- * in a small in-memory cache for the lifetime of the page.
+ * fetched per (service, provider, month) through `availabilityAction`
+ * (`use-month-availability.ts`) and kept in a small in-memory cache.
+ *
+ * Bij wie (17 Oct 2026): a specific provider narrows the services to what
+ * they offer and the calendar to their agenda. "Iedereen" shows every free
+ * moment, one per time and location, without names: the beheerder assigns
+ * the booking afterwards and the customer hears by e-mail. Where: a slot
+ * carries its location (a provider may work from several places); it is
+ * shown next to the time when more than one place is in play and decides
+ * whether the form asks for an address.
  *
  * `initialServiceId` preselects a service (from `/afspraak?dienst=…`, resolved
  * on the server); `context` names the offer the visitor came from. `choices`
@@ -68,8 +75,6 @@ import type {
  * and errors `role="alert"`.
  */
 
-type MonthState = { status: 'ready'; slots: BookingSlot[] } | { status: 'error'; message: string };
-
 type Confirmed = {
   serviceName: string;
   durationMinutes: number;
@@ -80,22 +85,16 @@ type Confirmed = {
   email: string;
 };
 
-const LOAD_ERROR = 'De agenda kon niet geladen worden. Probeer het opnieuw.';
 const GENERIC_ERROR = 'Er ging iets mis bij het boeken. Probeer het opnieuw.';
 const SLOT_TAKEN = 'Dit moment is net geboekt. Kies een ander moment.';
 
-function cacheKey(serviceId: string, providerId: string | null, month: Ym): string {
-  return `${serviceId}|${providerId ?? '*'}|${month}`;
-}
-
-function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
-  const next = { ...record };
-  delete next[key];
-  return next;
+function offersService(provider: BookingProviderOption, serviceId: string): boolean {
+  return provider.services.some((entry) => entry.serviceId === serviceId);
 }
 
 export function BookingWidget({
   services,
+  locations,
   choices: givenChoices,
   providers,
   rules,
@@ -116,14 +115,12 @@ export function BookingWidget({
     initialServiceId,
     onChange: () => {
       interacted.current = true;
-      setProviderChoice(undefined);
       resetWhen();
     },
   });
   const { serviceId } = choice;
   const [providerChoice, setProviderChoice] = useState<ProviderChoice | undefined>(undefined);
   const [month, setMonth] = useState<Ym>(monthOf(todayYmd));
-  const [months, setMonths] = useState<Record<string, MonthState>>({});
   const [day, setDay] = useState<Ymd | null>(null);
   const [slot, setSlot] = useState<BookingSlot | null>(null);
   const [values, setValues] = useState<DetailsValues>(EMPTY_DETAILS);
@@ -138,105 +135,86 @@ export function BookingWidget({
   const lastYmd = addDays(todayYmd, rules.horizonDays);
   const lastMonth = monthOf(lastYmd);
 
-  const service = services.find((item) => item.id === serviceId) ?? null;
-  const providersForService = service
-    ? providers.filter((provider) =>
-        provider.services.some((entry) => entry.serviceId === service.id),
-      )
-    : [];
-  const providerStep = rules.showProviderChoice && providersForService.length > 1;
+  // --- who --------------------------------------------------------------------
+  const providerStep = rules.showProviderChoice && providers.length > 1;
   const providerId: string | null = providerStep ? (providerChoice ?? null) : null;
+  const chosenProvider = providerId
+    ? (providers.find((provider) => provider.id === providerId) ?? null)
+    : null;
   const providerNames = Object.fromEntries(
     providers.map((provider) => [provider.id, provider.name]),
   );
   /** Admin sort order (the order `listPublicProviders` returns). */
   const providerRank = new Map(providers.map((provider, index) => [provider.id, index]));
-  const sharedSlots = providerId === null && providersForService.length > 1;
-  // "Iedereen" picked by the visitor: every provider's time is its own choice,
-  // labelled with the name. Provider choice switched off by the admin: one
-  // button per time, taken by the first free provider in admin order.
-  const showSlotProvider = sharedSlots && rules.showProviderChoice;
-  const onePerTime = sharedSlots && !rules.showProviderChoice;
+
+  // --- what -------------------------------------------------------------------
+  const visibleServices = chosenProvider
+    ? services.filter((service) => offersService(chosenProvider, service.id))
+    : services;
+  const visibleIds = new Set(visibleServices.map((service) => service.id));
+  const visibleChoices = narrowChoices(choice.choices, visibleIds);
+  const service = services.find((item) => item.id === serviceId && visibleIds.has(item.id)) ?? null;
+  // Back on "Bij wie?" with a service already chosen: only who offers it.
+  const providersForPicker = service
+    ? providers.filter((provider) => offersService(provider, service.id))
+    : providers;
+  const providersForService = service
+    ? providers.filter((provider) => offersService(provider, service.id))
+    : [];
+  // "Iedereen" with several providers: one button per time and location.
+  const onePerStart = providerId === null && providersForService.length > 1;
 
   const step: Step = confirmed
     ? 'done'
-    : !service
-      ? 'service'
-      : providerStep && providerChoice === undefined
-        ? 'provider'
+    : providerStep && providerChoice === undefined
+      ? 'provider'
+      : !service
+        ? 'service'
         : !slot
           ? 'when'
           : 'details';
 
-  // --- availability for the visible month ------------------------------------
-  const key = service ? cacheKey(service.id, providerId, month) : null;
-  const monthState = key ? months[key] : undefined;
-  const needsFetch = step === 'when' && key !== null && monthState === undefined;
-
-  useEffect(() => {
-    if (!needsFetch || !key || !serviceId) return;
-    const fromYmd = maxYmd(firstDayOfMonth(month), todayYmd);
-    const toYmd = minYmd(lastDayOfMonth(month), lastYmd);
-    const request =
-      fromYmd > toYmd
-        ? Promise.resolve<AvailabilityActionResult>({ ok: true, slots: [] })
-        : availabilityAction({ serviceId, providerId, fromYmd, toYmd }).catch(
-            (): AvailabilityActionResult => ({ ok: false, message: LOAD_ERROR }),
-          );
-    void request.then((result) => {
-      setMonths((previous) => ({
-        ...previous,
-        [key]: result.ok
-          ? { status: 'ready', slots: result.slots }
-          : { status: 'error', message: result.message || LOAD_ERROR },
-      }));
-    });
-  }, [needsFetch, key, serviceId, providerId, month, todayYmd, lastYmd]);
-
-  const loading = step === 'when' && monthState === undefined;
-  const slotsByDay = new Map<Ymd, BookingSlot[]>();
-  if (monthState?.status === 'ready') {
-    for (const item of monthState.slots) {
-      const ymd = instantToYmd(item.startsAt, tz);
-      if (ymd < todayYmd || ymd > lastYmd) continue;
-      const list = slotsByDay.get(ymd) ?? [];
-      list.push(item);
-      slotsByDay.set(ymd, list);
-    }
-    for (const [ymd, list] of slotsByDay) {
-      list.sort(
-        (a, b) =>
-          a.startsAt.localeCompare(b.startsAt) ||
-          (providerRank.get(a.providerId) ?? 0) - (providerRank.get(b.providerId) ?? 0),
-      );
-      if (onePerTime) {
-        slotsByDay.set(
-          ymd,
-          list.filter((item, index) => index === 0 || item.startsAt !== list[index - 1].startsAt),
-        );
-      }
-    }
-  }
+  // --- when -------------------------------------------------------------------
+  const availability = useMonthAvailability({
+    serviceId: service?.id ?? null,
+    providerId,
+    month,
+    active: step === 'when',
+    todayYmd,
+    lastYmd,
+  });
+  const { monthState, loading } = availability;
+  const monthSlots = monthState?.status === 'ready' ? monthState.slots : [];
+  const slotsByDay = groupDaySlots(monthSlots, {
+    timezone: tz,
+    todayYmd,
+    lastYmd,
+    providerRank,
+    onePerStart,
+  });
   const availableDays = new Set(slotsByDay.keys());
   const daySlots = day ? (slotsByDay.get(day) ?? []) : [];
   const canPrev = month > firstMonth;
   const canNext = month < lastMonth;
 
-  // --- where the fit happens ---------------------------------------------------
-  // Same order as `resolveLocationId()` in `@/lib/booking/content`: the
-  // provider's entry is already resolved (override → service → provider
-  // default → studio default), so it wins; the service's own location is the
-  // fallback while no provider is known.
+  // --- where --------------------------------------------------------------------
+  const locationsById = new Map(locations.map((location) => [location.id, location]));
+  const locationLabels = Object.fromEntries(
+    locations.map((location) => [location.id, location.label]),
+  );
+  const showLocation = slotLocationIds(monthSlots).size > 1;
+  // The slot knows where it is; a slot without a location falls back to the
+  // provider's resolved entry, then the service's own location (as before).
   function locationFor(
     option: BookingServiceOption,
-    forProviderId: string | null,
+    chosen: BookingSlot | null,
   ): BookingLocationOption | null {
-    const provider = forProviderId ? providers.find((item) => item.id === forProviderId) : null;
+    if (chosen?.locationId) return locationsById.get(chosen.locationId) ?? null;
+    const provider = chosen ? providers.find((item) => item.id === chosen.providerId) : null;
     const entry = provider?.services.find((item) => item.serviceId === option.id);
     return entry?.location ?? option.location;
   }
-
-  const location = service && slot ? locationFor(service, slot.providerId) : null;
+  const location = service && slot ? locationFor(service, slot) : null;
   const mode: DetailsMode = {
     guardian: service?.requiresGuardian ?? false,
     address: location?.kind === 'customer',
@@ -260,10 +238,20 @@ export function BookingWidget({
     setNotice('');
   }
 
-  function chooseProvider(choice: ProviderChoice) {
+  function chooseProvider(next: ProviderChoice) {
     interacted.current = true;
-    setProviderChoice(choice);
-    resetWhen();
+    setProviderChoice(next);
+    const provider = next ? providers.find((item) => item.id === next) : null;
+    const offered = provider
+      ? services.filter((item) => offersService(provider, item.id))
+      : services;
+    if (serviceId && !offered.some((item) => item.id === serviceId)) {
+      choice.clear();
+    } else if (!serviceId && offered.length === 1) {
+      choice.choose(offered[0].id);
+    } else {
+      resetWhen();
+    }
   }
 
   function goMonth(delta: number) {
@@ -283,10 +271,6 @@ export function BookingWidget({
     setSlot(next);
     setErrors({});
     setFormError('');
-  }
-
-  function retryMonth() {
-    if (key) setMonths((previous) => withoutKey(previous, key));
   }
 
   function editProvider() {
@@ -312,7 +296,7 @@ export function BookingWidget({
       returnPath.current = null;
     }
     setConfirmed(null);
-    setMonths({});
+    availability.clear();
     choice.reset();
     setProviderChoice(undefined);
     resetWhen();
@@ -337,7 +321,10 @@ export function BookingWidget({
     try {
       result = await bookAction({
         serviceId: service.id,
-        providerId: slot.providerId,
+        // "Iedereen" sends no provider: the server picks who holds the slot
+        // and the beheerder assigns. A chosen provider is sent as such.
+        providerId,
+        locationId: slot.locationId,
         startsAt: slot.startsAt,
         ...input,
       });
@@ -361,7 +348,9 @@ export function BookingWidget({
         // The booked catalogue service as the server stored it (e.g. "Jeugdfit").
         serviceName: booked.serviceName || service.name,
         durationMinutes: service.durationMinutes,
-        providerName: booked.providerName || (providerNames[slot.providerId] ?? ''),
+        providerName: booked.assignmentPending
+          ? PENDING_PROVIDER_TEXT
+          : booked.providerName || (providerNames[slot.providerId] ?? ''),
         startsAt: booked.startsAt || slot.startsAt,
         endsAt: booked.endsAt || slot.endsAt,
         where: mode.address
@@ -373,7 +362,7 @@ export function BookingWidget({
     }
 
     if (result.code === 'slot_taken') {
-      if (key) setMonths((previous) => withoutKey(previous, key));
+      availability.retry();
       setSlot(null);
       setNotice(SLOT_TAKEN);
       return;
@@ -415,8 +404,8 @@ export function BookingWidget({
   }
 
   const order: Step[] = [
-    'service',
     ...(providerStep ? (['provider'] as Step[]) : []),
+    'service',
     'when',
     'details',
   ];
@@ -427,11 +416,11 @@ export function BookingWidget({
   };
   const numberOf = (id: Step) => order.indexOf(id) + 1;
 
+  const slotWhere =
+    slot && showLocation && slot.locationId ? (locationLabels[slot.locationId] ?? '') : '';
   const whenSummary = slot
     ? `${shortDate(instantToYmd(slot.startsAt, tz))}, ${instantToTime(slot.startsAt, tz)}${
-        showSlotProvider && providerNames[slot.providerId]
-          ? ` bij ${providerNames[slot.providerId]}`
-          : ''
+        slotWhere ? ` · ${slotWhere}` : ''
       }`
     : '';
 
@@ -461,27 +450,6 @@ export function BookingWidget({
         </p>
       ) : null}
       <ol className="studio-booking__steps">
-        <StepItem
-          id="service"
-          number={numberOf('service')}
-          title="Kies je fit"
-          state={stateOf('service')}
-          summary={serviceSummary(service, choice.offer)}
-          onEdit={services.length > 1 ? choice.clear : undefined}
-        >
-          <ServicePicker
-            services={services}
-            choices={choice.choices}
-            selectedId={serviceId}
-            openOffer={choice.openOffer}
-            onSelect={choice.choose}
-            onOpenOffer={(slug) => {
-              interacted.current = true;
-              choice.open(slug);
-            }}
-          />
-        </StepItem>
-
         {providerStep ? (
           <StepItem
             id="provider"
@@ -498,12 +466,33 @@ export function BookingWidget({
             onEdit={editProvider}
           >
             <ProviderPicker
-              providers={providersForService}
+              providers={providersForPicker}
               selected={providerChoice}
               onSelect={chooseProvider}
             />
           </StepItem>
         ) : null}
+
+        <StepItem
+          id="service"
+          number={numberOf('service')}
+          title="Kies je fit"
+          state={stateOf('service')}
+          summary={serviceSummary(service, choice.offer)}
+          onEdit={visibleServices.length > 1 ? choice.clear : undefined}
+        >
+          <ServicePicker
+            services={visibleServices}
+            choices={visibleChoices}
+            selectedId={serviceId}
+            openOffer={choice.openOffer}
+            onSelect={choice.choose}
+            onOpenOffer={(slug) => {
+              interacted.current = true;
+              choice.open(slug);
+            }}
+          />
+        </StepItem>
 
         <StepItem
           id="when"
@@ -543,7 +532,7 @@ export function BookingWidget({
                   <button
                     type="button"
                     className="studio-btn studio-btn--outline"
-                    onClick={retryMonth}
+                    onClick={availability.retry}
                   >
                     Opnieuw proberen
                   </button>
@@ -576,8 +565,8 @@ export function BookingWidget({
                 <SlotList
                   slots={daySlots}
                   timezone={tz}
-                  providerNames={providerNames}
-                  showProvider={showSlotProvider}
+                  locationLabels={locationLabels}
+                  showLocation={showLocation}
                   selectedKey={slot ? slotKey(slot) : null}
                   onSelect={chooseSlot}
                 />

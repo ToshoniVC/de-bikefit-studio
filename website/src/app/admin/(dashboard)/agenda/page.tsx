@@ -115,6 +115,10 @@ export default async function AdminAgendaPage({ searchParams }: { searchParams: 
             showProvider={false}
             emptyText="Geen komende afspraken."
           />
+          <p className="mt-2 text-xs text-muted-foreground">
+            “Nog toe te wijzen”: de klant koos geen aanbieder; jij houdt het moment vrij tot de
+            beheerder de afspraak toewijst (aan jou of aan iemand anders). Je krijgt dan een e-mail.
+          </p>
         </section>
 
         <GoogleConnectionCard
@@ -127,6 +131,7 @@ export default async function AdminAgendaPage({ searchParams }: { searchParams: 
         <BusinessHoursEditor
           providerId={provider.id}
           hours={editor.hours}
+          locations={locationOptions}
           scope="own"
           canEdit={canEditSelf}
         />

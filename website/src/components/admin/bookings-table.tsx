@@ -11,8 +11,13 @@ import {
   GOOGLE_SYNC_VARIANTS,
 } from '@/components/admin/booking-labels';
 import { badgeTone } from '@/components/admin/tones';
-import { cancelBookingAction, setBookingStatusAction } from '@/lib/cms/actions/bookings';
-import type { CmsBookingStatus, CmsGoogleSyncStatus } from '@/db/cms-schema';
+import {
+  assignBookingAction,
+  cancelBookingAction,
+  setBookingStatusAction,
+} from '@/lib/cms/actions/bookings';
+import type { CmsBookingAssignment, CmsBookingStatus, CmsGoogleSyncStatus } from '@/db/cms-schema';
+import { AssignBookingForm } from './assign-booking-form';
 
 export type BookingRow = {
   id: string;
@@ -21,8 +26,12 @@ export type BookingRow = {
   /** End time "HH:MM", Europe/Brussels. */
   endTime: string;
   isPast: boolean;
+  serviceId: string;
   serviceName: string;
+  providerId: string;
   providerName: string;
+  /** `pending`: made as "Iedereen"; the provider only holds the slot until a beheerder assigns it. */
+  assignment: CmsBookingAssignment;
   customerName: string;
   customerEmail: string;
   customerPhone: string | null;
@@ -42,6 +51,8 @@ export type BookingFilterState = {
   providerId: string;
   serviceId: string;
   status: string;
+  /** `'pending'` = only bookings that wait for assignment. */
+  assignment: string;
 };
 
 const RANGE_OPTIONS: BookingFilterOption[] = [
@@ -147,6 +158,20 @@ export function BookingFilters({
           ))}
         </Select>
       </label>
+      {providers.length > 0 ? (
+        <label className="flex flex-col gap-1">
+          <span className="admin-label text-muted-foreground">Toewijzing</span>
+          <Select
+            name="assignment"
+            defaultValue={filters.assignment}
+            onChange={submitOnChange}
+            className="w-44"
+          >
+            <option value="">Alle</option>
+            <option value="pending">Nog toe te wijzen</option>
+          </Select>
+        </label>
+      ) : null}
       <Button type="submit" size="sm" variant="outline">
         Filteren
       </Button>
@@ -154,19 +179,32 @@ export function BookingFilters({
   );
 }
 
-/** Bookings table with row actions. Every action is re-checked on the server. */
+/** Providers that may be assigned a booking, per service id (`booking.manage` only). */
+export type AssignOptions = Record<string, BookingFilterOption[]>;
+
+/**
+ * Bookings table with row actions. Every action is re-checked on the server.
+ * `assignOptions` (admins) adds "Toewijzen" to a pending booking and "Andere
+ * aanbieder" to an assigned upcoming one.
+ */
 export function BookingsTable({
   bookings,
   canManage,
   showProvider = true,
   emptyText = 'Geen afspraken gevonden.',
+  assignOptions = null,
 }: {
   bookings: BookingRow[];
   canManage: boolean;
   showProvider?: boolean;
   emptyText?: string;
+  assignOptions?: AssignOptions | null;
 }) {
   const columns = 6 + (showProvider ? 1 : 0) + (canManage ? 1 : 0);
+  const assignable = (booking: BookingRow) =>
+    assignOptions && booking.status === 'confirmed' && !booking.isPast
+      ? (assignOptions[booking.serviceId] ?? [])
+      : [];
 
   return (
     <div className="overflow-x-auto border border-border bg-card">
@@ -198,7 +236,22 @@ export function BookingsTable({
                 <span className="block text-xs text-muted-foreground">tot {booking.endTime}</span>
               </td>
               <td className="p-3">{booking.serviceName}</td>
-              {showProvider ? <td className="p-3">{booking.providerName}</td> : null}
+              {showProvider ? (
+                <td className="p-3">
+                  {booking.assignment === 'pending' ? (
+                    <>
+                      <Badge variant="warning" className={badgeTone('warning')}>
+                        Nog toe te wijzen
+                      </Badge>
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        houdt vrij: {booking.providerName}
+                      </span>
+                    </>
+                  ) : (
+                    booking.providerName
+                  )}
+                </td>
+              ) : null}
               <td className="p-3">
                 <span className="font-medium">{booking.customerName}</span>
                 <a
@@ -244,6 +297,11 @@ export function BookingsTable({
                 >
                   {BOOKING_STATUS_LABELS[booking.status]}
                 </Badge>
+                {!showProvider && booking.assignment === 'pending' ? (
+                  <Badge variant="warning" className={`mt-1 ${badgeTone('warning')}`}>
+                    Nog toe te wijzen
+                  </Badge>
+                ) : null}
               </td>
               <td className="p-3">
                 <Badge
@@ -258,6 +316,15 @@ export function BookingsTable({
                 <td className="p-3">
                   {booking.status === 'confirmed' ? (
                     <div className="flex flex-col gap-1.5">
+                      {assignable(booking).length > 0 ? (
+                        <AssignBookingForm
+                          bookingId={booking.id}
+                          providerId={booking.providerId}
+                          pending={booking.assignment === 'pending'}
+                          providers={assignable(booking)}
+                          action={assignBookingAction}
+                        />
+                      ) : null}
                       {!booking.isPast ? (
                         <ActionForm action={cancelBookingAction} hidden={{ bookingId: booking.id }}>
                           <SubmitButton

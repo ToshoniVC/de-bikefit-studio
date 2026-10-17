@@ -113,6 +113,7 @@ export default async function AdminProviderPage({
         <BusinessHoursEditor
           providerId={provider.id}
           hours={editor.hours}
+          locations={locationOptions}
           scope="any"
           canEdit={canEdit}
         />

@@ -208,6 +208,8 @@ const EVENT_SET: Record<BookingLogEvent, true> = {
   confirmation_ref_unsigned: true,
   admin_google_delete_failed: true,
   admin_cancellation_mail_failed: true,
+  assign_google_failed: true,
+  assign_mail_failed: true,
 };
 const EVENTS = Object.keys(EVENT_SET) as BookingLogEvent[];
 

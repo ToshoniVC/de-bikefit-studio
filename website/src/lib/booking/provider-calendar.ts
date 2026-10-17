@@ -146,11 +146,13 @@ async function writeBookingSync(bookingId: string, result: GoogleSyncResult): Pr
 /**
  * Creates the Google event for a booking (no attendees) and records the outcome
  * on the booking: `synced` + event id, `failed` + error, or `none` when the
- * provider has no Google connection.
+ * provider has no Google connection. `tentative`: the provider only holds the
+ * slot until a beheerder assigns the booking; the event says so in its title.
  */
 export async function createProviderEvent(
   provider: CmsProvider,
   booking: CmsBooking,
+  options: { tentative?: boolean } = {},
 ): Promise<GoogleSyncResult> {
   if (!isProviderConnected(provider)) {
     const result: GoogleSyncResult = { status: 'none', eventId: null, error: null };
@@ -202,6 +204,9 @@ export async function createProviderEvent(
     booking.bikeDetails ? `Fiets: ${booking.bikeDetails}` : '',
     booking.notes ? `Opmerkingen: ${booking.notes}` : '',
   ].filter(Boolean);
+  if (options.tentative) {
+    lines.unshift('Nog toe te wijzen door de beheerder; jij houdt het moment intussen vrij.', '');
+  }
   lines.push('', `Beheer: ${siteUrl()}/admin/bookings`);
 
   try {
@@ -209,7 +214,7 @@ export async function createProviderEvent(
       accessToken,
       calendarId: provider.googleCalendarId || 'primary',
       event: {
-        summary: `${service?.name ?? 'Afspraak'} — ${booking.customerName}`,
+        summary: `${options.tentative ? 'Toe te wijzen: ' : ''}${service?.name ?? 'Afspraak'} — ${booking.customerName}`,
         description: lines.join('\n'),
         location: where || undefined,
         start: new Date(booking.startsAt).toISOString(),

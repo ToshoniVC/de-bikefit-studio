@@ -22,6 +22,11 @@ import type { BlockProps } from './types';
  * widget through `availabilityAction`) and hands the client widget nothing but
  * plain, serialisable props.
  *
+ * The widget asks "Bij wie?" first (a provider, or "Iedereen": the beheerder
+ * assigns afterwards), then the fit; a chosen provider narrows the fits to
+ * what they offer. Slots carry their location (a provider may work from
+ * several places), so `locations` lists every place a slot may name.
+ *
  * `?dienst=<slug>` (validated by the route, passed as `page.requestedService`)
  * is resolved here with `resolveBookingSelection()`:
  *  - an offer linked to bookable services → the widget, narrowed to those
@@ -153,6 +158,7 @@ export async function BookingBlock({
         : offers;
     props = {
       services,
+      locations: options.locations,
       choices: groupBookingChoices({ offers: grouping, services }),
       providers: options.providers.filter((provider) =>
         provider.services.some((entry) => offered.has(entry.serviceId)),

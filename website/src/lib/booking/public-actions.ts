@@ -7,13 +7,14 @@ import {
   confirmationPath,
   createConfirmationRef,
 } from '@/components/studio/booking/confirmation-ref';
-import type {
-  AvailabilityActionInput,
-  AvailabilityActionResult,
-  BookActionInput,
-  BookActionResult,
-  BookingSummary,
-  CancelActionResult,
+import {
+  PENDING_PROVIDER_TEXT,
+  type AvailabilityActionInput,
+  type AvailabilityActionResult,
+  type BookActionInput,
+  type BookActionResult,
+  type BookingSummary,
+  type CancelActionResult,
 } from '@/components/studio/booking/types';
 import { isServiceBookableOnline } from '@/lib/cms/offers-content';
 import { clientIpFromHeaders } from '@/lib/request-ip';
@@ -74,6 +75,7 @@ const text = (max: number) => z.string().trim().max(max).default('');
 const bookInputSchema = z.object({
   serviceId: id,
   providerId: z.string().trim().max(64).nullable().default(null),
+  locationId: z.string().trim().max(64).nullable().default(null),
   startsAt: text(40),
   name: text(200),
   email: text(254),
@@ -92,6 +94,7 @@ const bookInputSchema = z.object({
 const FIELD_NAMES: Record<string, keyof BookActionInput> = {
   serviceId: 'serviceId',
   providerId: 'providerId',
+  locationId: 'locationId',
   startsAt: 'startsAt',
   customerName: 'name',
   customerEmail: 'email',
@@ -113,6 +116,7 @@ function toSummary(summary: PublicBookingSummary): BookingSummary {
   return {
     serviceName: summary.serviceName,
     providerName: summary.providerName,
+    assignmentPending: summary.assignmentPending,
     startsAt: summary.startsAt,
     endsAt: summary.endsAt,
     timezone: summary.timezone,
@@ -148,6 +152,7 @@ export async function availabilityAction(
         startsAt: slot.startsAt,
         endsAt: slot.endsAt,
         providerId: slot.providerId,
+        locationId: slot.locationId,
       })),
     };
   } catch {
@@ -177,6 +182,7 @@ export async function bookAction(input: BookActionInput): Promise<BookActionResu
       {
         serviceId: data.serviceId,
         providerId: data.providerId || null,
+        locationId: data.locationId || null,
         startsAt: data.startsAt,
         customerName: data.name,
         customerEmail: data.email,
@@ -213,7 +219,7 @@ export async function bookAction(input: BookActionInput): Promise<BookActionResu
       path = confirmationPath(
         createConfirmationRef({
           serviceName: booking.serviceName,
-          providerName: booking.providerName,
+          providerName: booking.assignmentPending ? PENDING_PROVIDER_TEXT : booking.providerName,
           startsAt: booking.startsAt,
           endsAt: booking.endsAt,
           timezone: booking.timezone,

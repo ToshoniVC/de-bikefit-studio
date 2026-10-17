@@ -22,6 +22,22 @@ export function choicesFor(
     : services.map((service) => ({ kind: 'service', serviceId: service.id }));
 }
 
+/**
+ * The choices a chosen provider can offer: services they do not offer are
+ * dropped, an offer keeps only the services they offer and goes when none
+ * is left. Order is kept. For "Iedereen" (every provider) pass every id.
+ */
+export function narrowChoices(
+  choices: readonly BookingChoice[],
+  allowed: ReadonlySet<string>,
+): BookingChoice[] {
+  return choices.flatMap((choice): BookingChoice[] => {
+    if (choice.kind === 'service') return allowed.has(choice.serviceId) ? [choice] : [];
+    const serviceIds = choice.serviceIds.filter((id) => allowed.has(id));
+    return serviceIds.length ? [{ ...choice, serviceIds }] : [];
+  });
+}
+
 /** The offer a service is chosen under, or `null` when it stands on its own. */
 export function offerOfService(
   choices: readonly BookingChoice[],

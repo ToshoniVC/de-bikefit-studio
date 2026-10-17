@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   choicesFor,
+  narrowChoices,
   offerOfService,
   serviceMeta,
   serviceSummary,
@@ -95,5 +96,20 @@ describe('the service step as data', () => {
     );
     expect(serviceSummary(family, null)).toBe('Gezinspakket · 150 minuten');
     expect(serviceSummary(null, null)).toBe('');
+  });
+
+  it('narrows the choices to what a chosen provider offers, dropping an empty offer', () => {
+    expect(narrowChoices(choices, new Set(['jeugdfit', 'gezinspakket']))).toEqual([
+      { ...bikefit, serviceIds: ['jeugdfit'] },
+      { kind: 'service', serviceId: 'gezinspakket' },
+    ]);
+    expect(narrowChoices(choices, new Set(['gezinspakket']))).toEqual([
+      { kind: 'service', serviceId: 'gezinspakket' },
+    ]);
+    expect(narrowChoices(choices, new Set())).toEqual([]);
+    // Every id: unchanged.
+    expect(narrowChoices(choices, new Set(['volwassenenfit', 'jeugdfit', 'gezinspakket']))).toEqual(
+      choices,
+    );
   });
 });

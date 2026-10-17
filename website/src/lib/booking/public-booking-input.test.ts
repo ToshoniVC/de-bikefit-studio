@@ -45,6 +45,7 @@ const LIMITS = {
 const RAW = {
   serviceId: 64,
   providerId: 64,
+  locationId: 64,
   startsAt: 64,
   customerName: 500,
   customerEmail: 400,
@@ -67,6 +68,7 @@ const PHONE = 'Vul een geldig telefoonnummer in.';
 const OVER_CAP: Record<keyof typeof RAW, string> = {
   serviceId: 'Ongeldige invoer.',
   providerId: 'Ongeldige invoer.',
+  locationId: 'Ongeldige invoer.',
   startsAt: 'Ongeldige invoer.',
   customerName: 'Maximaal 120 tekens.',
   customerEmail: 'Maximaal 200 tekens.',

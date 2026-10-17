@@ -24,7 +24,12 @@ const WEEKDAY_NAMES = [
   'zaterdag',
 ];
 
-type HoursInput = { weekday: number; startMinute: number; endMinute: number };
+type HoursInput = {
+  weekday: number;
+  startMinute: number;
+  endMinute: number;
+  locationId: string | null;
+};
 type ExceptionInput = {
   date: string;
   kind: CmsAvailabilityExceptionKind;
@@ -69,7 +74,16 @@ function parseHours(
         message: `Op ${WEEKDAY_NAMES[weekday]} ligt een einduur vóór het beginuur.`,
       };
     }
-    rows.push({ weekday, startMinute: row.startMinute, endMinute: row.endMinute });
+    const locationId = row.locationId ?? null;
+    if (locationId !== null && (typeof locationId !== 'string' || locationId.length > 64)) {
+      return { ok: false, message: `Onbekende locatie op ${WEEKDAY_NAMES[weekday]}.` };
+    }
+    rows.push({
+      weekday,
+      startMinute: row.startMinute,
+      endMinute: row.endMinute,
+      locationId: locationId || null,
+    });
   }
 
   rows.sort((a, b) => a.weekday - b.weekday || a.startMinute - b.startMinute);

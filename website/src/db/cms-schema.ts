@@ -398,6 +398,12 @@ export const cmsIntegrationSettings = pgTable('cms_integration_settings', {
 export type CmsLocationKind = 'studio' | 'customer';
 export type CmsBookingStatus = 'confirmed' | 'cancelled' | 'completed' | 'no_show';
 export type CmsBookingCancelledBy = 'customer' | 'provider' | 'admin';
+/**
+ * `pending`: the customer chose "Iedereen" while several providers offer the
+ * service; the row's provider only holds the slot until a beheerder assigns
+ * the booking (0012). `assigned`: the provider is the one who does the fit.
+ */
+export type CmsBookingAssignment = 'assigned' | 'pending';
 export type CmsGoogleSyncStatus = 'pending' | 'synced' | 'failed' | 'none';
 export type CmsAvailabilityExceptionKind = 'closed' | 'open';
 
@@ -535,6 +541,11 @@ export const cmsBusinessHours = pgTable(
     weekday: integer('weekday').notNull(),
     startMinute: integer('start_minute').notNull(),
     endMinute: integer('end_minute').notNull(),
+    /**
+     * Where the provider is during this range (0012). `null` = the provider's
+     * default location (else the studio default), as before 17 Oct 2026.
+     */
+    locationId: text('location_id').references(() => cmsLocations.id, { onDelete: 'set null' }),
   },
   (t) => [index('cms_business_hours_provider_idx').on(t.providerId)],
 );
@@ -605,6 +616,10 @@ export const cmsBookings = pgTable(
       .notNull(),
     googleSyncError: text('google_sync_error'),
     source: text('source').default('web').notNull(),
+    /** See {@link CmsBookingAssignment}. */
+    assignment: text('assignment').$type<CmsBookingAssignment>().default('assigned').notNull(),
+    /** When a beheerder assigned it (null while pending or when assigned at creation). */
+    assignedAt: timestamp('assigned_at', { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

@@ -51,6 +51,12 @@ export type BookingEmailData = {
   confirmationText?: string | null;
   /** Admin link for the provider mails. */
   adminUrl?: string | null;
+  /** The booking waits for the beheerder's assignment (`providerName` is then empty). */
+  assignmentPending?: boolean;
+  /** Who holds the slot meanwhile; only in the beheerder's to-do. */
+  heldBy?: string | null;
+  /** `${siteUrl}/admin/bookings?assignment=pending`, for the to-do button. */
+  assignUrl?: string | null;
 };
 
 export const PALETTE = {
@@ -65,11 +71,11 @@ export const PALETTE = {
 
 export type Row = [label: string, value: string | null | undefined];
 
-function whenLabel(data: BookingEmailData): string {
+export function whenLabel(data: BookingEmailData): string {
   return `${formatDateLong(data.startsAt, data.timezone)}, ${formatTimeRange(data.startsAt, data.endsAt, data.timezone)}`;
 }
 
-function whereLines(data: BookingEmailData): string[] {
+export function whereLines(data: BookingEmailData): string[] {
   if (data.locationKind === 'customer') {
     return [data.locationLabel || 'Bij jou thuis', data.customerAddress ?? ''].filter(Boolean);
   }
@@ -99,7 +105,7 @@ export function paragraph(text: string): string {
   return `<p style="margin:0 0 14px;font-size:15px;line-height:1.6;color:${PALETTE.fg}">${escapeHtml(text)}</p>`;
 }
 
-function button(href: string, label: string): string {
+export function button(href: string, label: string): string {
   return (
     `<p style="margin:20px 0"><a href="${escapeHtml(href)}" ` +
     `style="display:inline-block;background:${PALETTE.accent};color:${PALETTE.onAccent};text-decoration:none;` +
@@ -153,7 +159,7 @@ function legalFooter(data: BookingEmailData) {
   };
 }
 
-function legalFooterText(data: BookingEmailData): string {
+export function legalFooterText(data: BookingEmailData): string {
   const footer = legalFooter(data);
   return [
     '--',
@@ -164,7 +170,7 @@ function legalFooterText(data: BookingEmailData): string {
   ].join('\n');
 }
 
-function legalFooterHtml(data: BookingEmailData): string {
+export function legalFooterHtml(data: BookingEmailData): string {
   const footer = legalFooter(data);
   const link = (href: string, label: string) =>
     `<a href="${escapeHtml(href)}" style="color:${PALETTE.muted};text-decoration:underline">${escapeHtml(label)}</a>`;
@@ -189,6 +195,9 @@ export function bookingConfirmationEmail(data: BookingEmailData): RenderedEmail 
     ['Waar', whereLines(data).join('\n')],
   ];
   const intro = `Hallo ${data.customerName}, bedankt voor je boeking. Dit is je afspraak:`;
+  const whoLine = data.assignmentPending
+    ? 'Bij wie je terechtkomt, laten we je nog apart per e-mail weten.'
+    : '';
   const extra = data.confirmationText?.trim() || '';
   const ics =
     'In de bijlage vind je een agendabestand (.ics) om de afspraak in je eigen agenda te zetten.';
@@ -207,6 +216,7 @@ export function bookingConfirmationEmail(data: BookingEmailData): RenderedEmail 
     '',
     rowsText(rows),
     '',
+    whoLine,
     extra,
     ics,
     BRING_ALONG,
@@ -229,6 +239,7 @@ export function bookingConfirmationEmail(data: BookingEmailData): RenderedEmail 
     [
       paragraph(intro),
       rowsHtml(rows),
+      whoLine ? paragraph(whoLine) : '',
       extra ? paragraph(extra) : '',
       paragraph(ics),
       paragraph(BRING_ALONG),

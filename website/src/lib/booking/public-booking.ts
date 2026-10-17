@@ -5,11 +5,11 @@ import { getCmsDb } from '@/db/cms';
 import {
   cmsBookings,
   cmsLocations,
-  cmsProviderServices,
   cmsProviders,
   cmsServices,
   DEFAULT_LOCALE,
   type CmsBooking,
+  type CmsBookingAssignment,
   type CmsGoogleSyncStatus,
 } from '@/db/cms-schema';
 import { recordAudit } from '@/lib/cms/auth';
@@ -17,7 +17,7 @@ import { getSiteSettings } from '@/lib/cms/content';
 import { reserveRateLimit } from '@/lib/rate-limit';
 import { clientIpFromHeaders } from '@/lib/request-ip';
 import { isUniqueViolation, logBookingFailure } from './booking-log';
-import { getAvailability, resolveLocationId } from './content';
+import { countEligibleProviders, getAvailability } from './content';
 import { formatLocation } from './format';
 import {
   cancelUrlFor,
@@ -47,10 +47,20 @@ import { formatSlot, instantToLocal } from './time';
  *   5 per 15 min for the IP (when known) and for each e-mail address on its
  *   own, one race-free upsert per key on `cms_rate_limits`
  *   (`./rate-limit-policy.ts`, `@/lib/rate-limit`) → re-check the slot with
- *   a FRESH availability computation (live bookings + Google free/busy) →
- *   insert → Google event without attendees (`google_sync_status`) → e-mails
- *   (customer confirmation with .ics + cancel link, provider notification) →
- *   audit (`recordAudit(db, null, …)`).
+ *   a FRESH availability computation (live bookings + Google free/busy); the
+ *   matched slot says which provider and which location → insert → Google
+ *   event without attendees (`google_sync_status`) → e-mails (customer
+ *   confirmation with .ics + cancel link; the provider's notification, or the
+ *   beheerder's to-do when the booking waits for assignment) → audit
+ *   (`recordAudit(db, null, …)`).
+ *
+ * "Iedereen" (17 Oct 2026): a booking without a chosen provider, for a
+ * service that more than one provider offers, is stored with
+ * `assignment = 'pending'`: the first free provider (admin order) holds the
+ * slot (so nobody else can book it) until a beheerder assigns the booking in
+ * Afspraken (`repo-assignment.ts`). The customer is not told who until then.
+ * With exactly one provider offering the service there is nothing to decide
+ * and the booking is `assigned` at once.
  *
  * Cancel tokens: 32 random bytes, base64url. Only their SHA-256 is stored
  * (`cms_bookings.cancel_token_hash`); the raw token exists only in the mail.
@@ -90,7 +100,9 @@ function looksLikeToken(token: string): boolean {
 export type PublicBookingSummary = {
   bookingId: string;
   serviceName: string;
+  /** Empty while the booking waits for the beheerder's assignment. */
   providerName: string;
+  assignmentPending: boolean;
   /** ISO instants. */
   startsAt: string;
   endsAt: string;
@@ -110,7 +122,8 @@ export type CreatePublicBookingResult =
       cancelUrl: string;
       booking: PublicBookingSummary;
       googleSyncStatus: CmsGoogleSyncStatus;
-      emailSent: { customer: boolean; provider: boolean };
+      /** `admin`: the beheerder's to-do mail, only for a booking that waits for assignment. */
+      emailSent: { customer: boolean; provider: boolean; admin: boolean };
     }
   | {
       ok: false;
@@ -177,10 +190,12 @@ export async function summarizeBooking(bookingId: string): Promise<PublicBooking
     ctx.location?.kind === 'customer'
       ? ctx.location.name || 'Bij jou thuis'
       : formatLocation(ctx.location).label;
+  const pending = ctx.booking.assignment === 'pending';
   return {
     bookingId: ctx.booking.id,
     serviceName: ctx.service.name,
-    providerName: ctx.provider.displayName,
+    providerName: pending ? '' : ctx.provider.displayName,
+    assignmentPending: pending,
     startsAt: new Date(ctx.booking.startsAt).toISOString(),
     endsAt: new Date(ctx.booking.endsAt).toISOString(),
     timezone: ctx.booking.timezone,
@@ -268,7 +283,10 @@ export async function createPublicBooking(
     if (!availability.ok) return fail('invalid', availability.message);
 
     const wanted = startsAt.toISOString();
-    const match = availability.slots.find((slot) => slot.startsAt === wanted);
+    const match = availability.slots.find(
+      (slot) =>
+        slot.startsAt === wanted && (!input.locationId || slot.locationId === input.locationId),
+    );
     if (!match) {
       return fail(
         'slot_taken',
@@ -284,31 +302,16 @@ export async function createPublicBooking(
       .limit(1);
     if (!provider) return fail('slot_taken', 'Dit tijdstip is net niet meer beschikbaar.');
 
-    // Location: provider override → service → provider default → global default.
-    const [subscription] = await db
-      .select({ locationId: cmsProviderServices.locationId })
-      .from(cmsProviderServices)
-      .where(
-        and(
-          eq(cmsProviderServices.providerId, provider.id),
-          eq(cmsProviderServices.serviceId, service.id),
-        ),
-      )
-      .limit(1);
-    const [globalDefault] = await db
-      .select({ id: cmsLocations.id })
-      .from(cmsLocations)
-      .where(and(eq(cmsLocations.isDefault, true), eq(cmsLocations.isActive, true)))
-      .limit(1);
-    const locationId = resolveLocationId({
-      overrideId: subscription?.locationId,
-      serviceLocationId: service.locationId,
-      providerDefaultId: provider.defaultLocationId,
-      globalDefaultId: globalDefault?.id,
-    });
-    const [location] = locationId
-      ? await db.select().from(cmsLocations).where(eq(cmsLocations.id, locationId)).limit(1)
+    // Where: the slot knows (the service's pinned location, else the hours
+    // row's, else the provider's default, else the studio default).
+    const [location] = match.locationId
+      ? await db.select().from(cmsLocations).where(eq(cmsLocations.id, match.locationId)).limit(1)
       : [];
+
+    // "Iedereen" with a real choice to make: the beheerder assigns; the matched
+    // provider only holds the slot. One eligible provider: nothing to decide.
+    const assignment: CmsBookingAssignment =
+      !input.providerId && (await countEligibleProviders(service.id)) > 1 ? 'pending' : 'assigned';
 
     if (location?.kind === 'customer') {
       const addressErrors = validateBookingFields(input, {
@@ -348,6 +351,7 @@ export async function createPublicBooking(
           cancelTokenHash: hashCancelToken(cancelToken),
           googleSyncStatus: 'pending',
           source: 'web',
+          assignment,
         })
         .returning();
     } catch (error) {
@@ -366,17 +370,20 @@ export async function createPublicBooking(
     // From here on the booking exists: side effects may fail, the booking stays.
     let googleSyncStatus: CmsGoogleSyncStatus = 'pending';
     try {
-      googleSyncStatus = (await createProviderEvent(provider, booking)).status;
+      googleSyncStatus = (
+        await createProviderEvent(provider, booking, { tentative: assignment === 'pending' })
+      ).status;
     } catch {
       logBookingFailure('google_event_failed', booking.id);
       googleSyncStatus = 'failed';
     }
 
-    const emailSent = { customer: false, provider: false };
+    const emailSent = { customer: false, provider: false, admin: false };
     try {
       const mails = await sendBookingCreatedEmails(booking.id, cancelToken);
       emailSent.customer = mails.customer?.sent === true;
       emailSent.provider = mails.provider?.sent === true;
+      emailSent.admin = mails.admin?.sent === true;
     } catch {
       logBookingFailure('confirmation_mail_failed', booking.id);
     }
@@ -385,14 +392,19 @@ export async function createPublicBooking(
       action: 'booking.create',
       entityType: 'cms_booking',
       entityId: booking.id,
-      summary: `${service.name} · ${formatSlot(booking.startsAt, booking.timezone)} · ${provider.displayName}`,
-      metadata: { source: 'web', google: googleSyncStatus, emailSent },
+      summary: `${service.name} · ${formatSlot(booking.startsAt, booking.timezone)} · ${
+        assignment === 'pending'
+          ? `nog toe te wijzen (voorlopig ${provider.displayName})`
+          : provider.displayName
+      }`,
+      metadata: { source: 'web', google: googleSyncStatus, emailSent, assignment },
     });
 
     const summary = (await summarizeBooking(booking.id)) ?? {
       bookingId: booking.id,
       serviceName: service.name,
-      providerName: provider.displayName,
+      providerName: assignment === 'pending' ? '' : provider.displayName,
+      assignmentPending: assignment === 'pending',
       startsAt: match.startsAt,
       endsAt: match.endsAt,
       timezone: booking.timezone,

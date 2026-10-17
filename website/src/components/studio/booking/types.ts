@@ -12,6 +12,9 @@ import type { BookingChoice } from '@/lib/offers/catalogue';
 
 export type { BookingChoice };
 
+/** "Met wie" while the beheerder still has to assign the booking (the customer hears by e-mail). */
+export const PENDING_PROVIDER_TEXT = 'Dat laten we je nog per e-mail weten.';
+
 export type BookingLocationKind = 'studio' | 'customer';
 
 export type BookingServiceOption = {
@@ -47,6 +50,8 @@ export type BookingProviderOption = {
   bio: string;
   /** Services this provider offers, with the location that applies for each. */
   services: { serviceId: string; location: BookingLocationOption | null }[];
+  /** Where this provider works (their hours' locations), for the "Bij wie?" step. */
+  locations: BookingLocationOption[];
 };
 
 export type BookingWidgetRules = {
@@ -73,6 +78,8 @@ export type BookingWidgetContext = {
 
 export type BookingWidgetProps = {
   services: BookingServiceOption[];
+  /** Every location a slot may name (`BookingSlot.locationId`). */
+  locations: BookingLocationOption[];
   /**
    * The first step: one entry per offer with its services underneath, or a
    * service on its own (`groupBookingChoices()`). Absent = one per service.
@@ -94,6 +101,8 @@ export type BookingSlot = {
   startsAt: string;
   endsAt: string;
   providerId: string;
+  /** Where the fit is for this slot; `null` when no location is known. */
+  locationId: string | null;
 };
 
 // --- server action contracts -----------------------------------------------
@@ -111,7 +120,10 @@ export type AvailabilityActionResult =
 
 export type BookActionInput = {
   serviceId: string;
-  providerId: string;
+  /** The chosen provider, or `null` for "Iedereen" (the beheerder assigns). */
+  providerId: string | null;
+  /** The chosen slot's location (so two locations at one start stay apart). */
+  locationId: string | null;
   startsAt: string;
   /** The person being fitted (the child for a jeugdfit). */
   name: string;
@@ -154,7 +166,9 @@ export type BookActionResult =
 /** A booking as the public pages may show it — never any contact data. */
 export type BookingSummary = {
   serviceName: string;
+  /** Empty while the beheerder still has to assign the booking. */
   providerName: string;
+  assignmentPending: boolean;
   startsAt: string;
   endsAt: string;
   timezone: string;

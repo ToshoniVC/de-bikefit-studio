@@ -63,7 +63,13 @@ export type ProviderServiceOption = {
 
 export type ProviderSubscription = { serviceId: string; locationId: string | null };
 
-export type HoursRow = { weekday: number; startMinute: number; endMinute: number };
+export type HoursRow = {
+  weekday: number;
+  startMinute: number;
+  endMinute: number;
+  /** Where the provider is then; null = their default location. */
+  locationId: string | null;
+};
 
 export type ExceptionRow = {
   date: string;
@@ -206,7 +212,14 @@ export function ProviderProfileForm({
 // Business hours
 // ---------------------------------------------------------------------------
 
-type HoursDraft = { key: number; weekday: number; start: string; end: string };
+type HoursDraft = {
+  key: number;
+  weekday: number;
+  start: string;
+  end: string;
+  /** '' = the provider's default location. */
+  locationId: string;
+};
 
 let draftKey = 0;
 const nextKey = () => ++draftKey;
@@ -237,11 +250,14 @@ function hoursProblem(rows: HoursDraft[]): string | null {
 export function BusinessHoursEditor({
   providerId,
   hours,
+  locations = [],
   scope,
   canEdit,
 }: {
   providerId: string;
   hours: HoursRow[];
+  /** Locations to pick per range; empty = no location column (the default location applies). */
+  locations?: LocationOption[];
   scope: EditorScope;
   canEdit: boolean;
 }) {
@@ -254,8 +270,13 @@ export function BusinessHoursEditor({
         weekday: row.weekday,
         start: minutesToTime(row.startMinute),
         end: minutesToTime(row.endMinute),
+        locationId: row.locationId ?? '',
       })),
   );
+  const activeLocations = locations.filter(
+    (location) => location.isActive || rows.some((row) => row.locationId === location.id),
+  );
+  const showLocation = activeLocations.length > 0;
 
   const problem = hoursProblem(rows);
   const payload = JSON.stringify(
@@ -263,6 +284,7 @@ export function BusinessHoursEditor({
       weekday: row.weekday,
       startMinute: timeToMinutes(row.start),
       endMinute: timeToMinutes(row.end),
+      locationId: row.locationId || null,
     })),
   );
 
@@ -275,7 +297,10 @@ export function BusinessHoursEditor({
       const start = last ? last.end : '09:00';
       const startMinutes = timeToMinutes(start) ?? 540;
       const end = minutesToTime(Math.min(1440, startMinutes + 240));
-      return [...current, { key: nextKey(), weekday, start, end }];
+      return [
+        ...current,
+        { key: nextKey(), weekday, start, end, locationId: last?.locationId ?? '' },
+      ];
     });
   const copyMonday = () =>
     setRows((current) => {
@@ -290,7 +315,11 @@ export function BusinessHoursEditor({
   return (
     <SectionCard
       title="Openingsuren"
-      description="Per weekdag, meerdere tijdvakken mogelijk. Een dag zonder tijdvak is gesloten."
+      description={
+        showLocation
+          ? 'Per weekdag, meerdere tijdvakken mogelijk; per tijdvak kies je waar je dan bent (leeg = je standaardlocatie). Een dag zonder tijdvak is gesloten.'
+          : 'Per weekdag, meerdere tijdvakken mogelijk. Een dag zonder tijdvak is gesloten.'
+      }
     >
       <form action={formAction} className="flex flex-col gap-3">
         <ScopeFields providerId={providerId} scope={scope} />
@@ -329,6 +358,21 @@ export function BusinessHoursEditor({
                         aria-label={`${WEEKDAY_LABELS[weekday]} tot`}
                         className="w-28"
                       />
+                      {showLocation ? (
+                        <Select
+                          value={row.locationId}
+                          onChange={(event) => update(row.key, { locationId: event.target.value })}
+                          aria-label={`${WEEKDAY_LABELS[weekday]} ${row.start}: locatie`}
+                          className="w-56"
+                        >
+                          <option value="">Standaardlocatie</option>
+                          {activeLocations.map((location) => (
+                            <option key={location.id} value={location.id}>
+                              {locationOptionLabel(location)}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : null}
                       <Button
                         type="button"
                         size="xs"

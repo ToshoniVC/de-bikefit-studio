@@ -34,7 +34,10 @@ export type BookingLogEvent =
   | 'confirmation_ref_unsigned'
   // Cancelling from the admin (`cancelBooking()` in `repo.ts`).
   | 'admin_google_delete_failed'
-  | 'admin_cancellation_mail_failed';
+  | 'admin_cancellation_mail_failed'
+  // Assigning an "Iedereen" booking to a provider (`assignBooking()` in `repo-assignment.ts`).
+  | 'assign_google_failed'
+  | 'assign_mail_failed';
 
 /** Booking ids come from `crypto.randomUUID()` (`cms-schema.ts`); anything else is left out. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

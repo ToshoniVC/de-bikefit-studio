@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { cancelBooking, setBookingStatus } from '@/lib/booking/repo';
+import { assignBooking } from '@/lib/booking/repo-assignment';
 import { runAction } from './run';
 import { actionError, actionOk, field, type ActionState } from './state';
 
@@ -41,6 +42,33 @@ const STATUS_MESSAGES = {
   no_show: 'Afspraak gemarkeerd als niet verschenen.',
   confirmed: 'Afspraak terug op bevestigd gezet.',
 } as const;
+
+/**
+ * Toewijzen: a booking made as "Iedereen" waits for this; an assigned one can
+ * be moved to another provider. `repo-assignment.ts` requires `booking.manage`
+ * and checks that the provider offers the service and is free then.
+ */
+export async function assignBookingAction(
+  _prevState: ActionState,
+  form: FormData,
+): Promise<ActionState> {
+  return runAction(async () => {
+    const bookingId = field(form, 'bookingId');
+    const providerId = field(form, 'providerId');
+    if (!bookingId) return actionError('Onbekende afspraak.');
+    if (!providerId) return actionError('Kies een aanbieder.');
+
+    const result = await assignBooking(bookingId, providerId);
+    if (!result.ok) return actionError(result.message);
+
+    revalidateBookingViews();
+    return actionOk(
+      result.data.moved
+        ? `Afspraak toegewezen aan ${result.data.providerName}. Aanbieder en klant kregen een e-mail.`
+        : `Afspraak bevestigd bij ${result.data.providerName}. Aanbieder en klant kregen een e-mail.`,
+    );
+  });
+}
 
 /** Afgerond / Niet verschenen. Cancelling has its own action (it also clears Google). */
 export async function setBookingStatusAction(

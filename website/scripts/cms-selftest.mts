@@ -55,6 +55,11 @@
  *  14. booking flow on PGlite (provider without Google): the new provider's
  *      forced password change, repo scopes, public create / re-check / rate
  *      limit / cancel by token
+ *  14e. several locations per provider (a location per hours row, slots say
+ *      where, pinned services) and "Iedereen" bookings that wait for the
+ *      beheerder's assignment: pending/assigned, the to-do list, assignBooking
+ *      (moves, refusals, audit), migration 0012 twice
+ *      (`scripts/selftest/assignment.mts`)
  *  14b. public booking rate limit under concurrency (R-2): migration 0008,
  *      the reservation helper (parallel, release, window, prune), parallel
  *      `createPublicBooking()` bursts from one IP, for one e-mail, without a
@@ -1549,6 +1554,28 @@ async function bookingSections(
     );
     const revive = await repo.setBookingStatus(booked2.bookingId, 'confirmed');
     check('repo: a cancelled booking cannot be revived', !revive.ok);
+  }
+
+  // 14e: several locations per provider + "Iedereen" assigned by the beheerder.
+  if (studio.ok && home.ok) {
+    const { assignmentSection } = await import('./selftest/assignment.mjs');
+    await assignmentSection({
+      db,
+      check,
+      section,
+      signInAs,
+      admin,
+      provider: { id: providerId, userId: providerUserId },
+      studioId: studio.data.id,
+      homeId: home.data.id,
+      services: {
+        adultFitId: adultFit.data.id,
+        youthFitId: youthFit.data.id,
+        homeFitId: homeFit.data.id,
+      },
+      weekHours,
+      tz: TZ,
+    });
   }
   cookieJar.clear();
 }

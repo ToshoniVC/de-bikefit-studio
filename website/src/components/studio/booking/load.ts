@@ -20,6 +20,8 @@ import type { BookingLocationOption, BookingProviderOption, BookingServiceOption
 
 export type BookingOptions = {
   services: BookingServiceOption[];
+  /** Every location a slot may name: the services' own, the providers' resolved and working ones. */
+  locations: BookingLocationOption[];
   providers: BookingProviderOption[];
   rules: BookingRules;
   todayYmd: string;
@@ -59,6 +61,9 @@ function toProvider(
     services: provider.services
       .filter((entry) => serviceIds.has(entry.serviceId))
       .map((entry) => ({ serviceId: entry.serviceId, location: toLocation(entry.location) })),
+    locations: provider.locations
+      .map(toLocation)
+      .filter((location): location is BookingLocationOption => location !== null),
   };
 }
 
@@ -98,8 +103,20 @@ export async function loadBookingOptions(
     providers.some((provider) => provider.services.some((entry) => entry.serviceId === service.id)),
   );
 
+  const locations = new Map<string, BookingLocationOption>();
+  for (const service of bookable) {
+    if (service.location) locations.set(service.location.id, service.location);
+  }
+  for (const provider of providers) {
+    for (const entry of provider.services) {
+      if (entry.location) locations.set(entry.location.id, entry.location);
+    }
+    for (const location of provider.locations) locations.set(location.id, location);
+  }
+
   return {
     services: bookable,
+    locations: [...locations.values()],
     providers,
     rules,
     todayYmd: todayYmd(new Date(), rules.timezone),

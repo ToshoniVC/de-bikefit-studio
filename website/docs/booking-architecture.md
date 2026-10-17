@@ -53,6 +53,12 @@ UTC (`timestamptz`).
 | `src/lib/offers/offering*.ts`, `offer-catalogue.ts`, `src/lib/offers/repo.ts` | plain / server-only | Beheer → Aanbod: the offer, which services an offering is booked as (written by the same save), and whether it is bookable now (§14) |
 | `src/lib/offer-enquiry/*` | plain / server-only | the enquiry form of an offering that is asked for (§14) |
 | `src/lib/booking/repo-provider-profile.ts` | server-only | the provider profile that comes with the Aanbieder role (`ensureProviderProfile`, `cms-architecture.md` §14) |
+| `src/lib/booking/slot-locations.ts` | plain | `slotLocations()`: which hours rows count for a (provider, service) and where each slot is (§16) |
+| `src/lib/booking/repo-assignment.ts` | server-only | `assignBooking()`, `countPendingAssignments()`: "Iedereen" bookings assigned by the beheerder (§16) |
+| `src/lib/booking/assignment-recipients.ts` | plain | who gets the "toe te wijzen" to-do (§16) |
+| `src/lib/email/templates-assignment.ts` | plain | the to-do, "Je afspraak is bij …" and "niet meer bij jou" mails (§8, §16) |
+| `src/components/studio/booking/slot-grouping.ts`, `use-month-availability.ts` | plain / client | the widget's day grouping (one per start and location for "Iedereen") and month cache, split out of `booking-widget.tsx` (§16) |
+| `src/components/admin/assign-booking-form.tsx` | client | the Toewijzen select + button in Afspraken (§16) |
 
 \* `settings.ts` imports `@/lib/cms/content` lazily inside `getBookingRules()`,
 so importing the file never pulls in `server-only`.
@@ -72,9 +78,9 @@ Worker C; the admin actions under `src/lib/cms/actions/*` belong to Worker B.
 | `cms_services` | The canonical catalogue (§14). `locale` (`nl`), `slug` (unique per locale), `name`, `choice_label` (0009, default `''` = the name: its label under an offer, e.g. "Volwassene"), `description`, `duration_minutes`, `buffer_after_minutes` (default 15, **null = setting default**), `price_cents` (null), `show_price` (false), `location_id` (null = provider default), `requires_guardian`, `is_active`, `sort_order`, `color`, `created_by`. |
 | `cms_providers` | 1:1 with `cms_users` (`user_id` unique, cascade). `display_name`, `bio`, `phone`, `email` (public), `timezone`, `default_location_id`, Google: `google_calendar_id` (`primary` once connected), `google_refresh_token_enc`, `google_access_token` (**also encrypted**), `google_access_expires_at`, `google_email`, `google_connected_at`, `google_sync_error`; `is_active`, `sort_order`. |
 | `cms_provider_services` | PK (`provider_id`, `service_id`), `location_id` = per-provider override. |
-| `cms_business_hours` | `weekday` 0–6 (0 = Sunday), `start_minute`/`end_minute` = minutes since local midnight, end exclusive. Several rows per weekday. |
+| `cms_business_hours` | `weekday` 0–6 (0 = Sunday), `start_minute`/`end_minute` = minutes since local midnight, end exclusive. Several rows per weekday. `location_id` (0012, null = the provider's default location): where the provider is during that range (§16). |
 | `cms_availability_exceptions` | `date` (local), `kind` `closed`\|`open`, optional minutes, `note`. Unique (`provider_id`, `date`, `kind`, `start_minute`). |
-| `cms_bookings` | service (restrict), provider (restrict), location (set null), `starts_at`/`ends_at` (UTC), `timezone`, `status` (`confirmed`\|`cancelled`\|`completed`\|`no_show`), customer + guardian fields, `bike_details`, `notes`, `customer_address`, `cancel_token_hash` (unique, SHA-256 hex), `cancelled_at`, `cancelled_by` (`customer`\|`provider`\|`admin`), `google_event_id`, `google_sync_status` (`pending`\|`synced`\|`failed`\|`none`), `google_sync_error`, `source` (`web`). |
+| `cms_bookings` | service (restrict), provider (restrict), location (set null), `starts_at`/`ends_at` (UTC), `timezone`, `status` (`confirmed`\|`cancelled`\|`completed`\|`no_show`), customer + guardian fields, `bike_details`, `notes`, `customer_address`, `cancel_token_hash` (unique, SHA-256 hex), `cancelled_at`, `cancelled_by` (`customer`\|`provider`\|`admin`), `google_event_id`, `google_sync_status` (`pending`\|`synced`\|`failed`\|`none`), `google_sync_error`, `source` (`web`), `assignment` (`assigned`\|`pending`, 0012: `pending` = made as "Iedereen", the provider only holds the slot until a beheerder assigns it), `assigned_at` (§16). |
 | `cms_booking_rate_limit` | `ip_address`, `email`, `attempted_at`: one row per attempt (mirror of `cms_login_attempts`). Bookings wrote here, plain e-mail and IP, until 0008; since then only the gift voucher requests do (`cadeaubon:` keys, hashed e-mail; `booking-runbook.md` §12). Pruned after 1 day by those requests and by `cms:retention`. Kept unchanged (additive migrations). |
 
 ### Rate-limit counters (`drizzle/0008_cms_rate_limits.sql`)
@@ -103,6 +109,7 @@ Closed sets are `text` validated by zod, like the CMS. The only enum change is
 | `0009_cms_service_choice_label.sql` | `ALTER TABLE "cms_services" ADD COLUMN IF NOT EXISTS "choice_label" text DEFAULT '' NOT NULL`, nothing else: no data change (existing rows get `''`, so they keep showing their name), no price. **Apply before deploying the build that uses it**: the app selects every `cms_services` column, so until then the widget shows its "bel ons" fallback and the service screens fail. Self-test 14c re-runs it twice. |
 | `0010_cms_offerings.sql` | `cms_offerings` + `cms_offering_variants` (§14, `cms-architecture.md` §14): guarded `CREATE TABLE`s, FKs, indexes; no data change, nothing on `cms_services`, `cms_provider_services` or `cms_bookings`. **Apply before deploying the build that uses it**: the booking actions ask it which services an offering holds back and fail closed without it (every availability and booking request answers "Deze dienst kun je niet online boeken." / the generic error). Self-test 14d re-runs it twice. |
 | `0011_cms_offerings_content.sql` | the offering IS the offer (17 Oct 2026, §14): guarded `ADD COLUMN IF NOT EXISTS` for the copy (slug, category, order, title, summary, intro, Doel, Inhoud, extra's, Duur, button label, image, meta description), `page_id` nullable, a unique index on (locale, slug). No data change; `cms:migrate-aanbod` fills the rows from the former offer pages (`staging-runbook.md` §19). Apply before the deploy; run the migration right after it. Self-test 14d re-runs it twice. |
+| `0012_cms_provider_locations_assignment.sql` | several locations per provider + "Iedereen" assigned by the beheerder (17 Oct 2026, §16): guarded `ADD COLUMN IF NOT EXISTS` for `cms_business_hours.location_id` (+ its FK in a `duplicate_object` guard) and for `cms_bookings.assignment` (default `'assigned'`) and `assigned_at`. No data change: every existing booking is `assigned`, every hours row stays at the default location. **Apply before deploying the build that uses it**: the new build selects these columns on every availability request and booking list. Self-test 14e re-runs it twice. |
 
 All are **additive only** and idempotent (verified by migrating a fresh
 PGlite twice). Note that drizzle's migrator runs *all pending files in one
@@ -174,6 +181,10 @@ calling the server actions directly (`src/lib/cms/actions/services.test.ts`) and
   showProviderChoice: true }
 ```
 
+`showProviderChoice` (17 Oct 2026): on, the widget asks "Bij wie?" first — a provider (then
+only their services and agenda) or "Iedereen". Off, or "Iedereen": the beheerder assigns the
+booking as soon as more than one provider offers the service (§16).
+
 `siteSettingSchemas.analytics` gained `ga4PropertyId: ''` (GA4 Data API
 property id; env `GA4_PROPERTY_ID` wins). Existing rows parse fine because the
 field defaults.
@@ -207,19 +218,25 @@ minutesToHhmm, hhmmToMinutes, toIso
 ### `availability.ts` (plain, no I/O)
 
 ```ts
-type Slot = { startsAt: string; endsAt: string; providerId: string };
-computeSlots({ date, hours, exceptions?, busy?, bookings?, service, rules, now, tz?, providerId? }): Slot[]
-mergeSlots(slots): { startsAt; endsAt; providerIds: string[] }[]    // "Iedereen"
+type Slot = { startsAt: string; endsAt: string; providerId: string; locationId: string | null };
+computeSlots({ date, hours, exceptions?, busy?, bookings?, service, rules, now, tz?, providerId?, defaultLocationId? }): Slot[]
+mergeSlots(slots): { startsAt; endsAt; locationId; providerIds: string[] }[]    // "Iedereen", per start AND location
 groupSlotsByDay(slots, tz?): Record<'YYYY-MM-DD', Slot[]>
-openRangesForDate(date, hours, exceptions?), normalizeRanges, subtractRanges, isSlotAvailable
+openRangesByLocation(date, hours, exceptions?, defaultLocationId?): Map<locationId | null, Range[]>
+openRangesForDate(date, hours, exceptions?), normalizeRanges, subtractRanges, isSlotAvailable(slots, startsAt, providerId?, locationId?)
 ```
+
+`slot-locations.ts` (plain): `slotLocations({ pinnedId, providerDefaultId, studioDefaultId, hours, kindOf })`
+→ the hours rows that count for one (provider, service) and the location a row without one
+resolves to (§16).
 
 ### `content.ts` (server-only, public)
 
 ```ts
 BOOKING_TAG = 'booking'
 listPublicServices(locale = 'nl'): Promise<PublicService[]>          // cached, tags cms + booking
-listPublicProviders(serviceId?): Promise<PublicProvider[]>            // cached, locations resolved
+listPublicProviders(serviceId?): Promise<PublicProvider[]>            // cached, locations resolved; + locations[] where they work
+countEligibleProviders(serviceId): Promise<number>                    // uncached; "Iedereen" waits for assignment when > 1
 getAvailability({ serviceId, providerId: string | null, fromYmd, toYmd, now?, locale? })
   : Promise<{ ok: true; timezone; fromYmd; toYmd; slots: Slot[] } | { ok: false; message }>   // NOT cached
 getBookingSettings(locale = 'nl'): Promise<BookingRules>
@@ -235,8 +252,9 @@ active user account)** are public. `PublicService` includes `durationLabel`,
 
 `getAvailability` clamps the range to today…today + `horizonDays` and to at
 most 62 days, fetches Google free/busy **once per provider** for the whole
-range, and returns slots sorted by start (ties in admin provider order). Use
-`mergeSlots()` for the "Iedereen" view.
+range, and returns slots sorted by start (ties in admin provider order), each
+with the `locationId` the fit would be at (§16). Use `mergeSlots()` for the
+"Iedereen" view.
 
 ### `public-booking.ts` (server-only, anonymous)
 
@@ -346,6 +364,10 @@ createService(input: ServiceInput): Promise<RepoResult<CmsService>>       // inp
 updateService(id, input: Partial<ServiceInput>): Promise<RepoResult<CmsService>>
 deleteService(id): Promise<RepoResult<true>>                              // soft: is_active = false
 
+// Assignment (repo-assignment.ts) — booking.manage; §16
+assignBooking(bookingId, providerId): Promise<RepoResult<{ bookingId; providerId; providerName; moved }>>
+countPendingAssignments(): Promise<number>                                 // booking.read
+
 // Locations — location.read / location.manage
 listLocations({ includeInactive? }), createLocation(input), updateLocation(id, input), deleteLocation(id)  // soft
 
@@ -439,10 +461,12 @@ For one provider and one local date `D` (`computeSlots`):
 
 1. **Window.** `D` must lie between today and today + `horizonDays` (local
    dates in the booking time zone).
-2. **Open ranges.** Business hours for `D`'s weekday; a `closed` exception
-   without minutes removes them all; `open` exceptions add ranges (also on a
-   closed day); `closed` exceptions with minutes cut ranges out. Ranges are
-   merged and clamped to the day.
+2. **Open ranges, per location.** Business hours for `D`'s weekday, grouped by the row's
+   `location_id` (a row without one is at `defaultLocationId`); a `closed` exception
+   without minutes removes them all; `open` exceptions add ranges at the default location
+   (also on a closed day); `closed` exceptions with minutes cut ranges out of every
+   location. Ranges are merged and clamped to the day per location; every slot carries its
+   location, and two locations at one start are two slots (§16).
 3. **Grid.** Candidate starts are local minutes `m` with `m % slotStepMinutes
    === 0` counted **from local midnight** (a 09:15 opening with a 30 min grid
    starts at 09:30). A local time that does not exist (spring forward) or
@@ -459,8 +483,10 @@ For one provider and one local date `D` (`computeSlots`):
 
 Conversions use `localMinutesToInstant` (two-pass `tzOffset`) and `TZDate`,
 so every slot is exactly `duration` real minutes long, also on 2026-10-25.
-"Iedereen" = run per provider, then `mergeSlots()`. When the customer books
-"Iedereen", `createPublicBooking` picks the first free provider in admin order.
+"Iedereen" = run per provider, then `mergeSlots()` (per start and location). When the
+customer books "Iedereen", `createPublicBooking` lets the first free provider in admin order
+hold the slot and, when more than one provider offers the service, leaves the choice to the
+beheerder (`assignment = 'pending'`, §16).
 
 ---
 
@@ -591,6 +617,8 @@ query binds the client IP); the delivery helper's own lines,
 | Event | Customer (+ guardian e-mail if different) | Provider (`cms_providers.email` or login e-mail) |
 | --- | --- | --- |
 | Booked | "Je afspraak is bevestigd" + `afspraak.ics` (`METHOD:PUBLISH`, UTC times, `UID <bookingId>@<site host>`, 24 h reminder) + cancel link `${siteUrl()}/afspraak/annuleren/<token>` + deadline | "Nieuwe afspraak" with all details, reply-to = customer |
+| Booked as "Iedereen", several providers (`assignment = pending`, §16) | same confirmation, without "Bij" and with "Bij wie je terechtkomt, laten we je nog apart per e-mail weten." | nothing to the provider holding the slot; the **beheerder** gets "Toe te wijzen: …" (`assignmentTodoEmail`, `templates-assignment.ts`) with the booking, who holds it and a button to `/admin/bookings?assignment=pending`; recipients per `assignmentRecipients()`: the order-and-enquiry inbox, else every active admin's login |
+| Assigned or moved by the beheerder (`assignBooking`, upcoming only) | "Je afspraak is bij <naam>" (`bookingAssignedEmail`) | the assignee gets "Nieuwe afspraak"; a previous holder gets "Afspraak niet meer bij jou" (`bookingReassignedEmail`) |
 | Cancelled by customer (link) | "Je afspraak is geannuleerd" + `.ics` `METHOD:CANCEL` | notified |
 | Cancelled by admin | same, "we moesten je afspraak helaas annuleren" | notified |
 | Cancelled by provider | same | not notified (they did it) |
@@ -652,11 +680,16 @@ module later.
    not applied) every attempt fails closed this way.
 4. Service must be active; guardian required for `requiresGuardian`.
 5. **Fresh** `getAvailability()` for that day (live bookings + Google). The
-   exact start must be offered → otherwise `slot_taken`.
-6. Location resolved (§5); address required for `customer` locations.
-7. Insert (`status confirmed`, `google_sync_status pending`, token hash). A
+   exact start must be offered, at the given `locationId` when the widget sent one →
+   otherwise `slot_taken`. The matched slot says which provider and which location.
+6. Location = the slot's (§16); address required for `customer` locations. `assignment`:
+   `pending` when no provider was chosen and `countEligibleProviders(service) > 1`, else
+   `assigned`.
+7. Insert (`status confirmed`, `google_sync_status pending`, token hash, `assignment`). A
    unique-index race → `slot_taken`.
-8. Google event → e-mails → `recordAudit(db, null, { action: 'booking.create' })`.
+8. Google event (titled "Toe te wijzen: …" while pending) → e-mails (§8) →
+   `recordAudit(db, null, { action: 'booking.create' })` with the assignment in the summary
+   and metadata.
 
 Cancel token: 32 random bytes, base64url (43 chars); only `sha256(token)` hex
 is stored. `cancelBookingByToken()` allows cancelling until `cancelUntilHours`
@@ -681,9 +714,10 @@ is kept. Instead each catch binds no error (`catch {`) and calls
 | `availability_action_failed`, `book_action_failed`, `cancel_action_failed` | the catch-alls of the widget's server actions (`public-actions.ts`); no booking id |
 | `confirmation_ref_unsigned` | `bookAction()`: the booking stands, only the signed confirmation URL is skipped; with the booking id |
 | `admin_google_delete_failed`, `admin_cancellation_mail_failed` | `cancelBooking()` in `repo.ts` (admin and provider cancellations), with the booking id |
+| `assign_google_failed`, `assign_mail_failed` | `assignBooking()` in `repo-assignment.ts`, with the booking id |
 
 `bookingId` is included only when it is a UUID. `BookingLogEvent` is a closed union: every
-call site passes a literal, and `booking-log.test.ts` lists all twelve, so a new event is a
+call site passes a literal, and `booking-log.test.ts` lists all fourteen, so a new event is a
 type error until that list is updated. The cancel page logs
 `[booking] cancel_page_lookup_failed` and nothing else when the look-up throws. An error
 nobody catches (a page's own read) is still printed by Next in full (§13).
@@ -757,6 +791,17 @@ on PGlite with a provider without Google: repo CRUD as admin and as provider
 token hash, `google_sync_status = 'none'`, audit, re-check → `slot_taken`,
 the partial unique index, rate limit, admin/provider lists and stats,
 look-up / too late / cancel / already cancelled, provider cancel, no revival.
+Section 14e (`scripts/selftest/assignment.mts`, §16): migration 0012 twice; hours rows with a
+location (Thursday at a second studio), the public provider's places, slots that say where
+they are, a service pinned to the studio not offered from the other studio, "bij de klant"
+offered from every row; a second provider, an "Iedereen" booking that is `pending` (held by
+the first provider, nameless to the customer, counted and listed), a chosen provider and a
+single-provider service `assigned` at once; a provider may not assign; the admin moves the
+pending booking (row, audit, summary), a no-op re-assignment, refusals for a provider who does
+not offer the service, who is busy then, and for a cancelled booking; cleanup. Unit tests:
+`availability.test.ts` (locations), `slot-locations.test.ts`, `assignment-recipients.test.ts`,
+`templates-assignment.test.ts`, `slot-grouping.test.ts`, `service-choice.test.ts`
+(`narrowChoices`).
 
 Section **14c** (`scripts/selftest/service-catalogue.mts`): migration 0009 (column, one guarded
 statement, re-run twice); as the provider, `createService()` and `createServiceAction` refused
@@ -993,6 +1038,81 @@ agenda → Mijn aanbod*. No deploy, no migration, no second screen.
 **Tests.** `offering.test.ts`, `offer-catalogue.test.ts`, `catalogue.test.ts` (resolution and
 grouping), `public-actions.test.ts` (the gate), `offer-enquiry/*.test.ts`,
 `actions/offerings.test.ts`; self-test 14d on PGlite.
+
+## 16. Several locations per provider; "Iedereen" assigned by the beheerder (17 Oct 2026)
+
+Toshoni's brief: an aanbieder can serve several locations; a customer chooses "Iedereen" or
+a specific aanbieder (then only that person's services and agenda); with "Iedereen" the
+beheerder assigns the booking to an aanbieder and gets a to-do by e-mail. Migration 0012.
+
+**Where a provider is.** A business-hours row may name a location (`cms_business_hours.location_id`;
+Openingsuren → a select per range, "Standaardlocatie" = as before). The slot engine keeps the
+ranges apart per location, so every slot carries the location the fit would be at
+(`Slot.locationId`), and `mergeSlots()` / the widget de-duplicate per start AND location. For
+one (provider, service) the rows that count and where they are (`slotLocations()`,
+`slot-locations.ts`): a service pinned to a studio (provider override → service location, as
+before) is offered from rows at that studio or without a location, all at that studio — never
+from a row at another studio or at "bij de klant", the provider is elsewhere then; a service
+pinned to "bij de klant" is offered from every row, at the customer's; an unpinned service is
+at each row's own location, else the provider's default, else the studio default. A provider
+without any row location behaves exactly as before. `listPublicProviders()` lists the places a
+provider works (`locations[]`: their rows' locations and their default), shown under their name
+in "Bij wie?". The booking stores the slot's location (`cms_bookings.location_id`), the
+confirmation and the Google event show it, and a slot at a `customer`-kind location asks for
+an address, as a pinned "bij de klant" service did.
+
+**The widget** (`booking-widget.tsx`, provider first): step 1 "Bij wie?" when the setting
+`showProviderChoice` is on and more than one provider is bookable: "Iedereen" or a provider
+(with the places they work). A provider narrows step 2 to the services they offer
+(`narrowChoices()`) and the calendar to their agenda; "Iedereen" lists every free moment, one
+per time and location, without names. `/afspraak?dienst=` still preselects the service; the
+provider step then offers only those who offer it. When the day's month has slots at more than
+one place, each time names its place. The widget sends `providerId: null` for "Iedereen" and
+the slot's `locationId`; `bookAction` passes both on.
+
+**Pending bookings.** `createPublicBooking()` stores `assignment = 'pending'` when no provider
+was chosen and more than one offers the service (`countEligibleProviders()`); the first free
+provider in admin order holds the slot (`provider_id`, the partial unique index and the
+availability maths work as before, so nobody else can book it) and gets a Google event titled
+"Toe te wijzen: …" but no mail. With exactly one eligible provider there is nothing to decide:
+`assigned` at once, as before. The customer's confirmation names no provider ("Bij wie je
+terechtkomt, laten we je nog apart per e-mail weten."; `PublicBookingSummary.assignmentPending`,
+the confirmation panel and `/afspraak/bevestigd` show "Dat laten we je nog per e-mail weten."
+under "Met wie"). The beheerder gets the to-do (`assignmentTodoEmail`) at the order-and-enquiry
+inbox (`GIFT_VOUCHER_RECIPIENT`, else `/admin/email` → *Ontvanger bestellingen en aanvragen*),
+else at every active admin's login e-mail (`assignmentRecipients()`, never the public contact
+address, never the holder). With the setting `showProviderChoice` off every booking is
+"Iedereen", so with several providers every booking waits for the beheerder; the setting's hint
+says so.
+
+**Assigning** (`repo-assignment.ts`, `assignBooking(bookingId, providerId)`, `booking.manage`
+only; Afspraken → the "Toewijzen" select on a pending row, "Andere aanbieder" on an assigned
+upcoming one; the list shows "N afspraken wachten op toewijzing" with a link to
+`?assignment=pending`, the filter *Toewijzing*, and "Nog toe te wijzen · houdt vrij: <naam>"
+in the provider column; Mijn agenda shows the badge on a held booking with a note). Checks: the
+booking is `confirmed`; the provider and their login are active and they offer the service
+(`cms_provider_services`); they are free then — no other non-cancelled booking of theirs
+overlapping the fit plus its buffer, nothing busy in their Google Calendar for that window.
+Business hours, minimum notice and the horizon are **not** checked: the beheerder may plan
+knowingly outside the hours and must be able to assign a booking due tomorrow. Confirming the
+holder (same provider, pending) needs no free check. Then: `provider_id`, `assignment =
+'assigned'`, `assigned_at`; the previous holder's Google event is deleted and a clean one is
+created for the assignee (`assign_google_failed` when either fails, the row stands); for an
+upcoming booking the assignee gets "Nieuwe afspraak", the customer "Je afspraak is bij <naam>"
+and a previous holder "Afspraak niet meer bij jou" (`sendBookingAssignedEmails`,
+`assign_mail_failed`); audit `booking.assign` ("A → B" or "bevestigd bij B", metadata `from`,
+`to`, `wasPending`); booking tag busted. A partial unique-index race on (provider, start) is
+answered as "heeft dan al een afspraak op precies dat uur". Re-assigning an assigned booking
+(a provider fell ill) is the same action. `countPendingAssignments()` (`booking.read`) feeds
+the banner; `listBookings({ assignment: 'pending' })` the filter.
+
+**Not done / open:** no reminder to the beheerder when a pending booking is still unassigned
+close to its start (the banner and the to-do mail are the only nudges); the customer is not
+told when a booking is *moved* between providers after it was already announced (they get the
+same "Je afspraak is bij <naam>" mail, which names the new provider); `cms:seed-booking` writes
+hours without a location (the default location), as before.
+
+---
 
 ## 15. Retired: the offer ↔ service reconciliation of 13–16 Oct 2026
 
