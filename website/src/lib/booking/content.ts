@@ -18,6 +18,7 @@ import {
 } from '@/db/cms-schema';
 import { CMS_TAGS } from '@/lib/cms/content';
 import { computeSlots, type Slot } from './availability';
+import { slotLocations } from './slot-locations';
 import { formatDuration, formatLocation, formatPrice } from './format';
 import { getProviderBusy } from './provider-calendar';
 import { getBookingRules, type BookingRules } from './settings';
@@ -42,6 +43,15 @@ import {
  *
  * Only active services offered by at least one active provider (with an active
  * user account) are public.
+ *
+ * Where a slot is (17 Oct 2026): a business-hours row may carry the location
+ * the provider is at during that range. For a (provider, service) pair the
+ * location of a slot is the service's pinned location when there is one
+ * (provider override → service location, as before), else the hours row's
+ * location, else the provider's default, else the studio default. A service
+ * pinned to a studio is not offered from hours rows at ANOTHER studio; a
+ * service pinned to "bij de klant" is offered from every row (the provider
+ * travels from wherever they are). See `booking-architecture.md` §16.
  */
 
 /** Cache tag for everything booking-related (kept local; `CMS_TAGS` is unchanged). */
@@ -87,6 +97,8 @@ export type PublicProvider = {
   bio: string;
   /** Services offered, with the location that applies to this provider. */
   services: { serviceId: string; location: PublicLocation | null }[];
+  /** Where this provider works: the locations of their hours rows and their default, distinct, in admin order. */
+  locations: PublicLocation[];
 };
 
 export type AvailabilityQuery = {
@@ -245,17 +257,39 @@ export async function listPublicProviders(serviceId?: string | null): Promise<Pu
         .select({ id: cmsServices.id, locationId: cmsServices.locationId })
         .from(cmsServices);
       const serviceLocation = new Map(services.map((s) => [s.id, s.locationId]));
+      const providerIds = [...new Set(offerings.map((offering) => offering.provider.id))];
+      const hours = providerIds.length
+        ? await db
+            .select({
+              providerId: cmsBusinessHours.providerId,
+              locationId: cmsBusinessHours.locationId,
+            })
+            .from(cmsBusinessHours)
+            .where(inArray(cmsBusinessHours.providerId, providerIds))
+            .orderBy(asc(cmsBusinessHours.weekday), asc(cmsBusinessHours.startMinute))
+        : [];
 
       const providers = new Map<string, PublicProvider>();
       for (const offering of offerings) {
         const { provider } = offering;
         let entry = providers.get(provider.id);
         if (!entry) {
+          const fallback = provider.defaultLocationId ?? defaultId;
+          const worksAt = new Set<string>();
+          for (const row of hours) {
+            if (row.providerId !== provider.id) continue;
+            const id = row.locationId ?? fallback;
+            if (id) worksAt.add(id);
+          }
+          if (worksAt.size === 0 && fallback) worksAt.add(fallback);
           entry = {
             id: provider.id,
             displayName: provider.displayName,
             bio: provider.bio,
             services: [],
+            locations: [...worksAt]
+              .map((id) => toPublicLocation(byId.get(id)))
+              .filter((location): location is PublicLocation => location !== null),
           };
           providers.set(provider.id, entry);
         }
@@ -280,6 +314,15 @@ export async function listPublicProviders(serviceId?: string | null): Promise<Pu
     { tags: [CMS_TAGS.all, BOOKING_TAG], revalidate: REVALIDATE_SECONDS },
   );
   return load();
+}
+
+/**
+ * How many active providers (with an active account) offer the service right
+ * now. Uncached: `createPublicBooking()` decides with it whether an
+ * "Iedereen" booking waits for the beheerder's assignment (more than one).
+ */
+export async function countEligibleProviders(serviceId: string): Promise<number> {
+  return (await loadOfferings(serviceId)).length;
 }
 
 /** Booking rules for the public widget (cached through `getSiteSettings`). */
@@ -382,11 +425,19 @@ export async function getAvailability(query: AvailabilityQuery): Promise<Availab
   ]);
 
   const busyMap = new Map(busyByProvider);
+  const { byId: locationsById, defaultId: studioDefaultId } = await loadLocations();
   const days = eachDayYmd(fromYmd, toYmd);
   const slots: Slot[] = [];
   for (const offering of offerings) {
     const pid = offering.provider.id;
-    const providerHours = hours.filter((h) => h.providerId === pid);
+    const where = slotLocations({
+      pinnedId: offering.overrideLocationId ?? service.locationId,
+      pinnedKind: null,
+      providerDefaultId: offering.provider.defaultLocationId,
+      studioDefaultId,
+      hours: hours.filter((h) => h.providerId === pid),
+      kindOf: (id) => locationsById.get(id)?.kind ?? null,
+    });
     const providerExceptions = exceptions.filter((e) => e.providerId === pid);
     const providerBookings = bookings.filter((b) => b.providerId === pid);
     const busy = busyMap.get(pid) ?? [];
@@ -394,7 +445,7 @@ export async function getAvailability(query: AvailabilityQuery): Promise<Availab
       slots.push(
         ...computeSlots({
           date,
-          hours: providerHours,
+          hours: where.hours,
           exceptions: providerExceptions,
           busy,
           bookings: providerBookings,
@@ -403,6 +454,7 @@ export async function getAvailability(query: AvailabilityQuery): Promise<Availab
           now,
           tz,
           providerId: pid,
+          defaultLocationId: where.defaultLocationId,
         }),
       );
     }

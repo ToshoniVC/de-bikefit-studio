@@ -1,6 +1,7 @@
 import type { BlockInstance, SiteSettings } from '@/lib/cms/blocks';
 import { OFFER_CATEGORY_LABELS } from '@/lib/offers/catalogue';
 import type { ResolvedOffering } from '@/lib/offers/offering';
+import type { OfferingContent } from '@/lib/offers/offering-content';
 import { isBookableServicesBlock, visibleBlocks } from './blocks';
 import { localeTag, type StudioLocale } from './locale';
 
@@ -215,11 +216,10 @@ export function servicesJsonLd(
 }
 
 /**
- * The `offers` of an offer page, mirroring its Kostprijs: one `Offer` per
+ * The `offers` of an offering, mirroring its Kostprijs: one `Offer` per
  * variant that has a price set in Beheer → Aanbod (named "Volwassene" /
  * "Jeugd" when the offering has both), nothing while every variant is "Prijs
- * op aanvraag". The block's editorial price fields never count once the
- * offering is resolved.
+ * op aanvraag".
  */
 function offeringOffers(offering: ResolvedOffering): JsonLdNode | JsonLdNode[] | null {
   const priced = offering.variants.filter((variant) => variant.priceCents != null);
@@ -236,37 +236,28 @@ function offeringOffers(offering: ResolvedOffering): JsonLdNode | JsonLdNode[] |
 }
 
 /**
- * One `Service` node for an offer page (`offer` block): name, intro and the
- * category as `serviceType`. With the page's resolved offering (the public
- * site always passes it), prices come from Beheer → Aanbod only
- * ({@link offeringOffers}). Without it, the legacy rule: an unlinked offer
- * emits its editorial price only when `priceCents` is set, and a
- * service-linked offer never leaks that independent amount.
+ * One `Service` node for an offering's page (`/aanbod/<slug>`): name, intro
+ * and the category as `serviceType`; prices come from Beheer → Aanbod only
+ * ({@link offeringOffers}), never from any editorial text.
  */
-export function offerServiceJsonLd(
-  blocks: readonly BlockInstance[],
-  settings: SiteSettings,
-  origin: string,
-  canonical: string,
-  offering?: ResolvedOffering | null,
-): JsonLdNode | null {
-  const block = visibleBlocks(blocks).find((entry) => entry.type === 'offer');
-  if (!block || block.type !== 'offer') return null;
-  const { data } = block;
-  const legacyOffers =
-    data.bookingServiceSlugs.some((slug) => slug.trim()) || data.priceCents == null
-      ? null
-      : { '@type': 'Offer', price: (data.priceCents / 100).toFixed(2), priceCurrency: 'EUR' };
+export function offeringServiceJsonLd(input: {
+  content: Pick<OfferingContent, 'title' | 'intro' | 'summary' | 'category'>;
+  offering: ResolvedOffering;
+  settings: SiteSettings;
+  origin: string;
+  canonical: string;
+}): JsonLdNode {
+  const { content, offering, settings, origin, canonical } = input;
   return compact({
     '@type': 'Service',
     '@id': `${canonical}#dienst`,
-    name: data.title,
-    description: data.intro || data.summary,
-    serviceType: OFFER_CATEGORY_LABELS[data.category],
+    name: content.title,
+    description: content.intro || content.summary,
+    serviceType: OFFER_CATEGORY_LABELS[content.category],
     url: canonical,
     provider: { '@id': organizationId(origin) },
     areaServed: settings.organization.areaServed,
-    offers: offering ? offeringOffers(offering) : legacyOffers,
+    offers: offeringOffers(offering),
   });
 }
 

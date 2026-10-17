@@ -78,6 +78,20 @@
       "when": 1792154902528,
       "tag": "0010_cms_offerings",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792208512673,
+      "tag": "0011_cms_offerings_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792212183158,
+      "tag": "0012_cms_provider_locations_assignment",
+      "breakpoints": true
     }
   ]
 }

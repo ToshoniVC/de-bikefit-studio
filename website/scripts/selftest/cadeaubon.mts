@@ -1,14 +1,9 @@
 /**
- * Self-test section 18: the gift voucher ("Cadeaubon") on the throwaway PGlite
- * of `cms-selftest.mts`, right after section 17 (which leaves /aanbod as on
- * staging before the review, with an editor's own kicker published).
+ * Self-test section 18: the gift voucher ("Cadeaubon") order requests on the
+ * throwaway PGlite of `cms-selftest.mts` (the page itself is seeded content;
+ * its move to /cadeaubon is section 14d).
  *
- * 1. `cms:patch-cadeaubon`: the dry run writes nothing; an unpublished draft
- *    on /aanbod blocks the apply; after publishing, apply creates and
- *    publishes /aanbod/cadeaubon, appends "Overige" to /aanbod (editor's
- *    kicker kept), leaves the booking tables alone, audits once, cleans up its
- *    session; a second apply does nothing; restore and re-apply work.
- * 2. The order service end to end on the database (no network: `fetch` is
+ * The order service end to end on the database (no network: `fetch` is
  *    replaced): no `RESEND_API_KEY` or no `EMAIL_FROM` or a provider refusal
  *    is "not sent" and leaves no sent marker; only an accepted request is a
  *    success, sent from `EMAIL_FROM` to the order inbox (/admin/email →
@@ -21,11 +16,9 @@
  *
  * Imported lazily by `cms-selftest.mts` after its request-context stubs.
  */
-import { and, eq, like } from 'drizzle-orm';
+import { eq, like } from 'drizzle-orm';
 import type { CmsDatabase } from '@/db/cms';
 import { CONTACT_EMAIL } from '@/lib/studio/seed-content/shared';
-import { guardCounts, type PlanDeps } from '../lib/aanbod-rollout.mjs';
-import { runCadeaubonPatch } from '../lib/cadeaubon-patch.mjs';
 
 type Check = (label: string, condition: boolean, detail?: string) => void;
 
@@ -35,25 +28,15 @@ export async function cadeaubonSection(ctx: {
   check: Check;
   section: (title: string) => void;
   cookieJar: Map<string, string>;
-  backupDir: string;
 }) {
-  const { db, admin, check, section, cookieJar, backupDir } = ctx;
-  section('18. gift voucher: cms:patch-cadeaubon + order requests');
+  const { db, admin, check, section, cookieJar } = ctx;
+  section('18. gift voucher: order requests');
 
   const schema = await import('@/db/cms-schema');
   const repo = await import('@/lib/cms/repo');
   const { createSession, revokeSession } = await import('@/lib/cms/session');
-  const { getPublishedPage, getSiteSettings } = await import('@/lib/cms/content');
-  const { listPublishedOffers } = await import('@/lib/cms/offers-content');
+  const { getSiteSettings } = await import('@/lib/cms/content');
   const locale = schema.DEFAULT_LOCALE;
-  const planDeps: PlanDeps = {
-    db,
-    orm: await import('drizzle-orm'),
-    schema,
-    blocks: await import('@/lib/cms/blocks'),
-    locale,
-    log: () => {},
-  };
 
   /**
    * Runs `work` as the self-test admin, signed in with both steps (it also
@@ -75,143 +58,7 @@ export async function cadeaubonSection(ctx: {
       await revokeSession(db, session.token);
     }
   }
-  async function pageRow(slug: string) {
-    const [row] = await db
-      .select()
-      .from(schema.cmsPages)
-      .where(and(eq(schema.cmsPages.locale, locale), eq(schema.cmsPages.slug, slug)));
-    return row;
-  }
-  const liveGroups = async () =>
-    (
-      (await getPublishedPage(locale, 'aanbod'))?.snapshot.blocks.find(
-        (block) => block.type === 'offerCatalogue',
-      )?.data as { groups: { category: string }[] } | undefined
-    )?.groups.map((group) => group.category) ?? [];
-
-  // --- 1. the patch -----------------------------------------------------------------
-  const log: string[] = [];
-  const run = (options: { apply: boolean; restore: string | null }, target: CmsDatabase = db) =>
-    runCadeaubonPatch(
-      { ...options, backupDir },
-      {
-        db: target,
-        driver: 'pglite',
-        cookieJar,
-        log: (symbol, message) => log.push(`${symbol} ${message}`),
-      },
-    );
-
-  // An editor's saved-but-unpublished change on /aanbod.
-  const aanbodId = (await pageRow('aanbod')).id;
-  let calloutId = '';
-  await asAdmin(async () => {
-    const callout = (await repo.getPageForEdit(aanbodId))!.blocks.find(
-      (block) => block.type === 'cta',
-    )!;
-    calloutId = callout.id;
-    await repo.updateBlock(callout.id, { ...(callout.data as object), body: 'Concepttekst.' });
-  });
-
-  const writeCalls: string[] = [];
-  const watchedDb = new Proxy(db, {
-    get(target, property, receiver) {
-      const writes = ['insert', 'update', 'delete', 'execute', 'transaction', 'batch'];
-      if (typeof property === 'string' && writes.includes(property)) writeCalls.push(property);
-      const value = Reflect.get(target, property, receiver);
-      return typeof value === 'function' ? value.bind(target) : value;
-    },
-  });
-  await run({ apply: false, restore: null }, watchedDb);
-  const planned = log.join('\n');
-  check(
-    'dry run: no write call; plans the new page and "Overige"; blocks on the /aanbod draft',
-    writeCalls.length === 0 &&
-      !cookieJar.has('cms_session') &&
-      planned.includes('+ page /aanbod/cadeaubon — create and publish') &&
-      planned.includes('~ page /aanbod — 1 change(s), then publish') &&
-      planned.includes('/aanbod is not published or has unpublished draft edits') &&
-      log.at(-1)?.includes('dry run: blocked') === true,
-    writeCalls.join() || log.filter((line) => /^[~!+]/.test(line)).join(' | '),
-  );
-
-  let refused = '';
-  try {
-    await run({ apply: true, restore: null });
-  } catch (error) {
-    refused = error instanceof Error ? error.message : String(error);
-  }
-  check(
-    'apply: refuses the unpublished draft and creates nothing',
-    refused.includes('unpublished draft edits') &&
-      (await pageRow('aanbod/cadeaubon')) === undefined,
-    refused,
-  );
-
-  await asAdmin(async () => {
-    const callout = (await repo.getPageForEdit(aanbodId))!.blocks.find(
-      (block) => block.id === calloutId,
-    )!;
-    await repo.updateBlock(callout.id, { ...(callout.data as object), body: '' });
-  });
-  const guardsBefore = await guardCounts(planDeps);
-  const sessionsLeft = async () => (await db.select().from(schema.cmsSessions)).length;
-  const sessionsBefore = await sessionsLeft();
-  log.length = 0;
-  await run({ apply: true, restore: null });
-  const backupPath =
-    log.find((line) => line.includes('backup written: '))?.split('backup written: ')[1] ?? '';
-  const voucherPage = await getPublishedPage(locale, 'aanbod/cadeaubon');
-  const offers = await listPublishedOffers(locale);
-  check(
-    'apply: backup first, verified, session revoked; voucher page live; Overige last on /aanbod',
-    backupPath.includes('cadeaubon-patch-') &&
-      log.some((line) => line.includes('verified')) &&
-      (await sessionsLeft()) === sessionsBefore &&
-      !cookieJar.has('cms_session') &&
-      voucherPage?.snapshot.blocks.map((block) => block.type).join() === 'giftVoucher' &&
-      (await liveGroups()).join() === 'bikefit,begeleiding,overige',
-    log.at(-1),
-  );
-  check(
-    'catalogue: the voucher is the Overige card; the editor’s /aanbod kicker survives',
-    offers.some(
-      (offer) =>
-        offer.slug === 'cadeaubon' && offer.kind === 'giftVoucher' && offer.category === 'overige',
-    ) &&
-      ((await getPublishedPage(locale, 'aanbod'))?.snapshot.blocks[0].data as { eyebrow?: string })
-        ?.eyebrow === 'Ons volledige aanbod',
-  );
-  check(
-    'booking tables untouched; apply audited once',
-    JSON.stringify(await guardCounts(planDeps)) === JSON.stringify(guardsBefore) &&
-      (
-        await db
-          .select()
-          .from(schema.cmsAuditLog)
-          .where(eq(schema.cmsAuditLog.action, 'patch.cadeaubon.apply'))
-      ).length === 1,
-  );
-
-  log.length = 0;
-  await run({ apply: true, restore: null });
-  const nothing = log.some((line) => line.includes('nothing changed'));
-  await run({ apply: false, restore: backupPath });
-  const restored =
-    (await pageRow('aanbod/cadeaubon')).status === 'draft' &&
-    (await liveGroups()).join() === 'bikefit,begeleiding';
-  log.length = 0;
-  await run({ apply: true, restore: null });
-  check(
-    'idempotent; restore unpublishes the page and drops Overige; re-apply publishes the kept draft',
-    nothing &&
-      restored &&
-      log.some((line) => line.includes('publish the existing (unchanged) draft')) &&
-      (await pageRow('aanbod/cadeaubon')).status === 'published' &&
-      (await liveGroups()).join() === 'bikefit,begeleiding,overige',
-  );
-
-  // --- 2. order requests through the real service (fetch replaced) -----------------
+  // --- order requests through the real service (fetch replaced) --------------------
   const { requestGiftVoucher } = await import('@/lib/gift-voucher/service');
   const emailRepo = await import('@/lib/email/repo');
   const ORDER_INBOX = 'bestellingen-inbox@example.test';

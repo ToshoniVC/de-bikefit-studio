@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SERVICES } from '@/lib/booking/defaults';
 import { formatPrice } from '@/lib/booking/format';
-import { groupBookingChoices, offerPageSlug, resolveBookingSelection } from './catalogue';
-import { DEFAULT_OFFERS, offerBlockData } from './defaults';
-import { buildOfferCatalogue, type CataloguePage } from './offer-catalogue';
+import { groupBookingChoices, resolveBookingSelection } from './catalogue';
+import { DEFAULT_OFFERINGS, type DefaultOffering } from './defaults';
+import { buildOfferCatalogue } from './offer-catalogue';
 import type { OfferingServiceInfo, OfferingSettings } from './offering';
+import type { OfferingRecord } from './offering-content';
 
 /**
  * The public catalogue as Beheer → Aanbod shapes it: cards, statuses, prices,
- * durations, hidden pages, and which services `/afspraak` may offer. Pages and
- * services are the seeded ones (`defaults.ts`), so "before" (legacy, no
- * settings saved) and "after" (settings saved) can be compared directly.
+ * durations, hidden offerings, and which services `/afspraak` may offer. The
+ * offerings and services are the seeded ones (`defaults.ts`).
  */
 
 const SERVICES: OfferingServiceInfo[] = DEFAULT_SERVICES.map((service) => ({
@@ -27,180 +27,151 @@ const SERVICES: OfferingServiceInfo[] = DEFAULT_SERVICES.map((service) => ({
 const ALL_OFFERED = new Set(SERVICES.map((service) => service.id));
 const ADULT = 'svc-volwassenenfit';
 const YOUTH = 'svc-jeugdfit';
+const HOME = 'svc-fit-aan-huis';
 
-const PAGES: CataloguePage[] = [
-  ...DEFAULT_OFFERS.map((offer) => ({
-    id: `page-${offer.slug}`,
-    slug: offerPageSlug(offer.slug),
-    blocks: [{ type: 'offer', data: offerBlockData(offer) }],
-  })),
-  {
-    id: 'page-cadeaubon',
-    slug: 'aanbod/cadeaubon',
-    blocks: [
-      { type: 'giftVoucher', data: { sortOrder: 0, title: 'Cadeaubon', summary: '', intro: '' } },
-    ],
-  },
-  // Not an offer page: ignored.
-  { id: 'page-aanbod', slug: 'aanbod', blocks: [{ type: 'offerCatalogue', data: {} }] },
-];
+function record(entry: DefaultOffering, settings: Partial<OfferingSettings> = {}): OfferingRecord {
+  return {
+    id: `off-${entry.content.slug}`,
+    locale: 'nl',
+    content: entry.content,
+    settings: {
+      isListed: entry.isListed,
+      bookingMode: entry.bookingMode,
+      variantMode: entry.variantMode,
+      variants: entry.variants.map((variant) => ({
+        audience: variant.audience,
+        serviceId: variant.serviceSlug ? `svc-${variant.serviceSlug}` : null,
+        priceCents: null,
+      })),
+      ...settings,
+    },
+    updatedAt: '2026-10-17T08:00:00.000Z',
+  };
+}
 
-const BIKEFIT = 'page-bikefit-huidige-fiets';
-const LACTAAT = 'page-lactaattest';
+const SEEDED = DEFAULT_OFFERINGS.map((entry) => record(entry));
+const bikefit = (settings: Partial<OfferingSettings> = {}) =>
+  record(
+    DEFAULT_OFFERINGS.find((entry) => entry.content.slug === 'bikefit-huidige-fiets')!,
+    settings,
+  );
 
-const bikefitStored: OfferingSettings = {
-  isListed: true,
-  bookingMode: 'direct',
-  variantMode: 'audience',
-  variants: [
-    { audience: 'adult', serviceId: ADULT, priceCents: null },
-    { audience: 'youth', serviceId: YOUTH, priceCents: null },
-  ],
-};
-
-function build(
-  stored: Array<{ pageId: string; settings: OfferingSettings }> = [],
-  bookable: ReadonlySet<string> = ALL_OFFERED,
-) {
-  return buildOfferCatalogue({
-    pages: PAGES,
-    stored,
-    services: SERVICES,
-    bookableServiceIds: bookable,
-  });
+function build(offerings: OfferingRecord[] = SEEDED, bookable: ReadonlySet<string> = ALL_OFFERED) {
+  return buildOfferCatalogue({ offerings, services: SERVICES, bookableServiceIds: bookable });
 }
 
 function card(catalogue: ReturnType<typeof build>, slug: string) {
   return catalogue.offers.find((offer) => offer.slug === slug);
 }
 
-describe('buildOfferCatalogue: before and after the settings are saved', () => {
-  it('legacy (nothing saved): Bikefit bookable as Volwassene/Jeugd, the rest on request', () => {
+describe('buildOfferCatalogue: the seeded offer', () => {
+  it('seven shown offers in category order; Bikefit bookable as Volwassene/Jeugd, the rest on request', () => {
     const catalogue = build();
-    const bikefit = card(catalogue, 'bikefit-huidige-fiets')!;
-    expect(bikefit).toMatchObject({
+    expect(catalogue.offers.map((offer) => offer.slug)).toEqual([
+      'bikefit-nieuwe-fiets',
+      'bikefit-huidige-fiets',
+      'voetanalyse',
+      'zadelanalyse',
+      'afstellen-schoenplaatjes',
+      'lactaattest',
+      'coaching',
+    ]);
+    expect(card(catalogue, 'bikefit-huidige-fiets')).toMatchObject({
       status: 'bookable',
-      priceLabel: 'Prijs op aanvraag',
-      durationLabel: 'Volwassene: 1 u 30 min · Jeugd: 1 uur',
       bookingServiceSlugs: ['volwassenenfit', 'jeugdfit'],
+      durationLabel: 'Volwassene: 1 u 30 min · Jeugd: 1 uur',
+      priceLabel: 'Prijs op aanvraag',
     });
-    for (const offer of catalogue.offers.filter((entry) => entry.kind === 'service')) {
-      if (offer.slug === 'bikefit-huidige-fiets') continue;
-      expect(offer, offer.slug).toMatchObject({
-        status: 'enquiry',
-        priceLabel: 'Prijs op aanvraag',
-        bookingServiceSlugs: [],
-      });
-    }
-    expect(card(catalogue, 'cadeaubon')).toMatchObject({ kind: 'giftVoucher', status: null });
-    expect(catalogue.withheldServiceIds).toEqual([]);
-    expect(catalogue.hiddenPageIds).toEqual([]);
+    expect(catalogue.offers.filter((offer) => offer.status === 'enquiry')).toHaveLength(6);
+    expect(card(catalogue, 'lactaattest')?.durationLabel).toBe('Duur in overleg');
   });
 
-  it('saving the derived settings changes nothing a visitor sees', () => {
-    const before = build();
-    const after = build([{ pageId: BIKEFIT, settings: bikefitStored }]);
-    const strip = (offers: typeof before.offers) =>
-      offers.map(({ variants: _variants, ...offer }) => {
-        void _variants;
-        return offer;
-      });
-    expect(strip(after.offers)).toEqual(strip(before.offers));
-    expect(after.withheldServiceIds).toEqual([]);
+  it('the three hidden legacy services are kept out of sight and held back from /afspraak', () => {
+    const catalogue = build();
+    expect(catalogue.hiddenSlugs.sort()).toEqual([
+      'fit-aan-huis',
+      'gezinspakket',
+      'inspanningstest',
+    ]);
+    expect(catalogue.bySlug['fit-aan-huis']?.offering.isListed).toBe(false);
+    expect(catalogue.withheldServiceIds.sort()).toEqual([
+      HOME,
+      'svc-gezinspakket',
+      'svc-inspanningstest',
+    ]);
+    expect(catalogue.withheldServiceIds).not.toContain(ADULT);
+  });
+
+  it('the widget shows Bikefit once with Volwassene/Jeugd, and nothing hidden', () => {
+    const catalogue = build();
+    const withheld = new Set(catalogue.withheldServiceIds);
+    const services = SERVICES.filter((service) => !withheld.has(service.id));
+    expect(groupBookingChoices({ offers: catalogue.offers, services })).toEqual([
+      expect.objectContaining({ kind: 'offer', serviceIds: [ADULT, YOUTH] }),
+    ]);
+    expect(catalogue.variantDisplay[ADULT]).toEqual({ label: 'Volwassene', priceLabel: '' });
+    expect(
+      resolveBookingSelection({ requested: 'fit-aan-huis', offers: catalogue.offers, services }),
+    ).toEqual({
+      kind: 'unknown',
+      requested: 'fit-aan-huis',
+    });
   });
 });
 
 describe('buildOfferCatalogue: what Beheer → Aanbod controls', () => {
   it('a direct offering nobody offers is temporarily unavailable, never routed elsewhere', () => {
-    const catalogue = build(
-      [{ pageId: BIKEFIT, settings: bikefitStored }],
-      new Set(['svc-gezinspakket']),
-    );
-    const bikefit = card(catalogue, 'bikefit-huidige-fiets')!;
-    expect(bikefit).toMatchObject({ status: 'unavailable', bookingServiceSlugs: [] });
-    const selection = resolveBookingSelection({
-      requested: 'bikefit-huidige-fiets',
-      offers: catalogue.offers,
-      services: [{ id: 'svc-gezinspakket', slug: 'gezinspakket' }],
+    const catalogue = build(SEEDED, new Set([HOME]));
+    expect(card(catalogue, 'bikefit-huidige-fiets')).toMatchObject({
+      status: 'unavailable',
+      bookingServiceSlugs: [],
+      durationLabel: 'Volwassene: 1 u 30 min · Jeugd: 1 uur',
     });
-    expect(selection).toEqual({
-      kind: 'offer',
-      offer: {
-        slug: 'bikefit-huidige-fiets',
-        title: bikefit.title,
-        path: '/aanbod/bikefit-huidige-fiets',
-        status: 'unavailable',
-      },
-      serviceIds: [],
-      initialServiceId: null,
+    expect(catalogue.withheldServiceIds).not.toContain(ADULT);
+  });
+
+  it('a variant nobody offers is left out of the booking; the other stays bookable', () => {
+    const catalogue = build(SEEDED, new Set([ADULT]));
+    expect(card(catalogue, 'bikefit-huidige-fiets')).toMatchObject({
+      status: 'bookable',
+      bookingServiceSlugs: ['volwassenenfit'],
     });
   });
 
-  it('an enquiry offering keeps its status apart from "unavailable"', () => {
-    const catalogue = build();
-    const selection = resolveBookingSelection({
-      requested: 'lactaattest',
-      offers: catalogue.offers,
-      services: SERVICES,
-    });
-    expect(selection).toMatchObject({
-      kind: 'offer',
-      offer: { status: 'enquiry' },
-      serviceIds: [],
-    });
-  });
-
-  it('a hidden offering leaves every overview, its page 404s, and its services are held back', () => {
-    const catalogue = build([{ pageId: BIKEFIT, settings: { ...bikefitStored, isListed: false } }]);
-    expect(card(catalogue, 'bikefit-huidige-fiets')).toBeUndefined();
-    expect(catalogue.hiddenPageIds).toEqual([BIKEFIT]);
-    expect(catalogue.byPageId[BIKEFIT].offering?.isListed).toBe(false);
-    expect(new Set(catalogue.withheldServiceIds)).toEqual(new Set([ADULT, YOUTH]));
-  });
-
-  it('switching Bikefit to enquiry holds its services back from /afspraak', () => {
+  it('a hidden offering leaves every overview, its slug is listed, its services are held back', () => {
     const catalogue = build([
-      { pageId: BIKEFIT, settings: { ...bikefitStored, bookingMode: 'enquiry' } },
+      bikefit({ isListed: false }),
+      ...SEEDED.filter((r) => r.content.slug !== 'bikefit-huidige-fiets'),
+    ]);
+    expect(card(catalogue, 'bikefit-huidige-fiets')).toBeUndefined();
+    expect(catalogue.hiddenSlugs).toContain('bikefit-huidige-fiets');
+    expect(catalogue.bySlug['bikefit-huidige-fiets']?.content.title).toBe(
+      'Bikefit – huidige fiets',
+    );
+    expect(catalogue.withheldServiceIds).toEqual(expect.arrayContaining([ADULT, YOUTH]));
+  });
+
+  it('switching Bikefit to enquiry holds its services back and keeps the editorial duration', () => {
+    const catalogue = build([
+      bikefit({ bookingMode: 'enquiry' }),
+      ...SEEDED.filter((r) => r.content.slug !== 'bikefit-huidige-fiets'),
     ]);
     expect(card(catalogue, 'bikefit-huidige-fiets')).toMatchObject({
       status: 'enquiry',
       bookingServiceSlugs: [],
+      durationLabel: 'Duur in overleg',
     });
-    expect(new Set(catalogue.withheldServiceIds)).toEqual(new Set([ADULT, YOUTH]));
-    const bookable = SERVICES.filter((s) => !catalogue.withheldServiceIds.includes(s.id));
-    expect(bookable.map((service) => service.slug)).toEqual([
-      'gezinspakket',
-      'fit-aan-huis',
-      'inspanningstest',
-    ]);
-  });
-
-  it('an offering saved for a draft page still holds its services back', () => {
-    const catalogue = build([{ pageId: 'page-draft', settings: bikefitStored }]);
-    // The published Bikefit page has no row (legacy) and releases them again.
-    expect(catalogue.withheldServiceIds).toEqual([]);
-    const onlyDraft = buildOfferCatalogue({
-      pages: PAGES.filter((page) => page.id !== BIKEFIT),
-      stored: [{ pageId: 'page-draft', settings: bikefitStored }],
-      services: SERVICES,
-      bookableServiceIds: ALL_OFFERED,
-    });
-    expect(new Set(onlyDraft.withheldServiceIds)).toEqual(new Set([ADULT, YOUTH]));
+    expect(catalogue.withheldServiceIds).toEqual(expect.arrayContaining([ADULT, YOUTH]));
   });
 
   it('prices and labels per variant reach the cards and the widget', () => {
-    const catalogue = build([
-      {
-        pageId: BIKEFIT,
-        settings: {
-          ...bikefitStored,
-          variants: [
-            { audience: 'adult', serviceId: ADULT, priceCents: 15000 },
-            { audience: 'youth', serviceId: YOUTH, priceCents: null },
-          ],
-        },
-      },
-    ]);
+    const priced = bikefit({
+      variants: [
+        { audience: 'adult', serviceId: ADULT, priceCents: 15000 },
+        { audience: 'youth', serviceId: YOUTH, priceCents: null },
+      ],
+    });
+    const catalogue = build([priced]);
     expect(card(catalogue, 'bikefit-huidige-fiets')?.priceLabel).toBe(
       `Volwassene ${formatPrice(15000)} · Jeugd op aanvraag`,
     );
@@ -210,45 +181,18 @@ describe('buildOfferCatalogue: what Beheer → Aanbod controls', () => {
     });
   });
 
-  it('a legacy offering never overrides the widget prices of its services', () => {
-    expect(build().variantDisplay).toEqual({});
-  });
-
-  it('a single-option enquiry with a price shows it; the widget groups only bookable variants', () => {
-    const catalogue = build(
-      [
-        {
-          pageId: LACTAAT,
-          settings: {
-            isListed: true,
-            bookingMode: 'enquiry',
-            variantMode: 'single',
-            variants: [{ audience: 'all', serviceId: null, priceCents: 9500 }],
-          },
-        },
-        { pageId: BIKEFIT, settings: bikefitStored },
-      ],
-      new Set([ADULT, 'svc-gezinspakket']),
-    );
-    expect(card(catalogue, 'lactaattest')).toMatchObject({
-      status: 'enquiry',
-      priceLabel: formatPrice(9500),
-    });
-    const services = [
-      { id: ADULT, slug: 'volwassenenfit' },
-      { id: 'svc-gezinspakket', slug: 'gezinspakket' },
-    ];
-    expect(groupBookingChoices({ offers: catalogue.offers, services })).toEqual([
+  it('a single-option enquiry with a price shows it', () => {
+    const coaching = SEEDED.find((r) => r.content.slug === 'coaching')!;
+    const catalogue = build([
       {
-        kind: 'offer',
-        offer: {
-          slug: 'bikefit-huidige-fiets',
-          title: card(catalogue, 'bikefit-huidige-fiets')!.title,
-          path: '/aanbod/bikefit-huidige-fiets',
+        ...coaching,
+        settings: {
+          ...coaching.settings,
+          variants: [{ audience: 'all', serviceId: null, priceCents: 9900 }],
         },
-        serviceIds: [ADULT],
       },
-      { kind: 'service', serviceId: 'svc-gezinspakket' },
     ]);
+    expect(card(catalogue, 'coaching')?.priceLabel).toBe(formatPrice(9900));
+    expect(catalogue.variantDisplay).toEqual({});
   });
 });

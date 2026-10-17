@@ -872,9 +872,34 @@ These are not code; they make the texts true.
       50 % late-cancellation fee, the exception to the withdrawal right and
       the Google Calendar point above.
 
+## 13. Afspraken toewijzen ("Iedereen") and a provider at several places
+
+Since 17 Oct 2026 (`booking-architecture.md` §16):
+
+- **A booking made as "Iedereen"** (the customer did not pick an aanbieder, and more than one
+  offers the service) waits for you. The provider who was free first holds the slot (the
+  customer cannot be double-booked) but is not told; the customer's confirmation says who does
+  the fit will follow by e-mail. You get "Toe te wijzen: …" at the order-and-enquiry inbox
+  (`GIFT_VOUCHER_RECIPIENT` or `/admin/email` → *Ontvanger bestellingen en aanvragen*; without
+  one, every active beheerder's login address). **Afspraken** shows "N afspraken wachten op
+  toewijzing" with *Toon enkel die*; on such a row pick the aanbieder in the *Toewijzen* select
+  (the holder is preselected) and click *Toewijzen*. The aanbieder gets "Nieuwe afspraak", the
+  customer "Je afspraak is bij <naam>". Refused when the aanbieder is inactive, does not offer
+  the service, or is not free then (another booking or Google busy time); business hours are
+  not enforced here. *Andere aanbieder* on an assigned row moves a booking the same way (the
+  previous aanbieder gets "Afspraak niet meer bij jou").
+- **With *Klant kan een aanbieder kiezen* switched off** (Instellingen → Boeken) every booking
+  is "Iedereen": with several aanbieders, every booking waits for you.
+- **An aanbieder at several places:** Openingsuren → per tijdvak the *Locatie* select (empty =
+  the standaardlocatie). Slots then say where they are; a service pinned to one studio is not
+  offered from a tijdvak at another studio. Nothing changes for an aanbieder who never sets it.
+- **No mail arrives?** The to-do is sent with the same service as every other mail (§6, §10
+  "Mail does not arrive"); with no inbox and no active admin login it is logged as
+  `no_recipient` and the booking still shows in Afspraken.
+
 ## 12. Cadeaubon — order requests by e-mail
 
-`/aanbod/cadeaubon` (block *Cadeaubon (bestelformulier)*) lets a visitor order a gift voucher:
+`/cadeaubon` (block *Cadeaubon (bestelformulier)*; until 17 Oct 2026 `/aanbod/cadeaubon`) lets a visitor order a gift voucher:
 amount of their choice in euro, an optional personal message (plain text, max. 500 characters),
 name, e-mail and optionally phone. **Bestel nu** sends one e-mail **to the studio**; nothing is
 paid, invoiced or issued on the site and the visitor gets no automatic mail.

@@ -659,6 +659,8 @@ export const businessHoursRowSchema = z
       .min(1, 'Ongeldig einduur.')
       .max(1440, 'Ongeldig einduur.')
       .default(1080),
+    /** Where the provider is during this range; null = their default location. */
+    locationId: z.string().trim().max(64).nullable().default(null),
   })
   .refine((row) => row.startMinute < row.endMinute, 'Het einduur moet na het beginuur liggen.');
 
@@ -676,7 +678,10 @@ const WEEKDAY_NAMES = [
 
 /**
  * Replaces the provider's weekly hours (several ranges per weekday allowed,
- * but they may not overlap). `provider.manage` or own `provider.self`.
+ * but they may not overlap, whatever their location: one person cannot be in
+ * two places). A range may name the location the provider is at then
+ * (17 Oct 2026); without one it is their default location.
+ * `provider.manage` or own `provider.self`.
  */
 export async function setBusinessHours(
   providerId: string,
@@ -701,6 +706,16 @@ export async function setBusinessHours(
       return err(`De uren op ${WEEKDAY_NAMES[cur.weekday]} overlappen.`);
     }
   }
+  const locationIds = [...new Set(clean.map((row) => row.locationId).filter(Boolean))];
+  if (locationIds.length) {
+    const found = await (
+      await getCmsDb()
+    )
+      .select({ id: cmsLocations.id })
+      .from(cmsLocations)
+      .where(inArray(cmsLocations.id, locationIds as string[]));
+    if (found.length !== locationIds.length) return err('Een of meer locaties bestaan niet.');
+  }
 
   const db = await getCmsDb();
   // Delete first: a partial failure leaves the provider closed, never overbooked.
@@ -708,7 +723,7 @@ export async function setBusinessHours(
   const inserted = clean.length
     ? await db
         .insert(cmsBusinessHours)
-        .values(clean.map((row) => ({ ...row, providerId })))
+        .values(clean.map((row) => ({ ...row, locationId: row.locationId || null, providerId })))
         .returning()
     : [];
 
@@ -924,6 +939,8 @@ export type BookingListFilters = {
   status?: CmsBookingStatus | 'all';
   /** Only bookings starting within this many days from now (e.g. 7 for the dashboard). */
   withinDays?: number;
+  /** `pending`: only bookings that still wait for a beheerder's assignment (`repo-assignment.ts`). */
+  assignment?: 'pending';
   /** Default 200. */
   limit?: number;
 };
@@ -990,6 +1007,7 @@ export async function listBookings(filters: BookingListFilters = {}): Promise<Bo
   if (filters.serviceId) conditions.push(eq(cmsBookings.serviceId, filters.serviceId));
   if (filters.status && filters.status !== 'all')
     conditions.push(eq(cmsBookings.status, filters.status));
+  if (filters.assignment === 'pending') conditions.push(eq(cmsBookings.assignment, 'pending'));
 
   const now = new Date();
   const range = filters.range ?? 'upcoming';

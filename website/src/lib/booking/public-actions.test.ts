@@ -76,7 +76,8 @@ const LEAKS = [
 
 const BOOK_INPUT: BookActionInput = {
   serviceId: 'svc-bikefit',
-  providerId: '',
+  providerId: null,
+  locationId: null,
   startsAt: '2026-10-20T08:00:00.000Z',
   name: CUSTOMER_NAME,
   email: CUSTOMER_EMAIL,
@@ -95,6 +96,7 @@ const BOOK_INPUT: BookActionInput = {
 const SUMMARY = {
   serviceName: 'Bikefit',
   providerName: 'Aanbieder',
+  assignmentPending: false,
   startsAt: '2026-10-20T08:00:00.000Z',
   endsAt: '2026-10-20T09:30:00.000Z',
   timezone: 'Europe/Brussels',
@@ -111,7 +113,7 @@ function booked(): CreatePublicBookingResult {
     cancelUrl: `https://studio.invalid/afspraak/annuleren/${CANCEL_TOKEN}`,
     booking: { bookingId: BOOKING_ID, ...SUMMARY },
     googleSyncStatus: 'synced',
-    emailSent: { customer: true, provider: true },
+    emailSent: { customer: true, provider: true, admin: false },
   };
 }
 

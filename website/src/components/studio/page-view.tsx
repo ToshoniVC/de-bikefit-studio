@@ -4,7 +4,6 @@ import {
   breadcrumbJsonLd,
   faqJsonLd,
   jsonLdDocument,
-  offerServiceJsonLd,
   servicesJsonLd,
   webPageJsonLd,
   type BreadcrumbEntry,
@@ -20,7 +19,8 @@ import { JsonLd } from './json-ld';
  * The breadcrumb always goes out as `BreadcrumbList` JSON-LD. It is shown as
  * visible markup only on nested pages (`/aanbod/voetanalyse`), built from the
  * same array with the published ancestors in between, so the two can never
- * disagree. On a top-level page "Home / Aanbod" only repeats the header
+ * disagree (an offering's page, `/aanbod/<slug>`, is rendered by
+ * `offer-detail.tsx` and does the same). On a top-level page "Home / Aanbod" only repeats the header
  * navigation, so it is left out there (Toshoni's review, 13 Oct 2026).
  *
  * `requestedService` is the validated `?dienst=` value; only the booking
@@ -33,7 +33,7 @@ export function StudioPageView({
   studio: StudioPage;
   requestedService?: string | null;
 }) {
-  const { page, settings, canonical, locale, parents, offer } = studio;
+  const { page, settings, canonical, locale, parents } = studio;
   const origin = absoluteUrl('/').replace(/\/+$/, '');
   const isHome = page.slug === '';
   const blocks = page.snapshot.blocks;
@@ -66,7 +66,6 @@ export function StudioPageView({
     trail.length > 0 ? breadcrumbJsonLd(canonical, trail) : null,
     faqJsonLd(blocks, canonical),
     ...servicesJsonLd(blocks, settings, origin),
-    offerServiceJsonLd(blocks, settings, origin, canonical, offer?.offering ?? null),
   ]);
 
   return (
@@ -93,11 +92,7 @@ export function StudioPageView({
         </nav>
       ) : null}
 
-      <BlockRenderer
-        blocks={blocks}
-        locale={locale}
-        page={{ slug: page.slug, requestedService, offer }}
-      />
+      <BlockRenderer blocks={blocks} locale={locale} page={{ slug: page.slug, requestedService }} />
     </>
   );
 }

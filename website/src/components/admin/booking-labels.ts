@@ -75,3 +75,16 @@ export function centsToEuroInput(cents: number | null): string {
   if (cents === null || cents === undefined) return '';
   return (cents / 100).toFixed(2).replace('.', ',').replace(/,00$/, '');
 }
+
+/** A location as the admin selects (service, provider and offering forms). */
+export type LocationOption = {
+  id: string;
+  name: string;
+  kind: CmsLocationKind;
+  isActive: boolean;
+};
+
+export function locationOptionLabel(location: LocationOption): string {
+  const kind = LOCATION_KIND_LABELS[location.kind];
+  return `${location.name} (${kind.toLowerCase()})${location.isActive ? '' : ' — inactief'}`;
+}

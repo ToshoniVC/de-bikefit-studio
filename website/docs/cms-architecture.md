@@ -29,7 +29,7 @@ File ownership during parallel work comes from the work-block file (see
 | --- | --- |
 | Data | `src/db/cms-schema.ts` (the `cms_*` tables of the CMS and booking), `src/db/cms-mfa-schema.ts` (the four `cms_mfa_*` tables), `src/db/cms.ts` (driver), `drizzle/**`, `drizzle.config.ts` |
 | CMS core | `src/lib/cms/{auth,guard,session,password,permissions,blocks,block-primitives,blocks-aanbod,content,offers-content,repo,repo-admin}.ts` |
-| Offer ("Aanbod") | `src/lib/offers/{catalogue,defaults}.ts` (plain), `src/lib/studio/seed-content/**` (seed + rollout content), `src/lib/studio/editorial-images.{ts,json}`, `scripts/cms-rollout-aanbod.mts`, `scripts/lib/aanbod-rollout{,-plan,-run}.mts` — see §14 |
+| Offer ("Aanbod") | `src/lib/offers/{catalogue,offering,offering-content,offer-catalogue,defaults}.ts` (plain), `src/lib/offers/{offering-store,repo}.ts` (server-only), `src/db/cms-offering-schema.ts`, `src/app/(studio)/aanbod/[slug]/page.tsx` + `src/components/studio/offer-detail.tsx`, `src/app/admin/(dashboard)/aanbod/**` + `src/components/admin/offering-form.tsx`, `src/lib/studio/seed-content/**` (seed + rollout content), `src/lib/studio/editorial-images.{ts,json}`, `scripts/cms-migrate-aanbod.mts` + `scripts/lib/aanbod-migrate.mts`, `scripts/lib/offerings-bootstrap.mts`, `scripts/cms-rollout-aanbod.mts` + `scripts/lib/aanbod-rollout{,-plan,-run}.mts` — see §14 |
 | Admin | `src/app/admin/**`, `src/components/admin/**`, `src/lib/cms/actions/**` (server actions + `sanitize.ts`), `src/app/api/cms/media/**` |
 | Public site | `src/app/(studio)/**`, `src/components/studio/**`, `src/lib/studio/**`, `src/app/sitemap.ts`, `src/app/robots.ts` |
 | Booking | `src/lib/booking/**`, `src/lib/email/**`, `src/app/api/google/oauth/**` — see `booking-architecture.md` |
@@ -799,7 +799,7 @@ navigation, redirects or settings**.
 | **Manage users** | `user.read`, `user.manage` | ❌ | ❌ | ✅ |
 | **Read audit log** | `audit.read` | ❌ | ❌ | ✅ |
 | **E-mail service** (`/admin/email`: key, sender, reply-to, order inbox, test mail) | `email.manage` | ❌ | ❌ | ✅ |
-| Beheer → Aanbod: shown, variants, prices, direct booking or enquiry (§15) | `offering.manage` | ❌ | ✅ | ✅ |
+| Beheer → Aanbod: the offer itself — text, shown, variants with their booking services, prices, direct booking or enquiry (§14) | `offering.manage` | ❌ | ❌ | ✅ |
 | All bookings | `booking.read` | ❌ | ✅ | ✅ |
 | Own bookings | `booking.read.own` | ✅ | ❌ | ✅ |
 | Cancel / complete any booking | `booking.manage` | ❌ | ❌ | ✅ |
@@ -821,8 +821,9 @@ self-test checks this). `*.own` is resolved server-side from the signed-in
 user's `cms_providers` row. Since 16 Oct 2026 the service catalogue is
 admin-only: a provider no longer has `service.create`, and a service they
 created earlier (`created_by`) gives them no right to edit, price or deactivate
-it; they only subscribe their own profile to active services. The *Diensten*
-menu item is hidden for providers (`notFor` in `shell.tsx`). Details:
+it; they only subscribe their own profile to active services. Since 17 Oct 2026
+the services are written from Beheer → Aanbod (admin); there is no *Diensten*
+screen any more. Details:
 [`booking-architecture.md`](./booking-architecture.md) §3 and §14.
 
 `ROLE_RANK = { provider: 0, editor: 1, admin: 2 }`, so
@@ -878,12 +879,12 @@ repo call. A forged cookie gets past middleware and is rejected there.
 
 ## 5. Block registry
 
-`src/lib/cms/blocks.ts`. Sixteen block types: eleven derived from the real
+`src/lib/cms/blocks.ts`. Fifteen block types: eleven derived from the real
 prototype (`prototype/index.html`, `prototype/bikefit.html`) and copy decks
 (`content/index.html`, `content/about.html`, `content/booking.html`),
-`booking` for the online booking widget, and `offer`, `offerCatalogue`,
-`giftVoucher` and `team` for the 13 Oct 2026 redesign (defined in `blocks-aanbod.ts` and spread
-into the registry; shared field schemas such as `imageRefSchema` live in
+`booking` for the online booking widget, and `offerCatalogue`, `giftVoucher`
+and `team` for the 13 Oct 2026 redesign (defined in `blocks-aanbod.ts` and spread
+into the registry; the `offer` block was retired on 17 Oct 2026, §14; shared field schemas such as `imageRefSchema` live in
 `block-primitives.ts` and are re-exported from `blocks.ts`).
 
 ```ts
@@ -909,9 +910,8 @@ defaultDataFor('hero')          // deep clone of the above
 | `pricing` | Prijzen | **no amounts exist anywhere in the source material** — see below |
 | `contact` | Contact | phone, city, "Op afspraak" — no street address or e-mail is known |
 | `testimonial` | Ervaringen | 4 reviews from the copy deck, all marked placeholder |
-| `offer` | Dienst (aanbod) | one offer on `/aanbod/<slug>`: title, intro, the booking button "Boek een afspraak voor deze dienst" (→ `/afspraak?dienst=<slug>#boeken`), Doel, Inhoud, Duur, Kostprijs, Mogelijke extra's. `category` (`bikefit`\|`begeleiding`), `sortOrder`, `summary` (overview card), `bookingServiceSlugs` (see §14). For an unlinked offer, editorial `priceCents`/`priceLabel` and `duration` supply the public text (fallback "Prijs op aanvraag" / "Duur in overleg"). For a linked offer, public duration names each bookable CMS service variant; independent editorial price is ignored in page, card and JSON-LD until approved service-level variant pricing is implemented. The page path is the offer's identity. The editor hint points at `content-placeholders.md`. |
-| `offerCatalogue` | Aanbod (overzicht) | grouped overview (Bikefit, Begeleiding, Overige); owns only its title and per-group title/lede — the cards are read from the published offer pages at render time (`listPublishedOffers`), so nothing is duplicated |
-| `giftVoucher` | Cadeaubon (bestelformulier) | the gift voucher page `/aanbod/cadeaubon`: page head (owns the `<h1>`) + the order form (amount of choice, personal message, contact details, button "Bestel nu"). Owns only copy (`eyebrow`, `title`, `intro`, `summary` for the card, `formTitle`, `sentTitle`, `sentText`, `sortOrder`); fields, rules and sending are code in `src/lib/gift-voucher/` (server action → `sendEmail` to the order inbox from `/admin/email` / env `GIFT_VOUCHER_RECIPIENT`, never `contact.email`; success only when Resend accepted it). Its page becomes a card in category `overige` ("Bedrag naar keuze") and is never a booking target. Ops: `booking-runbook.md` §12 |
+| `offerCatalogue` | Aanbod (overzicht) | grouped overview (Bikefit, Begeleiding, Overige); owns only its title, per-group title/lede and `extraCards` (fixed cards that are not offerings: the gift voucher) — the offering cards are read from Beheer → Aanbod at render time (`listPublishedOffers`), so nothing is duplicated (§14) |
+| `giftVoucher` | Cadeaubon (bestelformulier) | the gift voucher page `/cadeaubon`: page head (owns the `<h1>`) + the order form (amount of choice, personal message, contact details, button "Bestel nu"). Owns only copy (`eyebrow`, `title`, `intro`, `formTitle`, `sentTitle`, `sentText`; `summary` and `sortOrder` are kept for old content); fields, rules and sending are code in `src/lib/gift-voucher/` (server action → `sendEmail` to the order inbox from `/admin/email` / env `GIFT_VOUCHER_RECIPIENT`, never `contact.email`; success only when Resend accepted it). Its card on `/aanbod` is an `extraCards` entry of that page's catalogue block ("Bedrag naar keuze"); it is never a booking target. Ops: `booking-runbook.md` §12 |
 | `team` | Team | profiles: name, role, bio paragraphs (verified text only), image; without an image the initials are drawn. `internalNote` is never rendered and names the person's open register rows; interim profiles end with "Een uitgebreid profiel volgt binnenkort." |
 | `booking` | Afspraak boeken | the booking widget on `/afspraak` (service → provider → day → slot → details → confirmation). Carries copy and a filter only: `serviceIds` (empty = every active service), `showProviderChoice` (AND-ed with the `booking.showProviderChoice` setting), `successTitle`, `successText` (empty → `booking.confirmationText`). Services, providers and live availability are read at render time through `@/lib/booking/content`, so nothing in the block goes stale. |
 
@@ -1441,11 +1441,12 @@ appear in no structured data.
 
 ### 12.6 Seeding
 
-`npm run cms:seed` creates, fills and **publishes** the seventeen Dutch pages
-(`/`, `/aanbod`, seven `/aanbod/<slug>`, `/aanbod/cadeaubon`, `/voor-wie`,
-`/bikefit`, `/ons-team`, `/veelgestelde-vragen`, `/afspraak`, `/privacy`,
-`/algemene-voorwaarden`), both menus and the redirects `/bikefit.html →
-/bikefit`, `/over-ons → /ons-team` and `/contact → /afspraak`, through `repo.ts`, so the snapshots,
+`npm run cms:seed` creates, fills and **publishes** the ten Dutch pages
+(`/`, `/aanbod`, `/cadeaubon`, `/voor-wie`, `/bikefit`, `/ons-team`,
+`/veelgestelde-vragen`, `/afspraak`, `/privacy`, `/algemene-voorwaarden`), both
+menus and the redirects `/bikefit.html → /bikefit`, `/over-ons → /ons-team`,
+`/aanbod/cadeaubon → /cadeaubon` and `/contact → /afspraak`, through `repo.ts`
+(the offerings themselves are rows written by `cms:bootstrap`, §14), so the snapshots,
 audit entries and permission checks are the real ones. It does that by giving
 the write API the request context it expects (`scripts/lib/request-context.mts`):
 `module.registerHooks()` stubs for `server-only`, `next/headers` and
@@ -1603,156 +1604,111 @@ above the fields; `offer` and `team` use it to point editors at the register.
 
 ---
 
-## 14. Offer ("Aanbod"), audiences and team — 13 Oct 2026
+## 14. The offer ("Aanbod"): the offering is the offer — 17 Oct 2026
 
-**Pages.** `/aanbod` (intro + `offerCatalogue`), one page per offer at
-`/aanbod/<slug>` (a single `offer` block, which also owns the page's `<h1>`),
-`/voor-wie`, `/ons-team` (replaces `/over-ons`, which is unpublished — row and
-snapshot kept — and redirected 301), plus a new home page whose first section
-after the hero is the grouped offer, and `/bikefit` with the 3D-analysis
-section and the Bikefit offers instead of the old "Vier manieren om te
-boeken". Main menu: Aanbod, Voor wie, Bikefit, Ons team, Contact (the logo is
-the way home; the header CTA stays "Afspraak maken"). FAQ, booking and the
-legal pages are in the footer. Every "Boek je bikefit" button books like that CTA
-(`/afspraak`); only visible phone numbers use `tel:` (`cms:patch-booking-cta` fixes
-older content, `staging-runbook.md` §10).
+Toshoni's brief (17 Oct 2026): one place for the offer, no sub-pages, one list on `/aanbod`
+that shows what is set to visible, descriptions managed where the offer is managed, and the
+offer linked to booking and to the providers. Before this (13–16 Oct 2026) an offer was a CMS
+page under `/aanbod/<slug>` with an `offer` block, Beheer → Aanbod held only its settings and
+Beheer → Diensten held the booking services; that split is gone.
 
-**Site review (13 Oct 2026).** `/afspraak` is the one place to book or ask: it
-opens on "Kies je moment" (the booking section owns the `<h1>`; widget headings
-follow one level below), then "Voor je komt" with "Andere vraag?" (mail and
-phone). `/contact` is retired like `/over-ons` (unpublished, 301 to
-`/afspraak`) and the "Contact" menu items point at `/afspraak`. No "Ninove"
-kicker and no second heading on `/aanbod`, `/voor-wie`, `/ons-team`; the
-footer shows the public e-mail (settings `contact.email`) and no longer the
-company identity line, which stays on the legal pages. The edits for existing
-databases are pure data in `src/lib/studio/seed-content/page-cleanup.ts`,
-applied by `cms:patch-page-cleanup` (`staging-runbook.md` §11).
-
-**One source per offer.** (Since 16 Oct 2026 the settings — shown, variants,
-prices, direct booking or enquiry — are in Beheer → Aanbod, §15; this paragraph
-describes the copy and the derivation without saved settings.) Title and summary live on the offer page's `offer`
-block. For an unlinked enquiry offer, so do editorial price and duration; for
-a linked booking offer, duration comes from the active, offered `cms_services`
-rows and independent offer price is withheld pending approved variant display.
-Overviews derive their cards from the published pages
-(`listPublishedOffers`, tags `cms` + `cms:pages`), so publishing an offer page
-updates the home page, `/aanbod` and `/bikefit` at once. Category order is
-fixed (Bikefit, Begeleiding); inside a category `sortOrder`, then title.
-
-**Prices only under `/aanbod` (13 Oct 2026, Toshoni).** An `offerCatalogue`
-card shows its price line only when "Prijzen tonen" is on *and* the page is
-`/aanbod` or an offer page (`showsOfferPrices`, `src/lib/offers/catalogue.ts`).
-The home page and `/bikefit` therefore never show prices, also for content
-published before the rule (no data patch needed); their seeds set the switch
-off. A filled-in `pricing` block (placeholder off) follows the same rule: it
-renders only on `/aanbod` and offer pages and is left out entirely elsewhere.
-The offer page itself always shows Kostprijs. Booking, checkout and the
-admin are not affected. The site header is the logo, menu and "Afspraak maken"
-only: the prototype's utility bar (city, phone, hours) is gone; the footer
-keeps those contact details.
-
-**Booking link.** Every offer page links to `/afspraak?dienst=<offer slug>#boeken`.
-The booking block resolves it on the server (`resolveBookingSelection`,
-`src/lib/offers/catalogue.ts`); the reconciliation with the booking catalogue is
-in `booking-architecture.md` §14.
-
-**Images.** Three temporary AI images (generic people) in
-`public/images/editorial/`, written into blocks via `editorialImage()`;
-provenance in [`editorial-images.md`](./editorial-images.md). Team members never
-get a generated image: the `team` block draws initials.
-
-**Staging rollout.** The real site is database-backed, so a deploy alone
-changes nothing. `npm run cms:rollout-aanbod` (dry run by default; the dry run is strictly
-read-only: no session row, no audit entry, writes refused by a read-only db
-handle) applies
-exactly these pages, both menus, the `/over-ons` retirement and its redirect to
-an existing database — backup first, through the repo, booking tables verified
-untouched, idempotent, reversible with `--restore`. Procedure:
-[`staging-runbook.md`](./staging-runbook.md) §9. No migration is needed: the
-new block types are zod-validated `text` in `cms_blocks`, as every block type.
-
-**Compatibility.** The new code renders old content unchanged (the old blocks
-are all still valid). Old code reading a page that uses `offer`,
-`offerCatalogue` or `team` treats it as unpublished (404) — so deploy the code
-before running the rollout.
-
----
-
-## 15. Offering management: Beheer → Aanbod — 16 Oct 2026
-
-Toshoni's brief: one place in Beheer where an editor or admin decides, per offer, whether it is
-shown on the website, whether it has separate **Volwassene** and **Jeugd** variants or one option,
-the price (per variant where they differ), and whether it is **booked directly online** or
-**asked for** through a form; providers choose themselves what they offer. Booking details:
-`booking-architecture.md` §15.
-
-**One place per decision, no parallel controls.**
+**One row per offer.** `cms_offerings` (`src/db/cms-offering-schema.ts`, migrations 0010 +
+0011) holds, per offering: the copy a visitor reads (slug, category, order, title, summary,
+intro, Doel, Inhoud, Mogelijke extra's and their note, the free-text Duur of an offering that is
+asked for, the button label, image, meta description) and the decisions (shown on the website,
+one option or Volwassene/Jeugd, booked directly online or asked for). `cms_offering_variants`
+holds per variant the booking service it is booked as and its public price. The booking service
+(`cms_services`: duration, buffer, location, guardian rule) is written by the same admin form;
+bookings keep referencing it by id.
 
 | Decision | Where | Who |
 | --- | --- | --- |
-| Copy, image, category, order; Duur of an offer that is asked for | the offer page (`offer` block) in Pagina's; publish as before | editor, admin publishes |
-| Shown on the website; one option or Volwassene/Jeugd; price per variant; direct booking (as which service per variant) or enquiry | **Beheer → Aanbod** (`/admin/aanbod`), tables `cms_offerings` + `cms_offering_variants` (migration 0010, `src/db/cms-offering-schema.ts`). Takes effect at once (no publish step) | `offering.manage`: editor, admin |
-| Duration, buffer, location, guardian rule, active (the bookable unit) | Beheer → Diensten (`cms_services`); a service that is a variant of a saved offering shows "prijs en label via Aanbod" instead of its own price and label fields (stored values kept as hidden fields) | `service.manage`: admin |
-| Who offers a variant | *Mijn agenda → Mijn aanbod* (the provider for their own profile), grouped per offering; an admin can do it in Aanbieders | `service.subscribe.own` / `provider.manage` |
+| Everything about an offering: text, image, shown or not, variants, duration/buffer/location/guardian per variant, price per variant, direct booking or enquiry | **Beheer → Aanbod** (`/admin/aanbod`, one screen per offering, "Nieuw aanbod"). Takes effect at once (no publish step) | `offering.manage`: admin |
+| Who offers a variant | *Mijn agenda → Mijn aanbod* (the provider for their own profile), grouped per offering; an admin can do it under Aanbieders | `service.subscribe.own` / `provider.manage` |
+| The overview page itself (intro, group titles, the voucher card) | the CMS page `/aanbod` (`offerCatalogue` block) in Pagina's, like any page | editor, admin publishes |
 
-The `offer` block keeps `bookingServiceSlugs`, `priceCents` and `priceLabel` in its schema (old
-content stays valid) but the block editor no longer shows them (`managedFields` in the registry,
-`field-spec.ts`); the editor keeps their stored values. They are read only to **derive** the
-settings of an offer page without a `cms_offerings` row (`deriveLegacyOffering()`,
-`src/lib/offers/offering-legacy.ts`): no linked service → asked for, one option, its editorial
-cents; one service → direct, one option; Volwassenenfit + Jeugdfit (one with the guardian rule) →
-direct, Volwassene/Jeugd; never a price copied from a service. So the site behaves the same before
-and after migration 0010 and before and after `cms:migrate-offerings` (staging-runbook §18), which
-saves exactly those derivations; anything not exact (a free-text price label, an unknown slug, a
-service that shows its own widget price) is reported and left for an editor.
+**Pages.** `/aanbod` is a CMS page (page head + `offerCatalogue` + the callout). The
+`offerCatalogue` block reads the shown offerings at render time (`listPublishedOffers`, tags
+`cms` + `cms:offerings` + `booking`) and groups them (Bikefit, Begeleiding, Overige); its
+`extraCards` are fixed cards that are not offerings — the gift voucher under Overige, linking
+to `/cadeaubon`. `/aanbod/<slug>` is served by `src/app/(studio)/aanbod/[slug]/page.tsx` from
+the offering (`getPublishedOffer`, `src/components/studio/offer-detail.tsx`: breadcrumb, Service
++ WebPage + BreadcrumbList JSON-LD, the same template for every offering), without a CMS page;
+an unknown or hidden slug falls through to a CMS page, a redirect or 404 like the catch-all. The
+sitemap lists the pages and the shown offerings. There is no `offer` block any more; the gift
+voucher page moved to `/cadeaubon` (`/aanbod/cadeaubon` is a 301). Pagina's therefore shows
+one "Aanbod" page.
 
-**Modules.** `src/lib/offers/offering.ts` (pure: modes, validation, `settingsFromRows`,
-`resolveOffering`, price/duration labels, `offeringBookingSlugs`, `withheldServiceIds`),
-`offering-legacy.ts` (pure derivation), `offer-catalogue.ts` (pure: pages + settings + who offers
-what → cards, `hiddenPageIds`, `withheldServiceIds`, `variantDisplay`), `offering-store.ts`
-(server-only cached read, tags `cms` + `cms:offerings` + `booking`; a failed read derives every
-page and logs `[aanbod] offerings_unavailable`), `repo.ts` (admin read/write, `offering.manage`,
-audit `offering.update`, bust `cms:offerings` + `booking`), `src/lib/cms/offers-content.ts`
-(`loadOfferCatalogue`, `React.cache` per request; `listPublishedOffers` unchanged in contract;
-`isServiceBookableOnline` for the booking actions), `src/lib/cms/actions/offerings.ts`,
-`src/app/admin/(dashboard)/aanbod/page.tsx` + `src/components/admin/offerings-manager.tsx`.
+**Public behaviour.** Status per offering: **Online te boeken** (direct, ≥ 1 active provider with
+an active account on ≥ 1 variant's active service), **Tijdelijk niet online te boeken** (direct,
+nobody offers it: card greyed, button disabled, phone as the way to ask), **Op aanvraag** (enquiry:
+the button scrolls to the form on the page). *Shown* off → left out of every overview, `/aanbod/<slug>`
+answers 404, out of the sitemap, its services held back from `/afspraak`. Kostprijs: "Prijs op
+aanvraag" until a variant has a price; one amount for one option; "Volwassene € 150,00 · Jeugd op
+aanvraag" per variant; prices only on `/aanbod` and the offer pages (`showsOfferPrices`). Duur:
+direct → from the variants' services; enquiry → the offering's own text. JSON-LD `offers` mirror
+the prices. Booking links: `/afspraak?dienst=<slug>#boeken`, resolved on the server
+(`resolveBookingSelection`); the booking side is `booking-architecture.md` §14.
 
-**Public behaviour.**
+**Modules.** `src/lib/offers/offering-content.ts` (pure: the copy, validation, `contentFromRow`),
+`offering.ts` (pure: modes, settings validation incl. the per-variant service facts,
+`resolveOffering`, labels, `withheldServiceIds`), `offer-catalogue.ts` (pure: offerings + services
++ who offers what → cards, `bySlug`, `hiddenSlugs`, `withheldServiceIds`, `variantDisplay`),
+`offering-store.ts` (server-only cached read), `repo.ts` (admin: `listOfferingsForAdmin`,
+`getOfferingForAdmin`, `createOffering`, `updateOffering`, `deleteOffering`,
+`listOfferingSubscriptionGroups`; writes the services of direct variants, audits
+`offering.create|update|delete` + `service.create`), `defaults.ts` (the seven offers of the
+brief plus the three older services as hidden offerings, written by `cms:bootstrap`),
+`offering-legacy.ts` (only for `cms:migrate-aanbod`), `src/lib/cms/offers-content.ts`
+(`loadOfferCatalogue`, `getPublishedOffer`, `isServiceBookableOnline`),
+`src/lib/cms/actions/offerings.ts`, `src/components/admin/offering-form.tsx`,
+`src/app/admin/(dashboard)/aanbod/{page,nieuw/page,[id]/page}.tsx`.
 
-- *Shown* off → the offer leaves every overview (`/aanbod`, home, `/bikefit`), its page answers
-  404 (`getStudioPage`) and is left out of the sitemap; its text stays in Pagina's.
-- Status per offer: **Online te boeken** (direct, ≥ 1 active provider with an active account on
-  ≥ 1 variant's active service), **Tijdelijk niet online te boeken** (direct, nobody offers it:
-  card greyed — dashed edge and muted title, contrast kept — and the detail page's button
-  disabled, no availability shown or suggested, the phone number as the way to ask), **Op
-  aanvraag** (enquiry, on purpose: the button scrolls to the form on the page). Cards on every
-  overview name the status; prices stay `/aanbod`-only (§14).
-- Kostprijs: "Prijs op aanvraag" until a variant has a price; one amount for one option;
-  "Volwassene € 150,00 · Jeugd op aanvraag" per variant. Never € 0, never invented. JSON-LD
-  `offers` mirror it (one `Offer` per priced variant, named when there are two) and never use the
-  block's editorial fields once an offering is resolved.
-- Duur: direct → from the variants' active services ("Volwassene: 1 u 30 min · Jeugd: 1 uur");
-  enquiry → the page's Duur text.
+**Enquiry form** (`src/lib/offer-enquiry/`, `src/components/studio/offer-enquiry-form.tsx`):
+unchanged — name, e-mail, optional phone, "Voor wie?" for Volwassene/Jeugd, the question;
+honeypot; rate limit on `cms_rate_limits`; mailed to the order inbox (env `GIFT_VOUCHER_RECIPIENT`,
+else Beheer → E-mail), visitor as Reply-To; nothing stored; the server re-checks that the offering
+is shown and set to enquiry (`findEnquiryOffer`).
 
-**Enquiry form** (`src/lib/offer-enquiry/`, `src/components/studio/offer-enquiry-form.tsx`).
-Name, e-mail, optional phone (normalised to one `+32`), "Voor wie?" when the offering has
-Volwassene/Jeugd, the question; honeypot; privacy link; nothing stored. The server action
-re-checks that the offer is shown and set to enquiry (`findEnquiryOffer`), so the form cannot
-mail about another page. Rate limit on `cms_rate_limits` with the shared race-free reservation
-(`aanvraag:ip:<ip>`, `aanvraag:email:<sha256>`, 5 per 15 min per key; duplicate marker
-`aanvraag-sent:<request id>` for a day). The mail goes to the existing order inbox (env
-`GIFT_VOUCHER_RECIPIENT`, else Beheer → E-mail → *Ontvanger bestellingen en aanvragen*), never
-`contact.email` and never a hardcoded address, through `sendEmail()` with the visitor as Reply-To;
-the subject carries the offer and a reference, no personal data. Success only when the provider
-accepted the mail; otherwise "niet verstuurd" with the input kept. Logs: `[aanvraag] niet
-verstuurd (<code>)`, `[aanvraag] enquiry_action_failed`.
+**Providers.** A user with the role Aanbieder *is* a provider: Gebruikers → role Aanbieder (or a
+role change to it) creates the `cms_providers` row at once
+(`src/lib/booking/repo-provider-profile.ts`, `ensureProviderProfile`), and an older Aanbieder
+account completes itself with one click on Mijn agenda. Aanbieders → "Nieuwe aanbieder" stays
+for making an admin or editor bookable, or login and profile in one go.
 
-**Tests.** `offering.test.ts`, `offer-catalogue.test.ts`, `offer-enquiry/{input,delivery}.test.ts`,
-`actions/offerings.test.ts` (provider refused, editor/admin save, validation), the booking-action
-gate in `public-actions.test.ts`, JSON-LD in `jsonld.test.ts`; on PGlite self-test section 14d
-(`scripts/selftest/offerings.mts`).
+**Seeds and existing databases.** `cms:bootstrap` writes the default offerings (create-only, by
+slug); `cms:seed` writes the pages (`/aanbod` with the voucher card, `/cadeaubon`, …) and the
+redirects. An existing database with offer pages is converted once by `npm run cms:migrate-aanbod`
+(dry run by default, read-only; `--apply --expect-host`): every offer page becomes an offering
+with its text and its saved or derived settings, services no offering books through become
+hidden offerings, the voucher page moves, the voucher card is put on `/aanbod`, the pages are
+deleted (backed up first). Procedure: `staging-runbook.md` §19. The older one-off tools
+`cms:patch-cadeaubon` and `cms:migrate-offerings` are retired; `cms:rollout-aanbod` still
+applies the five pages, menus and redirects.
 
-**Decisions to confirm (Toshoni).** Editors get `offering.manage`, as asked: their Aanbod changes
-(including prices and hiding an offer) go live without the admin's publish step — one line in
-`permissions.ts` makes it admin-only. The env name `GIFT_VOUCHER_RECIPIENT` is kept for
-compatibility although the inbox now also receives enquiries.
+**Images.** Three temporary AI images (generic people) in `public/images/editorial/`, written
+into the home/bikefit/voor-wie blocks and into the default offerings via `editorialImage()`;
+provenance in [`editorial-images.md`](./editorial-images.md). Team members never get a generated
+image: the `team` block draws initials.
+
+**Tests.** `offering-content.test.ts`, `offering.test.ts`, `offer-catalogue.test.ts`,
+`catalogue.test.ts`, `jsonld.test.ts`, `actions/offerings.test.ts`, the seed-content tests; on
+PGlite self-test section 14d (`scripts/selftest/offerings.mts`: migrations, bootstrap, the
+migration CLI, permissions, the admin write with its services, provider self-service, the
+booking gate, the enquiry form, the provider profile).
+
+**Decisions to confirm (Toshoni).** `offering.manage` is admin-only (it writes the booking
+catalogue). The three older services (Gezinspakket, Fit aan huis, Inspanningstest) are hidden
+offerings and therefore not bookable until shown. The env name `GIFT_VOUCHER_RECIPIENT` is kept
+although the inbox also receives enquiries.
+
+---
+
+## 15. Retired: offer pages and Beheer → Diensten (13–16 Oct 2026)
+
+Until 17 Oct 2026 an offer was a CMS page with an `offer` block, Beheer → Aanbod kept only
+settings keyed by page id (`deriveLegacyOffering()` filled in the rest), and Beheer → Diensten
+edited `cms_services` on its own. §14 replaces all three; `cms:migrate-aanbod` carries existing
+databases over. The block type `offer` no longer exists: a published snapshot that still holds
+one does not validate and is not served — which is why the migration runs right after the deploy
+(staging-runbook §19).

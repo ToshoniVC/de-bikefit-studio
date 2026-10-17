@@ -458,7 +458,7 @@
   }
 }
 
-/* ---- gift voucher order form (`giftVoucher`, /aanbod/cadeaubon) --------- */
+/* ---- gift voucher order form (`giftVoucher`, /cadeaubon) ---------------- */
 /* Reuses the booking form fields; only the panel spacing is its own, the
    same as the enquiry panel. */
 @layer components {

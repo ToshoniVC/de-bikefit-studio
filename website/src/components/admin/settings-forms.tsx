@@ -379,7 +379,7 @@ export function SettingsForms({
             name="showProviderChoice"
             label="Klant kan een aanbieder kiezen"
             defaultChecked={settings.booking.showProviderChoice}
-            hint="Uit: de klant kiest enkel een dienst en krijgt de eerste vrije aanbieder."
+            hint="Aan: de klant kiest eerst “Iedereen” of een aanbieder (en ziet dan enkel diens aanbod en agenda). Uit, of bij “Iedereen”: de beheerder wijst de afspraak toe zodra meer dan één aanbieder ze kan doen (Afspraken → Toewijzen, met een e-mail als geheugensteun)."
           />
         </div>
       </SettingForm>

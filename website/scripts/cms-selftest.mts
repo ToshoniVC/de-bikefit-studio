@@ -55,6 +55,11 @@
  *  14. booking flow on PGlite (provider without Google): the new provider's
  *      forced password change, repo scopes, public create / re-check / rate
  *      limit / cancel by token
+ *  14e. several locations per provider (a location per hours row, slots say
+ *      where, pinned services) and "Iedereen" bookings that wait for the
+ *      beheerder's assignment: pending/assigned, the to-do list, assignBooking
+ *      (moves, refusals, audit), migration 0012 twice
+ *      (`scripts/selftest/assignment.mts`)
  *  14b. public booking rate limit under concurrency (R-2): migration 0008,
  *      the reservation helper (parallel, release, window, prune), parallel
  *      `createPublicBooking()` bursts from one IP, for one e-mail, without a
@@ -65,16 +70,19 @@
  *      service has `created_by` = them) cannot create, edit, price, deactivate
  *      or reactivate, through the repo or the server actions; subscriptions on
  *      the own profile to active services only (`scripts/selftest/service-catalogue.mts`)
- *  14d. Beheer → Aanbod: migration 0010, `cms:migrate-offerings` (dry run writes
- *      nothing, apply, idempotent, public card unchanged), `offering.manage`
- *      (provider refused, editor and admin save), provider self-service and
- *      booking eligibility (unavailable / bookable / enquiry / hidden, the
- *      booking-action gate, hidden page 404), the enquiry form on the real store
- *      with no outbound mail (`scripts/selftest/offerings.mts`)
- *  15. aanbod rollout + service preselection: the CLI dry run and the plan
- *      write nothing (no session, no audit, read-only db), draft guard,
- *      apply/backup, booking tables untouched, catalogue, menus, /over-ons
- *      301, `?dienst=` resolution, idempotent re-apply, restore
+ *  14d. Beheer → Aanbod (the offering is the offer): migrations 0010 + 0011,
+ *      the bootstrap offerings, `cms:migrate-aanbod` from legacy offer pages
+ *      (dry run writes nothing, apply converts and deletes the pages, moves
+ *      the voucher, idempotent), `offering.manage` (provider and editor
+ *      refused, admin saves; services written with the offering), provider
+ *      self-service and booking eligibility (unavailable / bookable / enquiry
+ *      / hidden, the booking-action gate, `?dienst=` resolution, hidden page
+ *      404), the enquiry form on the real store with no outbound mail, and
+ *      the provider profile that comes with the Aanbieder role
+ *      (`scripts/selftest/offerings.mts`)
+ *  15. aanbod rollout: the CLI dry run and the plan write nothing (no
+ *      session, no audit, read-only db), draft guard, apply/backup, booking
+ *      tables untouched, menus, /over-ons 301, idempotent re-apply, restore
  *      (`scripts/selftest/aanbod.mts`)
  *  16. booking CTA patch: dry run writes nothing, refuses unpublished drafts,
  *      retargets only "Boek je bikefit" hrefs to /afspraak (phone links keep
@@ -85,9 +93,7 @@
  *      editor-changed fields, applies exactly the review (pages, /contact
  *      301 + unpublish, menus, e-mail), verified, idempotent, restore
  *      (`scripts/selftest/page-cleanup.mts`)
- *  18. gift voucher: `cms:patch-cadeaubon` (dry run writes nothing, draft
- *      guard, page + "Overige" published and verified, idempotent, restore)
- *      and the order service on the database with `fetch` replaced (missing
+ *  18. gift voucher: the order service on the database with `fetch` replaced (missing
  *      key/sender or a refusal is "not sent", only an accepted request is a
  *      success, no double mail, rate limit, the recipient is its own setting
  *      with an env override and never `contact.email`)
@@ -575,14 +581,7 @@ async function main() {
   });
 
   const { cadeaubonSection } = await import('./selftest/cadeaubon.mjs');
-  await cadeaubonSection({
-    db,
-    admin: user,
-    check,
-    section,
-    cookieJar,
-    backupDir: resolve(process.cwd(), DATA_DIR, 'rollout-backups'),
-  });
+  await cadeaubonSection({ db, admin: user, check, section, cookieJar });
 
   const { emailServiceSection } = await import('./selftest/email-service.mjs');
   await emailServiceSection({
@@ -1277,6 +1276,7 @@ async function bookingSections(
     admin,
     provider: { id: providerId, userId: providerUserId },
     cookieJar,
+    backupDir: resolve(process.cwd(), DATA_DIR, 'rollout-backups'),
   });
   await signInAs(providerUserId);
   const closure = await repo.setAvailabilityExceptions(providerId, [
@@ -1554,6 +1554,28 @@ async function bookingSections(
     );
     const revive = await repo.setBookingStatus(booked2.bookingId, 'confirmed');
     check('repo: a cancelled booking cannot be revived', !revive.ok);
+  }
+
+  // 14e: several locations per provider + "Iedereen" assigned by the beheerder.
+  if (studio.ok && home.ok) {
+    const { assignmentSection } = await import('./selftest/assignment.mjs');
+    await assignmentSection({
+      db,
+      check,
+      section,
+      signInAs,
+      admin,
+      provider: { id: providerId, userId: providerUserId },
+      studioId: studio.data.id,
+      homeId: home.data.id,
+      services: {
+        adultFitId: adultFit.data.id,
+        youthFitId: youthFit.data.id,
+        homeFitId: homeFit.data.id,
+      },
+      weekHours,
+      tz: TZ,
+    });
   }
   cookieJar.clear();
 }

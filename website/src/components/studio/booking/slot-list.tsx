@@ -2,26 +2,29 @@ import { instantToTime } from './dates';
 import type { BookingSlot } from './types';
 
 export function slotKey(slot: BookingSlot): string {
-  return `${slot.providerId}|${slot.startsAt}`;
+  return `${slot.providerId}|${slot.startsAt}|${slot.locationId ?? ''}`;
 }
 
 /**
  * Step 3b — the free start times on the chosen day, in the booking time zone.
- * With "Iedereen" and more than one provider, each time also names who it is
- * with, so two providers free at 10:00 are two distinct choices.
+ * When the provider works from more than one place that month, each time
+ * also names where it is, so 10:00 in Ninove and 10:00 in Aalst are two
+ * distinct choices. Who does the fit is never shown here: with "Iedereen" the
+ * beheerder assigns it afterwards.
  */
 export function SlotList({
   slots,
   timezone,
-  providerNames,
-  showProvider,
+  locationLabels,
+  showLocation,
   selectedKey,
   onSelect,
 }: {
   slots: BookingSlot[];
   timezone: string;
-  providerNames: Record<string, string>;
-  showProvider: boolean;
+  /** Location id → label ("De Bikefit Studio, Ninove", "Bij jou thuis"). */
+  locationLabels: Record<string, string>;
+  showLocation: boolean;
   selectedKey: string | null;
   onSelect: (slot: BookingSlot) => void;
 }) {
@@ -30,19 +33,19 @@ export function SlotList({
       {slots.map((slot) => {
         const key = slotKey(slot);
         const time = instantToTime(slot.startsAt, timezone);
-        const provider = providerNames[slot.providerId] ?? '';
+        const where = slot.locationId ? (locationLabels[slot.locationId] ?? '') : '';
         return (
           <li key={key}>
             <button
               type="button"
               className="studio-booking__slot"
               aria-pressed={selectedKey === key}
-              aria-label={showProvider && provider ? `${time} bij ${provider}` : time}
+              aria-label={showLocation && where ? `${time}, ${where}` : time}
               onClick={() => onSelect(slot)}
             >
               <span className="studio-booking__slot-time">{time}</span>
-              {showProvider && provider ? (
-                <span className="studio-booking__slot-provider">{provider}</span>
+              {showLocation && where ? (
+                <span className="studio-booking__slot-provider">{where}</span>
               ) : null}
             </button>
           </li>

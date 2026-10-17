@@ -11,13 +11,14 @@ import type { CmsRole } from '@/db/cms-schema';
  *                 `service.create`, no `service.manage` (16 Oct 2026). No access
  *                 to pages, media or settings.
  *  - **editor** — day-to-day content work: pages, blocks, media, navigation,
- *                 the offering settings in Beheer → Aanbod (`offering.manage`:
- *                 shown or not, variants, prices, direct booking or enquiry;
- *                 Toshoni, 16 Oct 2026), plus read-only access to bookings,
- *                 services, locations and providers.
+ *                 plus read-only access to bookings, services, locations and
+ *                 providers.
  *  - **admin**  — everything, including publishing, users, redirects, site
- *                 settings, the e-mail service, the audit log and all booking
- *                 management.
+ *                 settings, the e-mail service, the audit log, all booking
+ *                 management and the offer itself (Beheer → Aanbod,
+ *                 `offering.manage`: copy, shown or not, variants, prices,
+ *                 the booking services; 17 Oct 2026, since it writes the
+ *                 booking catalogue).
  *
  * Worker B must call `can(user.role, '<permission>')` (or `requireCmsUser`
  * with a role) in every server action *and* use it to hide UI. Hiding alone is
@@ -59,11 +60,11 @@ export const CMS_PERMISSIONS = [
    */
   'email.manage',
   /**
-   * Beheer → Aanbod: per offer page, shown on the website or not, one option or
-   * Volwassene/Jeugd, the price per variant, and booked directly (as an existing
-   * service) or asked for through the enquiry form. Takes effect at once (no
-   * publish step), like the booking catalogue. Creating or changing a service
-   * itself stays `service.manage`.
+   * Beheer → Aanbod: the offer itself — copy, shown on the website or not,
+   * one option or Volwassene/Jeugd, the price per variant, booked directly
+   * or asked for through the enquiry form, and the booking service of every
+   * variant (duration, buffer, location, guardian rule). Takes effect at
+   * once (no publish step). Admin only, like `service.manage`.
    */
   'offering.manage',
   // Booking
@@ -101,7 +102,6 @@ const EDITOR_PERMISSIONS = new Set<CmsPermission>([
   'navigation.update',
   'settings.read',
   'redirect.read',
-  'offering.manage',
   'booking.read',
   'service.read',
   'location.read',

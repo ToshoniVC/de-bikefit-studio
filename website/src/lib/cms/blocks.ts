@@ -261,13 +261,15 @@ export const testimonialSchema = z.object({
 });
 
 /**
- * `booking` — the online booking widget on `/afspraak` (service → provider →
- * day → slot → details → confirmation). The block carries copy and a service
- * filter only; services, providers, rules and live availability are read at
- * render time through `@/lib/booking/content`, so nothing here goes stale.
+ * `booking` — the online booking widget on `/afspraak` (provider or
+ * "Iedereen" → service → day → slot → details → confirmation). The block
+ * carries copy and a service filter only; services, providers, rules and live
+ * availability are read at render time through `@/lib/booking/content`, so
+ * nothing here goes stale.
  *
  * `showProviderChoice` is AND-ed with the `booking.showProviderChoice` site
- * setting and only matters when more than one provider offers the service.
+ * setting and only matters when more than one provider is bookable. A booking
+ * made as "Iedereen" waits for the beheerder's assignment (17 Oct 2026).
  * An empty `successText` falls back to `booking.confirmationText`.
  */
 export const bookingSchema = z.object({
@@ -291,12 +293,6 @@ export type BlockDefinition<S extends z.ZodType = z.ZodType> = {
   description: string;
   /** One line shown above the fields in the admin editor (e.g. where open placeholders are tracked). */
   editorHint?: string;
-  /**
-   * Top-level fields kept in the schema (old content stays valid and keeps its
-   * values) but not shown in the block editor, because another screen owns
-   * them (the `offer` block's booking and price fields: Beheer → Aanbod).
-   */
-  managedFields?: readonly string[];
   schema: S;
   defaultData: z.infer<S>;
 };
@@ -688,7 +684,7 @@ export const blockRegistry = {
     },
   },
 
-  // `offer`, `offerCatalogue`, `team` — see `blocks-aanbod.ts`.
+  // `offerCatalogue`, `giftVoucher`, `team` — see `blocks-aanbod.ts`.
   ...aanbodBlockRegistry,
 } as const satisfies Record<string, BlockDefinition>;
 

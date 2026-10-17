@@ -121,6 +121,7 @@ describe('computeSlots', () => {
       startsAt: '2026-10-05T07:00:00.000Z',
       endsAt: '2026-10-05T08:00:00.000Z',
       providerId: 'p1',
+      locationId: null,
     });
   });
 
@@ -295,8 +296,16 @@ describe('isSlotAvailable', () => {
 
 describe('mergeSlots', () => {
   it('collapses providers that share a start into one entry, sorted by start', () => {
-    const seven = { startsAt: '2026-10-05T07:00:00.000Z', endsAt: '2026-10-05T08:00:00.000Z' };
-    const eight = { startsAt: '2026-10-05T08:00:00.000Z', endsAt: '2026-10-05T09:00:00.000Z' };
+    const seven = {
+      startsAt: '2026-10-05T07:00:00.000Z',
+      endsAt: '2026-10-05T08:00:00.000Z',
+      locationId: null,
+    };
+    const eight = {
+      startsAt: '2026-10-05T08:00:00.000Z',
+      endsAt: '2026-10-05T09:00:00.000Z',
+      locationId: null,
+    };
     const merged = mergeSlots([
       { ...eight, providerId: 'p2' },
       { ...seven, providerId: 'p1' },
@@ -307,14 +316,104 @@ describe('mergeSlots', () => {
       {
         startsAt: '2026-10-05T07:00:00.000Z',
         endsAt: '2026-10-05T08:00:00.000Z',
+        locationId: null,
         providerIds: ['p1'],
       },
       {
         startsAt: '2026-10-05T08:00:00.000Z',
         endsAt: '2026-10-05T09:00:00.000Z',
+        locationId: null,
         providerIds: ['p2', 'p1'],
       },
     ]);
+  });
+
+  it('keeps two locations at one start apart', () => {
+    const eight = { startsAt: '2026-10-05T08:00:00.000Z', endsAt: '2026-10-05T09:00:00.000Z' };
+    const merged = mergeSlots([
+      { ...eight, providerId: 'p1', locationId: 'ninove' },
+      { ...eight, providerId: 'p2', locationId: 'aalst' },
+      { ...eight, providerId: 'p3', locationId: 'ninove' },
+    ]);
+    expect(merged.map((entry) => [entry.locationId, entry.providerIds])).toEqual([
+      ['ninove', ['p1', 'p3']],
+      ['aalst', ['p2']],
+    ]);
+  });
+});
+
+describe('locations (17 Oct 2026)', () => {
+  const ninove = { ...open(MONDAY, '09:00', '12:00'), locationId: 'ninove' };
+  const aalst = { ...open(MONDAY, '13:00', '15:00'), locationId: 'aalst' };
+  const anywhere = open(MONDAY, '16:00', '18:00');
+
+  it('puts every slot at the location of its hours row, and rows without one at the default', () => {
+    const slots = slotsFor({ hours: [ninove, aalst, anywhere], defaultLocationId: 'studio' });
+    expect(slots.map((slot) => [formatTime(slot.startsAt), slot.locationId])).toEqual([
+      ['09:00', 'ninove'],
+      ['09:30', 'ninove'],
+      ['10:00', 'ninove'],
+      ['10:30', 'ninove'],
+      ['11:00', 'ninove'],
+      ['13:00', 'aalst'],
+      ['13:30', 'aalst'],
+      ['14:00', 'aalst'],
+      ['16:00', 'studio'],
+      ['16:30', 'studio'],
+      ['17:00', 'studio'],
+    ]);
+    expect(slotsFor({ hours: [anywhere] }).every((slot) => slot.locationId === null)).toBe(true);
+  });
+
+  it('keeps overlapping rows at two places apart but blocks both with one booking', () => {
+    const both = slotsFor({
+      hours: [ninove, { ...open(MONDAY, '10:00', '11:00'), locationId: 'aalst' }],
+      bookings: [
+        { startsAt: '2026-10-05T08:00:00Z', endsAt: '2026-10-05T09:00:00Z', bufferAfterMinutes: 0 },
+      ], // 10:00–11:00
+    });
+    expect(both.map((slot) => [formatTime(slot.startsAt), slot.locationId])).toEqual([
+      ['09:00', 'ninove'],
+      ['11:00', 'ninove'],
+    ]);
+  });
+
+  it('closes every location on a closed day and adds an open exception at the default', () => {
+    const closed = slotsFor({
+      hours: [ninove, aalst],
+      exceptions: [{ date: DATE, kind: 'closed', startMinute: null, endMinute: null }],
+    });
+    expect(closed).toEqual([]);
+    const extra = slotsFor({
+      hours: [ninove],
+      defaultLocationId: 'studio',
+      exceptions: [
+        { date: DATE, kind: 'closed', startMinute: null, endMinute: null },
+        { date: DATE, kind: 'open', startMinute: min('18:00'), endMinute: min('20:00') },
+      ],
+    });
+    expect(extra.map((slot) => [formatTime(slot.startsAt), slot.locationId])).toEqual([
+      ['18:00', 'studio'],
+      ['18:30', 'studio'],
+      ['19:00', 'studio'],
+    ]);
+  });
+
+  it('cuts a partial closed exception out of every location', () => {
+    const slots = slotsFor({
+      hours: [ninove, { ...open(MONDAY, '09:00', '12:00'), locationId: 'aalst' }],
+      exceptions: [
+        { date: DATE, kind: 'closed', startMinute: min('10:00'), endMinute: min('11:00') },
+      ],
+    });
+    expect(starts(slots)).toEqual(['09:00', '09:00', '11:00', '11:00']);
+  });
+
+  it('isSlotAvailable can ask for a location', () => {
+    const slots = slotsFor({ hours: [ninove, aalst] });
+    expect(isSlotAvailable(slots, '2026-10-05T07:00:00.000Z', 'p1', 'ninove')).toBe(true);
+    expect(isSlotAvailable(slots, '2026-10-05T07:00:00.000Z', 'p1', 'aalst')).toBe(false);
+    expect(isSlotAvailable(slots, '2026-10-05T07:00:00.000Z', undefined, null)).toBe(false);
   });
 });
 

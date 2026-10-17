@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { validateBlock, validateNavigationItems } from '@/lib/cms/blocks';
-import {
-  OFFER_CTA_LABEL,
-  offerFromPage,
-  offerPageSlug,
-  sortOffers,
-  type CatalogueOffer,
-} from '@/lib/offers/catalogue';
 import { DEFAULT_OFFERS } from '@/lib/offers/defaults';
 import {
   AANBOD_PAGES,
@@ -16,20 +9,12 @@ import {
   RETIRED_PAGE_SLUG,
   TEAM_MEMBERS,
 } from './aanbod';
+import { CADEAUBON_CARD } from './cadeaubon';
 
 function page(slug: string) {
   const found = AANBOD_PAGES.find((entry) => entry.slug === slug);
   if (!found) throw new Error(`no seed page ${slug}`);
   return found;
-}
-
-/** What `listPublishedOffers()` would return once these pages are published. */
-function catalogue(): CatalogueOffer[] {
-  return sortOffers(
-    AANBOD_PAGES.map((entry) => offerFromPage({ slug: entry.slug, blocks: entry.blocks })).filter(
-      (entry): entry is CatalogueOffer => entry !== null,
-    ),
-  );
 }
 
 const allText = JSON.stringify(AANBOD_PAGES);
@@ -44,16 +29,16 @@ describe('aanbod rollout pages', () => {
     }
   });
 
-  it('owns exactly the intended slugs and never the retired one', () => {
+  it('owns exactly the intended slugs: no offer sub-pages (offerings are rows), never the retired one', () => {
     expect(AANBOD_PAGES.map((entry) => entry.slug)).toEqual([
       '',
       'aanbod',
-      ...DEFAULT_OFFERS.map((entry) => offerPageSlug(entry.slug)),
       'voor-wie',
       'bikefit',
       'ons-team',
     ]);
     expect(AANBOD_PAGES.some((entry) => entry.slug === RETIRED_PAGE_SLUG)).toBe(false);
+    expect(allText).not.toContain('"type":"offer"');
   });
 
   it('home: the first section after the hero is the grouped offer, not "Voor wie"', () => {
@@ -68,42 +53,47 @@ describe('aanbod rollout pages', () => {
     ]);
     expect((first.data.cta as { href: string }).href).toBe('/aanbod');
     expect(first.data.showPrices).toBe(false);
+    expect(first.data.extraCards ?? []).toEqual([]);
   });
 
-  it('/aanbod shows both groups; the catalogue derives all seven offers from their pages', () => {
+  it('/aanbod shows all three groups with prices, and the gift voucher as the one extra card', () => {
     const block = page('aanbod').blocks.find((entry) => entry.type === 'offerCatalogue');
     expect(block?.data.showPrices).toBe(true);
-    const offers = catalogue();
-    expect(offers.map((entry) => entry.slug)).toEqual(DEFAULT_OFFERS.map((entry) => entry.slug));
-    expect(offers.filter((entry) => entry.category === 'bikefit')).toHaveLength(5);
-    expect(offers.filter((entry) => entry.category === 'begeleiding')).toHaveLength(2);
-    for (const entry of offers) {
-      expect(entry.path).toBe(`/aanbod/${entry.slug}`);
-      expect(entry.priceLabel).toBe('Prijs op aanvraag');
-    }
+    expect((block?.data.groups as { category: string }[]).map((group) => group.category)).toEqual([
+      'bikefit',
+      'begeleiding',
+      'overige',
+    ]);
+    expect(block?.data.extraCards).toEqual([CADEAUBON_CARD]);
+    expect(CADEAUBON_CARD).toMatchObject({
+      category: 'overige',
+      href: '/cadeaubon',
+      priceLabel: 'Bedrag naar keuze',
+    });
   });
 
-  it('catalogue cards and detail pages agree (one source per offer)', () => {
-    for (const defaults of DEFAULT_OFFERS) {
-      const detail = page(offerPageSlug(defaults.slug));
-      const offerBlocks = detail.blocks.filter((block) => block.type === 'offer');
-      expect(offerBlocks).toHaveLength(1);
-      const data = offerBlocks[0].data;
-      expect(detail.title).toBe(defaults.title);
-      expect(data.title).toBe(defaults.title);
-      expect(data.ctaLabel).toBe(OFFER_CTA_LABEL);
-      expect(data.goal).toBe(defaults.goal);
-      expect(data.contents).toEqual(defaults.contents);
-      expect(data.extras).toEqual(defaults.extras);
-      expect(String(data.extrasNote)).toMatch(/vooraf/);
-      expect(data.bookingServiceSlugs).toEqual(defaults.bookingServiceSlugs);
-      const card = catalogue().find((entry) => entry.slug === defaults.slug);
-      expect(card?.title).toBe(data.title);
-      expect(card?.summary).toBe(defaults.summary);
+  it('the seven offerings are the brief, verbatim: no price, no device brand, an honest duration', () => {
+    const text = JSON.stringify(DEFAULT_OFFERS);
+    expect(DEFAULT_OFFERS.map((entry) => entry.content.title)).toEqual([
+      'Bikefit – aankoop nieuwe fiets',
+      'Bikefit – huidige fiets',
+      'Voetanalyse',
+      'Zadelanalyse',
+      'Afstellen schoenplaatjes',
+      'Lactaattest',
+      'Coaching',
+    ]);
+    for (const entry of DEFAULT_OFFERS) {
+      expect(entry.content.goal).toBe(entry.content.summary);
+      expect(entry.content.extrasNote).toMatch(/vooraf/);
+      expect(entry.content.image.url).toMatch(/^\/images\/editorial\//);
+      expect(entry.content.metaDescription.length).toBeGreaterThan(40);
     }
+    expect(text).not.toMatch(/€|\bgratis\b/);
+    expect(text).not.toMatch(/Retül|Retul|Vicon|Kinetic|Gebiomized|idmatch/i);
   });
 
-  it('/bikefit keeps the explanation and process, adds 3D analysis, and lists the new Bikefit offer', () => {
+  it('/bikefit keeps the explanation and process, adds 3D analysis, and lists the Bikefit offers', () => {
     const blocks = page('bikefit').blocks;
     const types = blocks.map((block) => block.type);
     expect(types).toContain('process');
@@ -158,7 +148,6 @@ describe('aanbod rollout pages', () => {
       /garantie|gegarandeerd|garanderen|voorkomt blessures|blessurevrij|geneest|behandel/i,
     );
     expect(allText).not.toMatch(/Retül|Retul|Vicon|Kinetic|Gebiomized|idmatch/i);
-    // "diagnose" only ever appears negated.
     for (const match of allText.matchAll(/[^.]*diagnose[^.]*/gi)) {
       expect(match[0]).toMatch(/geen medische diagnose/);
     }
@@ -192,9 +181,14 @@ describe('aanbod navigation', () => {
     expect(hrefs).not.toContain('/');
   });
 
-  it('redirects /over-ons permanently to /ons-team', () => {
+  it('redirects /over-ons to /ons-team and the old voucher path to /cadeaubon, permanently', () => {
     expect(AANBOD_REDIRECTS).toEqual([
       expect.objectContaining({ fromPath: '/over-ons', toPath: '/ons-team', statusCode: 301 }),
+      expect.objectContaining({
+        fromPath: '/aanbod/cadeaubon',
+        toPath: '/cadeaubon',
+        statusCode: 301,
+      }),
     ]);
   });
 });

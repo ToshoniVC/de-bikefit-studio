@@ -1,6 +1,5 @@
 import { z } from 'zod';
-import { formatDuration, formatPrice } from '@/lib/booking/format';
-import { emptyImage, type CmsImageRef } from '@/lib/cms/block-primitives';
+import type { CmsImageRef } from '@/lib/cms/block-primitives';
 import {
   offeringBookingSlugs,
   offeringDurationLabel,
@@ -9,34 +8,34 @@ import {
   type ResolvedOffering,
   type ResolvedVariant,
 } from './offering';
+import type { OfferingContent } from './offering-content';
 
 /**
  * The public offer ("Aanbod") and how it meets the booking catalogue.
  *
  * Plain module: no I/O, no Next, no `server-only` — unit-tested in
- * `catalogue.test.ts` and shared by the block renderers, the booking block,
- * the seed and the staging rollout.
+ * `catalogue.test.ts` and shared by the block renderers, the offer page, the
+ * booking block, the seed and the bootstrap.
  *
  * Two vocabularies exist on purpose and are kept apart:
  *
- *  - an **offer** is what a visitor reads: one CMS page per offer at
- *    `/aanbod/<slug>` carrying one `offer` block (title, intro, Doel, Inhoud,
- *    Duur, Kostprijs, Mogelijke extra's). Its slug is the last URL segment.
- *  - a **booking service** is a `cms_services` row: a bookable slot length with
- *    providers behind it. Its id and slug are what existing bookings reference.
+ *  - an **offering** is what a visitor reads: one row in `cms_offerings`
+ *    (Beheer → Aanbod) shown on `/aanbod` and at `/aanbod/<slug>` (title,
+ *    intro, Doel, Inhoud, Duur, Kostprijs, Mogelijke extra's). Its slug is the
+ *    last URL segment and what `?dienst=` carries.
+ *  - a **booking service** is a `cms_services` row: a bookable slot length
+ *    with providers behind it, written by the same admin form as a variant of
+ *    an offering. Its id and slug are what existing bookings reference.
  *
- * Since 16 Oct 2026 (Beheer → Aanbod) an offer's settings — shown or not,
- * variants, prices, direct booking or enquiry — live in `cms_offerings`
- * (`./offering.ts`); the server resolves them (`ResolvedOffering`) and hands
- * them to {@link offerFromPage}, which derives `bookingServiceSlugs` from the
- * bookable variants. Without a resolved offering (tests, legacy callers) the
- * block's own `bookingServiceSlugs` apply as before. Empty means "not online
- * bookable": the booking page then shows a prompt that names the offer instead
- * of a widget with an unrelated default fit. Nothing here ever renames,
- * creates or re-subscribes a booking service.
+ * The server resolves an offering's settings against who offers what
+ * (`ResolvedOffering`, `./offering.ts`) and hands it to {@link offerFromOffering},
+ * which derives the card, the labels and `bookingServiceSlugs` from the
+ * bookable variants. Empty means "not online bookable": the booking page then
+ * shows a prompt that names the offer instead of a widget with an unrelated
+ * default fit. Nothing here ever creates or re-subscribes a booking service.
  */
 
-/** Overview order; `overige` (13 Oct 2026) holds the gift voucher, after the services. */
+/** Overview order; `overige` (13 Oct 2026) holds the gift voucher card, after the services. */
 export const OFFER_CATEGORIES = ['bikefit', 'begeleiding', 'overige'] as const;
 export type OfferCategory = (typeof OFFER_CATEGORIES)[number];
 
@@ -49,7 +48,7 @@ export const OFFER_CATEGORY_LABELS: Record<OfferCategory, string> = {
 /** Card price line of the gift voucher: the visitor chooses the amount. */
 export const GIFT_VOUCHER_PRICE_LABEL = 'Bedrag naar keuze';
 
-/** Offer pages live at `cms_pages.slug = 'aanbod/<offer slug>'`. */
+/** Offerings are served at `/aanbod/<slug>`; the overview page is the CMS page `aanbod`. */
 export const OFFER_PAGE_PREFIX = 'aanbod';
 export const OFFER_INDEX_PATH = `/${OFFER_PAGE_PREFIX}`;
 
@@ -72,21 +71,9 @@ export function isOfferCategory(value: string): value is OfferCategory {
   return (OFFER_CATEGORIES as readonly string[]).includes(value);
 }
 
-export function offerPageSlug(offerSlug: string): string {
-  return `${OFFER_PAGE_PREFIX}/${offerSlug}`;
-}
-
+/** `/aanbod/<slug>` — where an offering is served. */
 export function offerPagePath(offerSlug: string): string {
-  return `/${offerPageSlug(offerSlug)}`;
-}
-
-/** `'aanbod/voetanalyse'` → `'voetanalyse'`; anything else → `null`. */
-export function offerSlugFromPageSlug(pageSlug: string): string | null {
-  const normalized = pageSlug.replace(/^\/+/, '').replace(/\/+$/, '');
-  const prefix = `${OFFER_PAGE_PREFIX}/`;
-  if (!normalized.startsWith(prefix)) return null;
-  const rest = normalized.slice(prefix.length);
-  return SLUG_PATTERN.test(rest) ? rest : null;
+  return `/${OFFER_PAGE_PREFIX}/${offerSlug}`;
 }
 
 /**
@@ -98,7 +85,9 @@ export function offerSlugFromPageSlug(pageSlug: string): string | null {
  */
 export function showsOfferPrices(pageSlug: string): boolean {
   const normalized = pageSlug.replace(/^\/+/, '').replace(/\/+$/, '');
-  return normalized === OFFER_PAGE_PREFIX || offerSlugFromPageSlug(normalized) !== null;
+  if (normalized === OFFER_PAGE_PREFIX) return true;
+  const prefix = `${OFFER_PAGE_PREFIX}/`;
+  return normalized.startsWith(prefix) && SLUG_PATTERN.test(normalized.slice(prefix.length));
 }
 
 /** `/afspraak?dienst=<slug>#boeken` — the booking block's section anchor. */
@@ -106,59 +95,12 @@ export function offerBookingHref(offerSlug: string): string {
   return `${BOOKING_PAGE_PATH}?${SERVICE_PARAM}=${encodeURIComponent(offerSlug)}#boeken`;
 }
 
-/**
- * A linked booking offer must not publish its independent editorial amount:
- * cms_services owns price and showPrice for each variant. Until the approved
- * variant presentation reads those rows, show "Prijs op aanvraag". Unlinked
- * enquiry offers retain their editorial label/cents precedence.
- */
-export function offerPriceLabel(input: {
-  priceCents: number | null;
-  priceLabel: string;
-  bookingServiceSlugs?: readonly string[];
-}): string {
-  if (input.bookingServiceSlugs?.some((slug) => slug.trim())) return OFFER_PRICE_FALLBACK;
-  const label = input.priceLabel.trim();
-  const isPlaceholder = label.toLowerCase() === OFFER_PRICE_FALLBACK.toLowerCase();
-  if (label && !(isPlaceholder && input.priceCents != null)) return label;
-  if (input.priceCents != null) return formatPrice(input.priceCents);
-  return OFFER_PRICE_FALLBACK;
-}
-
 export function offerDurationLabel(duration: string): string {
   return duration.trim() || OFFER_DURATION_FALLBACK;
 }
 
-/**
- * Public duration of a linked offer, in its configured service order. The
- * service catalogue owns these lengths; the offer's editorial `duration` is
- * only for unlinked enquiry offers. A missing/unbookable service contributes
- * no duration, just as it contributes no choice on `/afspraak`.
- */
-export function linkedOfferDurationLabel(
-  slugs: readonly string[],
-  services: readonly {
-    slug: string;
-    name: string;
-    choiceLabel: string;
-    durationMinutes: number;
-  }[],
-): string | null {
-  const seen = new Set<string>();
-  const variants: string[] = [];
-  for (const rawSlug of slugs) {
-    const slug = rawSlug.trim();
-    if (!slug || seen.has(slug)) continue;
-    seen.add(slug);
-    const service = services.find((entry) => entry.slug === slug);
-    if (!service) continue;
-    variants.push(`${bookingChoiceLabel(service)}: ${formatDuration(service.durationMinutes)}`);
-  }
-  return variants.length ? variants.join(' · ') : null;
-}
-
 // ---------------------------------------------------------------------------
-// `?dienst=` — query-string boundary
+// `?dienst=` and `/aanbod/<slug>` — the URL boundary
 // ---------------------------------------------------------------------------
 
 export const serviceParamSchema = z
@@ -169,7 +111,7 @@ export const serviceParamSchema = z
   .max(80)
   .regex(SLUG_PATTERN);
 
-/** A valid slug from `?dienst=` (first value if repeated), or `null`. */
+/** A valid slug from `?dienst=` (first value if repeated) or a route segment, or `null`. */
 export function parseServiceParam(value: unknown): string | null {
   const raw = Array.isArray(value) ? value[0] : value;
   const parsed = serviceParamSchema.safeParse(raw);
@@ -177,28 +119,12 @@ export function parseServiceParam(value: unknown): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Catalogue entries derived from published offer pages
+// Catalogue entries derived from offerings
 // ---------------------------------------------------------------------------
 
-/** The fields of an `offer` block the catalogue needs (structural, so tests need no registry). */
-export type OfferBlockData = {
-  category: OfferCategory;
-  sortOrder: number;
-  title: string;
-  summary: string;
-  intro: string;
-  duration: string;
-  priceCents: number | null;
-  priceLabel: string;
-  bookingServiceSlugs: string[];
-  image: CmsImageRef;
-};
-
 export type CatalogueOffer = {
-  /** `service`: an `offer` block (bookable or enquiry); `giftVoucher`: the order form, never booked. */
-  kind: 'service' | 'giftVoucher';
-  /** The offer page's `cms_pages.id` when known (the offering's key). */
-  pageId?: string;
+  /** The `cms_offerings` id. */
+  id: string;
   slug: string;
   path: string;
   category: OfferCategory;
@@ -210,94 +136,40 @@ export type CatalogueOffer = {
   durationLabel: string;
   /** Booking services `/afspraak` may use for this offer, in variant order; empty = not online bookable. */
   bookingServiceSlugs: string[];
-  /** Bookable, temporarily unavailable or enquiry only; `null` for the gift voucher. */
-  status: OfferingStatus | null;
-  /** The resolved variants (empty for the gift voucher and without a resolved offering). */
+  /** Bookable, temporarily unavailable or enquiry only. */
+  status: OfferingStatus;
+  /** The resolved variants. */
   variants: ResolvedVariant[];
   image: CmsImageRef;
 };
 
-/** The fields of a `giftVoucher` block the catalogue needs. */
-export type GiftVoucherBlockData = {
-  sortOrder: number;
-  title: string;
-  summary: string;
-  intro: string;
-};
-
-/**
- * One catalogue entry from a published page, or `null` when the page is not an
- * offer page (wrong path, or no `offer` / `giftVoucher` block). The first
- * `offer` block wins; a page with only a `giftVoucher` block becomes a card
- * under Overige with "Bedrag naar keuze".
- */
-export function offerFromPage(
-  page: {
-    id?: string;
-    slug: string;
-    blocks: ReadonlyArray<{ type: string; data: unknown }>;
-  },
-  offering?: ResolvedOffering | null,
-): CatalogueOffer | null {
-  const slug = offerSlugFromPageSlug(page.slug);
-  if (!slug) return null;
-  const block = page.blocks.find((entry) => entry.type === 'offer');
-  if (!block) {
-    const voucher = page.blocks.find((entry) => entry.type === 'giftVoucher');
-    if (!voucher) return null;
-    const data = voucher.data as GiftVoucherBlockData;
-    return {
-      kind: 'giftVoucher',
-      ...(page.id ? { pageId: page.id } : {}),
-      slug,
-      path: offerPagePath(slug),
-      category: 'overige',
-      sortOrder: data.sortOrder,
-      title: data.title,
-      summary: data.summary.trim() || data.intro.trim(),
-      priceLabel: GIFT_VOUCHER_PRICE_LABEL,
-      durationLabel: '',
-      bookingServiceSlugs: [],
-      status: null,
-      variants: [],
-      image: { ...emptyImage },
-    };
-  }
-  const data = block.data as OfferBlockData;
-  const base = {
-    kind: 'service' as const,
-    ...(page.id ? { pageId: page.id } : {}),
-    slug,
-    path: offerPagePath(slug),
-    category: data.category,
-    sortOrder: data.sortOrder,
-    title: data.title,
-    summary: data.summary.trim() || data.intro.trim(),
-    image: data.image,
-  };
-  if (offering) {
-    return {
-      ...base,
-      priceLabel: offeringPriceLabel(offering),
-      durationLabel: offeringDurationLabel(offering, data.duration),
-      bookingServiceSlugs: offeringBookingSlugs(offering),
-      status: offering.status,
-      variants: offering.variants,
-    };
-  }
-  const bookingServiceSlugs = data.bookingServiceSlugs.map((entry) => entry.trim()).filter(Boolean);
+/** One catalogue entry from an offering's copy and its resolved settings. */
+export function offerFromOffering(
+  record: { id: string; content: OfferingContent },
+  offering: ResolvedOffering,
+): CatalogueOffer {
+  const { content } = record;
   return {
-    ...base,
-    priceLabel: offerPriceLabel(data),
-    durationLabel: offerDurationLabel(data.duration),
-    bookingServiceSlugs,
-    status: bookingServiceSlugs.length ? 'bookable' : 'enquiry',
-    variants: [],
+    id: record.id,
+    slug: content.slug,
+    path: offerPagePath(content.slug),
+    category: content.category,
+    sortOrder: content.sortOrder,
+    title: content.title,
+    summary: content.summary.trim() || content.intro.trim(),
+    priceLabel: offeringPriceLabel(offering),
+    durationLabel: offeringDurationLabel(offering, content.duration),
+    bookingServiceSlugs: offeringBookingSlugs(offering),
+    status: offering.status,
+    variants: offering.variants,
+    image: content.image,
   };
 }
 
 /** Category order first (Bikefit, Begeleiding, Overige), then `sortOrder`, then title. */
-export function sortOffers(offers: readonly CatalogueOffer[]): CatalogueOffer[] {
+export function sortOffers<T extends Pick<CatalogueOffer, 'category' | 'sortOrder' | 'title'>>(
+  offers: readonly T[],
+): T[] {
   return [...offers].sort(
     (a, b) =>
       OFFER_CATEGORIES.indexOf(a.category) - OFFER_CATEGORIES.indexOf(b.category) ||
@@ -306,10 +178,9 @@ export function sortOffers(offers: readonly CatalogueOffer[]): CatalogueOffer[] 
   );
 }
 
-export function offersInCategory(
-  offers: readonly CatalogueOffer[],
-  category: OfferCategory,
-): CatalogueOffer[] {
+export function offersInCategory<
+  T extends Pick<CatalogueOffer, 'category' | 'sortOrder' | 'title'>,
+>(offers: readonly T[], category: OfferCategory): T[] {
   return sortOffers(offers).filter((offer) => offer.category === category);
 }
 
@@ -355,7 +226,6 @@ export function resolveBookingSelection(input: {
   requested: string | null;
   offers: ReadonlyArray<
     Pick<CatalogueOffer, 'slug' | 'title' | 'path' | 'bookingServiceSlugs'> & {
-      kind?: CatalogueOffer['kind'];
       status?: OfferingStatus | null;
     }
   >;
@@ -364,8 +234,7 @@ export function resolveBookingSelection(input: {
   const { requested, offers, services } = input;
   if (!requested) return { kind: 'none' };
 
-  // The gift voucher is ordered on its own page, never through the booking page.
-  const offer = offers.find((entry) => entry.slug === requested && entry.kind !== 'giftVoucher');
+  const offer = offers.find((entry) => entry.slug === requested);
   if (offer) {
     const serviceIds: string[] = [];
     for (const slug of offer.bookingServiceSlugs) {
@@ -397,8 +266,7 @@ export function resolveBookingSelection(input: {
 
 /**
  * One entry of the booking widget's first step (work block 2026-10-16):
- *  - `service`: a bookable service no published offer links to (Gezinspakket,
- *    Fit aan huis, Inspanningstest), chosen directly as before;
+ *  - `service`: a bookable service no shown offer links to, chosen directly;
  *  - `offer`: an offer linked to bookable services ("Bikefit – huidige fiets"),
  *    shown ONCE, with its services as a sub-selection ("Volwassene", "Jeugd").
  *    The chosen service, never the offer, is what is booked: its id, duration,
@@ -414,33 +282,24 @@ export type BookingChoice =
     };
 
 /**
- * Groups the bookable `services` (already in display order) under the
- * published offers that link to them. An offer takes the place of its first
- * service in the list; a service claimed by an earlier offer (category, sort
- * order, title) is not repeated under a later one. Offers without a bookable
- * service and the gift voucher add nothing. Pure: a missing or empty offer list
- * gives one `service` entry per service, the widget as it was before.
+ * Groups the bookable `services` (already in display order) under the offers
+ * that link to them. An offer takes the place of its first service in the
+ * list; a service claimed by an earlier offer (category, sort order, title) is
+ * not repeated under a later one. Offers without a bookable service add
+ * nothing. Pure: a missing or empty offer list gives one `service` entry per
+ * service, the widget as it was before.
  */
 export function groupBookingChoices(input: {
   offers: ReadonlyArray<
     Pick<
       CatalogueOffer,
       'slug' | 'title' | 'path' | 'bookingServiceSlugs' | 'category' | 'sortOrder'
-    > & {
-      kind?: CatalogueOffer['kind'];
-    }
+    >
   >;
   services: readonly BookableService[];
 }): BookingChoice[] {
   const { services } = input;
-  const offers = [...input.offers]
-    .filter((offer) => offer.kind !== 'giftVoucher')
-    .sort(
-      (a, b) =>
-        OFFER_CATEGORIES.indexOf(a.category) - OFFER_CATEGORIES.indexOf(b.category) ||
-        a.sortOrder - b.sortOrder ||
-        a.title.localeCompare(b.title, 'nl'),
-    );
+  const offers = sortOffers(input.offers);
 
   const claimedBy = new Map<string, number>();
   const groups: Array<{ offer: (typeof offers)[number]; serviceIds: string[] }> = [];

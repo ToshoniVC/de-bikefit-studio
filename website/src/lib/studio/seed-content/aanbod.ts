@@ -1,6 +1,6 @@
-import { OFFER_CATEGORY_LABELS, offerPageSlug, OFFER_INDEX_PATH } from '@/lib/offers/catalogue';
-import { DEFAULT_OFFERS, offerBlockData } from '@/lib/offers/defaults';
+import { OFFER_CATEGORY_LABELS, OFFER_INDEX_PATH } from '@/lib/offers/catalogue';
 import { editorialImage } from '@/lib/studio/editorial-images';
+import { CADEAUBON_CARD } from './cadeaubon';
 import {
   HERO_SUBTITLE,
   AANBOD_INTRO,
@@ -21,18 +21,20 @@ import {
 } from './shared';
 
 /**
- * The redesigned public site of 13 Oct 2026: offer ("Aanbod"), audiences
- * ("Voor wie"), the bikefit page and the team — plus the menus and the
- * `/over-ons` redirect. Plain data, no I/O.
+ * The redesigned public site of 13 Oct 2026: the offer overview ("Aanbod"),
+ * audiences ("Voor wie"), the bikefit page and the team — plus the menus and
+ * the redirects. Plain data, no I/O. The offerings themselves are not pages
+ * since 17 Oct 2026: they are rows in `cms_offerings` (`src/lib/offers/defaults.ts`,
+ * written by `cms:bootstrap`) and the overview blocks read them at render time.
  *
  * Used by `npm run cms:seed` (fresh databases) and by the staging rollout
  * `npm run cms:rollout-aanbod`, which applies exactly these pages, menus and
- * redirect to an existing database (dry run, backup, restore).
+ * redirects to an existing database (dry run, backup, restore).
  *
  * COPY PROVENANCE
  *   work block 2026-10-13-aanbod-staging-brief.md (Toshoni via Winston): hero,
- *     aanbod intro, the seven offers (`src/lib/offers/defaults.ts`), the junior
- *     text, the 3D text and the team intro — verbatim.
+ *     aanbod intro, the junior text, the 3D text and the team intro — verbatim
+ *     (the seven offers: `src/lib/offers/defaults.ts`).
  *   prototype/index.html, prototype/bikefit.html, content/index.html,
  *     content/about.html: everything reused from the earlier site (process,
  *     "Vier dingen, één positie", "Waarom", "Op locatie", persona copy, the
@@ -47,8 +49,7 @@ import {
  *     "jeugd" for the young riders. `cms:patch-page-cleanup` applies exactly
  *     that to an existing database (see `page-cleanup.ts`).
  *   Toshoni's gift voucher request of the same day: the "Overige" group on
- *     /aanbod. The voucher page itself is `cadeaubon.ts`; `cms:patch-cadeaubon`
- *     adds both to an existing database.
+ *     /aanbod with the voucher card. The voucher page itself is `cadeaubon.ts`.
  */
 
 const CALLOUT: SeedBlock = {
@@ -175,7 +176,7 @@ const AANBOD: SeedPage = {
   slug: 'aanbod',
   title: 'Aanbod',
   translationGroup: 'offer',
-  source: 'work block 2026-10-13 (aanbod intro, the seven offers)',
+  source: 'work block 2026-10-13 (aanbod intro); the offerings are rows in cms_offerings',
   metaTitle: 'Ons aanbod — bikefit en begeleiding',
   metaDescription:
     'Bikefit bij aankoop of op je huidige fiets, voetanalyse, zadelanalyse, schoenplaatjes afstellen, lactaattest en coaching in Ninove.',
@@ -201,6 +202,8 @@ const AANBOD: SeedPage = {
         title: '',
         lede: '',
         groups: [...OFFER_GROUPS, OTHER_OFFER_GROUP],
+        // The gift voucher is not an offering: a fixed card under Overige.
+        extraCards: [CADEAUBON_CARD],
         showPrices: true,
         cta: null,
       },
@@ -208,33 +211,6 @@ const AANBOD: SeedPage = {
     CALLOUT,
   ],
 };
-
-const OFFER_IMAGE_SLOT = {
-  bikefit: 'bikefit-studio',
-  begeleiding: 'junior-coaching',
-} as const;
-
-const OFFER_PAGES: SeedPage[] = DEFAULT_OFFERS.map((offer) => ({
-  slug: offerPageSlug(offer.slug),
-  title: offer.title,
-  translationGroup: `offer-${offer.slug}`,
-  source: 'work block 2026-10-13 ("Suggested service content")',
-  metaTitle: offer.title,
-  metaDescription: offer.metaDescription,
-  structuredDataType: 'Service',
-  blocks: [
-    {
-      type: 'offer',
-      data: {
-        ...offerBlockData(offer),
-        image:
-          offer.slug === 'lactaattest'
-            ? editorialImage('flemish-cyclists')
-            : editorialImage(OFFER_IMAGE_SLOT[offer.category]),
-      },
-    },
-  ],
-}));
 
 const VOOR_WIE: SeedPage = {
   slug: 'voor-wie',
@@ -487,8 +463,8 @@ const ONS_TEAM: SeedPage = {
   ],
 };
 
-/** Every page the offer rollout owns, in rollout order (index pages before details). */
-export const AANBOD_PAGES: SeedPage[] = [HOME, AANBOD, ...OFFER_PAGES, VOOR_WIE, BIKEFIT, ONS_TEAM];
+/** Every page the offer rollout owns, in rollout order. The offerings themselves are rows (`cms:bootstrap`). */
+export const AANBOD_PAGES: SeedPage[] = [HOME, AANBOD, VOOR_WIE, BIKEFIT, ONS_TEAM];
 
 // Menus and the `/over-ons` redirect live in `navigation.ts`.
 export { AANBOD_REDIRECTS, FOOTER_MENU, MAIN_MENU, RETIRED_PAGE_SLUG } from './navigation';

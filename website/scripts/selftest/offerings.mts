@@ -1,44 +1,45 @@
 /**
- * Self-test section 14d (work block 2026-10-16, Beheer → Aanbod): offering
- * settings on the throwaway PGlite of `cms-selftest.mts`, with real sessions in
- * the cookie jar and the real repo, readers and server actions:
+ * Self-test section 14d (17 Oct 2026, the offering IS the offer): Beheer →
+ * Aanbod on the throwaway PGlite of `cms-selftest.mts`, with real sessions in
+ * the cookie jar and the real repo, readers and CLI path:
  *
- *  0. migration 0010: the two tables, guarded statements only (no data change,
- *     no DROP), re-running it twice is a no-op;
- *  1. set-up as admin: two services (Volwassene 90 min, Jeugd 60 min with a
- *     guardian) and two published offer pages: one linked to both services
- *     (the legacy `bookingServiceSlugs`), one without (asked for);
- *  2. before anything is saved the pages derive their settings; the
- *     `cms:migrate-offerings` dry run writes nothing, the apply writes exactly
- *     those settings (bookings, services and subscriptions unchanged), a second
- *     apply finds nothing to do, and the public catalogue is the same before
- *     and after;
- *  3. permissions: a provider is refused (`offering.manage`), an editor and
- *     the admin may save; nothing is written on a refusal;
- *  4. provider self-service and booking eligibility: with nobody offering it
- *     the direct offering is "unavailable" and nothing is bookable through it;
- *     the provider subscribes their own profile to Volwassene → bookable with
- *     that variant only; the gate of the booking actions agrees; enquiry and
- *     hidden hold the services back (availability refused, page 404);
+ *  0. migrations 0010 + 0011: guarded statements only (no data change, no
+ *     DROP), re-running them twice is a no-op;
+ *  1. the bootstrap offerings (`ensureDefaultOfferings`): ten rows, seven
+ *     shown, the current-bike fit booked directly as the section-14 services,
+ *     a second run keeps them; the public catalogue and `?dienst=` follow;
+ *  2. `cms:migrate-aanbod` on legacy offer pages (raw rows, as a database from
+ *     before 17 Oct 2026 holds them): the dry run writes nothing; the apply
+ *     converts a published page (derived settings), a draft page (hidden) and
+ *     a page with saved settings (filled, price kept), moves the voucher page
+ *     to /cadeaubon with a 301, puts the voucher card on /aanbod, deletes the
+ *     offer pages, audits once; a second apply finds nothing;
+ *  3. permissions: a provider and an editor are refused (`offering.manage` is
+ *     the admin's), nothing written;
+ *  4. the admin writes an offering with its services: created with the
+ *     variant slugs and labels, unavailable until a provider subscribes their
+ *     own profile, then bookable with that variant only; an edit updates the
+ *     service by id; enquiry and hidden hold the services back (availability
+ *     refused, page 404); delete deactivates the services;
  *  5. the enquiry form on the real store: an enquiry offering is found, a
  *     direct one refused, rate-limit keys hold no address, a repeat is not
- *     sent twice; the real wiring answers "niet verstuurd" without a mail key
- *     and sends nothing (no outbound mail in the self-test);
- *  6. clean-up: offering rows, pages, services and the editor are removed and
- *     the provider's subscriptions are restored, so later sections are as before.
+ *     sent twice; the real wiring answers "niet verstuurd" without a mail key;
+ *  6. the provider profile comes with the Aanbieder role
+ *     (`ensureProviderProfile`): created once, kept, the own account only;
+ *  7. clean-up, so later sections find the database as before.
  */
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { and, eq, inArray, like, notInArray, sql } from 'drizzle-orm';
+import * as orm from 'drizzle-orm';
 import type { CmsDatabase } from '@/db/cms';
+import { formatPrice } from '@/lib/booking/format';
+import { OFFER_CTA_LABEL } from '@/lib/offers/catalogue';
+import { ensureDefaultOfferings } from '../lib/offerings-bootstrap.mjs';
+import { runAanbodMigration } from '../lib/aanbod-migrate.mjs';
 
 type Check = (label: string, condition: boolean, detail?: string) => void;
 
-const ADULT_SLUG = 'selftest-aanbod-volwassene';
-const YOUTH_SLUG = 'selftest-aanbod-jeugd';
-const DIRECT_PAGE = 'aanbod/selftest-direct';
-const ENQUIRY_PAGE = 'aanbod/selftest-aanvraag';
-const EDITOR_EMAIL = 'aanbod-redacteur@selftest.local';
+const { and, eq, inArray, like, sql } = orm;
 
 export async function offeringsSection(ctx: {
   db: CmsDatabase;
@@ -48,26 +49,34 @@ export async function offeringsSection(ctx: {
   admin: { id: string };
   provider: { id: string; userId: string };
   cookieJar: Map<string, string>;
+  backupDir: string;
 }) {
-  const { db, check, section, signInAs, admin, provider, cookieJar } = ctx;
-  section('14d. Beheer → Aanbod: offering settings, provider self-service, enquiry');
+  const { db, check, section, signInAs, admin, provider, cookieJar, backupDir } = ctx;
+  section('14d. Beheer → Aanbod: the offering is the offer');
 
   const schema = {
     ...(await import('@/db/cms-schema')),
     ...(await import('@/db/cms-rate-limit-schema')),
   };
-  const { cmsOfferings, cmsOfferingVariants } = await import('@/db/cms-offering-schema');
+  const offeringSchema = await import('@/db/cms-offering-schema');
+  const { cmsOfferings, cmsOfferingVariants } = offeringSchema;
   const { CmsAuthError } = await import('@/lib/cms/auth');
+  const users = await import('@/lib/cms/users');
   const cmsRepo = await import('@/lib/cms/repo');
   const bookingRepo = await import('@/lib/booking/repo');
+  const { ensureProviderProfile } = await import('@/lib/booking/repo-provider-profile');
   const offersRepo = await import('@/lib/offers/repo');
-  const { loadOfferCatalogue, isServiceBookableOnline } = await import('@/lib/cms/offers-content');
-  const { getStudioPage } = await import('@/lib/studio/site');
+  const { loadOfferCatalogue, getPublishedOffer, isServiceBookableOnline } =
+    await import('@/lib/cms/offers-content');
+  const { getPublishedPage, findRedirect } = await import('@/lib/cms/content');
+  const { listPublicServices } = await import('@/lib/booking/content');
+  const { resolveBookingSelection } = await import('@/lib/offers/catalogue');
   const { availabilityAction } = await import('@/lib/booking/public-actions');
-  const { runOfferingMigration } = await import('../lib/offerings-migrate.mjs');
   const enquiry = await import('@/lib/offer-enquiry/service');
   const { deliverOfferEnquiry } = await import('@/lib/offer-enquiry/delivery');
   const { loadEmailSettings } = await import('@/lib/email/settings');
+  const { defaultDataFor } = await import('@/lib/cms/blocks');
+  const locale = schema.DEFAULT_LOCALE;
 
   const refused = async (run: () => Promise<unknown>) => {
     try {
@@ -78,9 +87,18 @@ export async function offeringsSection(ctx: {
     }
   };
   const offeringRows = async () => db.select().from(cmsOfferings);
+  const card = async (slug: string) =>
+    (await loadOfferCatalogue(locale)).offers.find((offer) => offer.slug === slug);
   const silentLog = () => {};
+  const pageRow = async (slug: string) => {
+    const [row] = await db
+      .select()
+      .from(schema.cmsPages)
+      .where(and(eq(schema.cmsPages.locale, locale), eq(schema.cmsPages.slug, slug)));
+    return row ?? null;
+  };
 
-  // --- 0: migration 0010 ------------------------------------------------------
+  // --- 0: migrations 0010 + 0011 ---------------------------------------------
   const tables = (
     (await db.execute(
       sql`select table_name from information_schema.tables
@@ -88,111 +106,253 @@ export async function offeringsSection(ctx: {
     )) as unknown as { rows: Array<{ table_name: string }> }
   ).rows.map((row) => row.table_name);
   check(
-    'migration 0010: cms_offerings + cms_offering_variants exist',
-    tables.join(',') === 'cms_offering_variants,cms_offerings',
+    'migrations 0010 + 0011: cms_offerings (with the copy columns) + cms_offering_variants exist',
+    tables.join(',') === 'cms_offering_variants,cms_offerings' &&
+      (
+        (await db.execute(
+          sql`select column_name from information_schema.columns where table_name = 'cms_offerings' and column_name in ('slug', 'title', 'contents', 'image')`,
+        )) as unknown as { rows: unknown[] }
+      ).rows.length === 4,
     tables.join(','),
   );
-  const migrationSql = await readFile(
-    resolve(process.cwd(), 'drizzle/0010_cms_offerings.sql'),
-    'utf8',
-  );
-  // Split on the breakpoints first: they start with `--` like the comments.
-  const statements = migrationSql
-    .split('--> statement-breakpoint')
-    .map((statement) => statement.replace(/^--.*$/gm, '').trim())
-    .filter(Boolean);
-  const code = statements.join('\n');
-  check(
-    'migration 0010: every statement guarded; no INSERT/UPDATE/DELETE/DROP/ALTER of an existing table',
-    statements.length === 8 &&
+  for (const file of ['0010_cms_offerings.sql', '0011_cms_offerings_content.sql']) {
+    const migrationSql = await readFile(resolve(process.cwd(), 'drizzle', file), 'utf8');
+    // Split on the breakpoints first: they start with `--` like the comments.
+    const statements = migrationSql
+      .split('--> statement-breakpoint')
+      .map((statement) => statement.replace(/^--.*$/gm, '').trim())
+      .filter(Boolean);
+    const code = statements.join('\n');
+    check(
+      `migration ${file.slice(0, 4)}: every statement guarded; no INSERT/UPDATE/DELETE/DROP TABLE`,
       statements.every(
         (statement) =>
           /^CREATE (UNIQUE )?(TABLE|INDEX) IF NOT EXISTS/.test(statement) ||
+          /^ALTER TABLE "cms_offerings" ADD COLUMN IF NOT EXISTS/.test(statement) ||
+          /^ALTER TABLE "cms_offerings" ALTER COLUMN "page_id" DROP NOT NULL/.test(statement) ||
           /^DO \$\$ BEGIN\s+ALTER TABLE "cms_offering(s|_variants)" ADD CONSTRAINT[\s\S]*duplicate_object/.test(
             statement,
           ),
-      ) &&
-      // FK clauses say ON DELETE / ON UPDATE; a data change or a drop would not.
-      !/\b(INSERT\s+INTO|UPDATE\s+"|DELETE\s+FROM|DROP|TRUNCATE)\b/i.test(code),
-    `${statements.length} statements`,
-  );
-  let rerun = 'ok';
-  try {
-    for (let pass = 0; pass < 2; pass += 1) {
-      for (const statement of statements) await db.execute(sql.raw(statement));
+      ) && !/\b(INSERT\s+INTO|UPDATE\s+"|DELETE\s+FROM|DROP\s+TABLE|TRUNCATE)\b/i.test(code),
+      `${statements.length} statements`,
+    );
+    let rerun = 'ok';
+    try {
+      for (let pass = 0; pass < 2; pass += 1) {
+        for (const statement of statements) await db.execute(sql.raw(statement));
+      }
+    } catch (error) {
+      rerun = error instanceof Error ? error.message : String(error);
     }
-  } catch (error) {
-    rerun = error instanceof Error ? error.message : String(error);
+    check(`migration ${file.slice(0, 4)}: re-running it twice is a no-op`, rerun === 'ok', rerun);
   }
-  check('migration 0010: re-running it twice is a no-op', rerun === 'ok', rerun);
 
-  // --- 1: set-up as admin -----------------------------------------------------
-  await signInAs(admin.id);
+  // --- 1: the bootstrap offerings ---------------------------------------------
+  const rowsBefore = new Set((await offeringRows()).map((row) => row.id));
   const ownBefore = (
     await db
       .select()
       .from(schema.cmsProviderServices)
       .where(eq(schema.cmsProviderServices.providerId, provider.id))
   ).map((row) => ({ serviceId: row.serviceId, locationId: row.locationId }));
-  const rowsBefore = new Set((await offeringRows()).map((row) => row.pageId));
-
-  const adult = await bookingRepo.createService({
-    name: 'Aanbod volwassene (test)',
-    slug: ADULT_SLUG,
-    durationMinutes: 90,
-  });
-  const youth = await bookingRepo.createService({
-    name: 'Aanbod jeugd (test)',
-    slug: YOUTH_SLUG,
-    durationMinutes: 60,
-    requiresGuardian: true,
-  });
-  if (!adult.ok || !youth.ok) {
-    check('offerings: set-up services created', false);
-    return;
-  }
-  const publishOffer = async (slug: string, title: string, bookingServiceSlugs: string[]) => {
-    const page = await cmsRepo.createPage({ slug, title });
-    if (!page.ok) throw new Error(page.message);
-    const block = await cmsRepo.addBlock(page.data.id, 'offer');
-    if (!block.ok) throw new Error(block.message);
-    const updated = await cmsRepo.updateBlock(block.data.id, {
-      ...(block.data.data as object),
-      title,
-      bookingServiceSlugs,
-      duration: 'Ongeveer twee uur',
-    });
-    if (!updated.ok) throw new Error(updated.message);
-    const published = await cmsRepo.publishPage(page.data.id);
-    if (!published.ok) throw new Error(published.message);
-    return page.data.id;
+  const bootstrapDeps = {
+    db,
+    orm,
+    schema: { cmsServices: schema.cmsServices, DEFAULT_LOCALE: locale },
+    offerings: offeringSchema,
+    log: silentLog,
   };
-  const directPageId = await publishOffer(DIRECT_PAGE, 'Selftest direct', [ADULT_SLUG, YOUTH_SLUG]);
-  const enquiryPageId = await publishOffer(ENQUIRY_PAGE, 'Selftest aanvraag', []);
-  check('offerings: two published offer pages created', Boolean(directPageId && enquiryPageId));
-
-  const card = async (slug: string) =>
-    (await loadOfferCatalogue('nl')).offers.find((offer) => offer.slug === slug);
-
-  // --- 2: legacy derivation and the migration ----------------------------------
-  const legacyDirect = await card('selftest-direct');
+  const first = await ensureDefaultOfferings(bootstrapDeps);
+  const again = await ensureDefaultOfferings(bootstrapDeps);
+  const seeded = await loadOfferCatalogue(locale);
+  const huidige = await card('bikefit-huidige-fiets');
+  const publicServices = (await listPublicServices(locale)).map((s) => ({
+    id: s.id,
+    slug: s.slug,
+  }));
+  const adultId = publicServices.find((s) => s.slug === 'volwassenenfit')?.id;
+  const youthId = publicServices.find((s) => s.slug === 'jeugdfit')?.id;
+  const homeId = publicServices.find((s) => s.slug === 'fit-aan-huis')?.id;
   check(
-    'legacy: the linked page derives Volwassene/Jeugd booked directly; nobody offers it → unavailable',
-    legacyDirect?.status === 'unavailable' &&
-      legacyDirect.durationLabel === 'Volwassene: 1 u 30 min · Jeugd: 1 uur' &&
-      legacyDirect.priceLabel === 'Prijs op aanvraag' &&
-      legacyDirect.bookingServiceSlugs.length === 0,
-    JSON.stringify(legacyDirect),
+    'bootstrap: ten offerings created once (seven shown), kept on a second run',
+    first.created.length === 10 &&
+      first.kept.length === 0 &&
+      again.created.length === 0 &&
+      again.kept.length === 10 &&
+      seeded.offers.length === 7 &&
+      seeded.hiddenSlugs.length === 3,
+    `${first.created.length} created, ${seeded.offers.length} shown, hidden ${seeded.hiddenSlugs.join(',')}`,
   );
-  const legacyEnquiry = await card('selftest-aanvraag');
   check(
-    'legacy: the unlinked page is asked for, with its editorial duration',
-    legacyEnquiry?.status === 'enquiry' && legacyEnquiry.durationLabel === 'Ongeveer twee uur',
-    JSON.stringify(legacyEnquiry),
+    'bootstrap: Bikefit – huidige fiets is bookable as Volwassenenfit + Jeugdfit; the rest on request',
+    huidige?.status === 'bookable' &&
+      huidige.bookingServiceSlugs.join() === 'volwassenenfit,jeugdfit' &&
+      huidige.durationLabel === 'Volwassene: 1 u 30 min · Jeugd: 1 uur' &&
+      huidige.priceLabel === 'Prijs op aanvraag' &&
+      seeded.offers.filter((offer) => offer.status === 'enquiry').length === 6,
+    JSON.stringify(huidige),
+  );
+  const withheld = new Set(seeded.withheldServiceIds);
+  check(
+    'bootstrap: the hidden Fit aan huis is held back from /afspraak; the fits are not',
+    homeId !== undefined &&
+      withheld.has(homeId) &&
+      !withheld.has(adultId ?? '') &&
+      !(await isServiceBookableOnline(homeId, locale)) &&
+      (await isServiceBookableOnline(adultId ?? '', locale)),
+  );
+  const offered = publicServices.filter((service) => !withheld.has(service.id));
+  const linked = resolveBookingSelection({
+    requested: 'bikefit-huidige-fiets',
+    offers: seeded.offers,
+    services: offered,
+  });
+  const asked = resolveBookingSelection({
+    requested: 'lactaattest',
+    offers: seeded.offers,
+    services: offered,
+  });
+  const hiddenOne = resolveBookingSelection({
+    requested: 'fit-aan-huis',
+    offers: seeded.offers,
+    services: offered,
+  });
+  check(
+    '?dienst=: the current-bike fit narrows to Volwassene + Jeugd; Lactaattest is an enquiry; a hidden one is unknown',
+    linked.kind === 'offer' &&
+      linked.serviceIds.join() === [adultId, youthId].join() &&
+      asked.kind === 'offer' &&
+      asked.serviceIds.length === 0 &&
+      asked.offer.status === 'enquiry' &&
+      hiddenOne.kind === 'unknown',
+    JSON.stringify({ linked, asked, hiddenOne }),
   );
 
-  const auditBefore = (await db.select().from(schema.cmsAuditLog)).length;
-  const sessionsBefore = (await db.select().from(schema.cmsSessions)).length;
+  // --- 2: cms:migrate-aanbod on legacy offer pages ---------------------------------
+  await signInAs(admin.id);
+  const legacyBlock = (title: string, slugs: string[], extra: Record<string, unknown> = {}) => ({
+    category: 'bikefit',
+    sortOrder: 70,
+    eyebrow: 'Aanbod · Bikefit',
+    title,
+    summary: `${title}: korte omschrijving.`,
+    intro: `${title}: inleiding.`,
+    ctaLabel: OFFER_CTA_LABEL,
+    goal: 'Doel van de test.',
+    contents: ['Punt één.', 'Punt twee.'],
+    duration: 'Ongeveer twee uur',
+    priceCents: null,
+    priceLabel: 'Prijs op aanvraag',
+    extras: ['Een extra.'],
+    extrasNote: 'Altijd vooraf afgesproken.',
+    bookingServiceSlugs: slugs,
+    image: {
+      mediaId: null,
+      url: '/images/editorial/bikefit-studio-v1.webp',
+      alt: 'Studio',
+      decorative: false,
+    },
+    ...extra,
+  });
+  /** A page as a database from before 17 Oct 2026 holds it (the `offer` block type no longer exists). */
+  async function rawOfferPage(
+    slug: string,
+    status: 'draft' | 'published',
+    data: Record<string, unknown>,
+  ) {
+    const [page] = await db
+      .insert(schema.cmsPages)
+      .values({
+        locale,
+        slug,
+        translationGroup: slug,
+        title: String(data.title),
+        status,
+        metaDescription: `Meta van ${data.title}`,
+        publishedAt: status === 'published' ? new Date() : null,
+        publishedSnapshot:
+          status === 'published'
+            ? {
+                title: String(data.title),
+                kind: 'default',
+                publishedAt: new Date().toISOString(),
+                seo: { metaTitle: null, metaDescription: `Meta van ${data.title}`, noIndex: false },
+                blocks: [{ id: 'legacy-offer', type: 'offer', data }],
+              }
+            : null,
+      })
+      .returning({ id: schema.cmsPages.id });
+    await db
+      .insert(schema.cmsBlocks)
+      .values({ pageId: page.id, sortOrder: 0, type: 'offer', data });
+    return page.id;
+  }
+  const legacyId = await rawOfferPage(
+    'aanbod/selftest-legacy',
+    'published',
+    legacyBlock('Selftest legacy', ['volwassenenfit', 'jeugdfit']),
+  );
+  const draftId = await rawOfferPage(
+    'aanbod/selftest-concept',
+    'draft',
+    legacyBlock('Selftest concept', []),
+  );
+  const storedPageId = await rawOfferPage(
+    'aanbod/selftest-stored',
+    'published',
+    legacyBlock('Selftest stored', []),
+  );
+  const [storedRow] = await db
+    .insert(cmsOfferings)
+    .values({
+      locale,
+      pageId: storedPageId,
+      isListed: true,
+      bookingMode: 'enquiry',
+      variantMode: 'single',
+    })
+    .returning({ id: cmsOfferings.id });
+  await db
+    .insert(cmsOfferingVariants)
+    .values({ offeringId: storedRow.id, audience: 'all', serviceId: null, priceCents: 9900 });
+  // /aanbod (catalogue without the voucher card) and the old voucher page, through the repo.
+  async function publishPage(
+    slug: string,
+    title: string,
+    pageBlocks: { type: string; data: unknown }[],
+  ) {
+    const created = await cmsRepo.createPage({
+      locale,
+      slug,
+      title,
+      translationGroup: `selftest-${slug}`,
+    });
+    if (!created.ok) throw new Error(created.message);
+    for (const block of pageBlocks) {
+      const added = await cmsRepo.addBlock(
+        created.data.id,
+        block.type as Parameters<typeof cmsRepo.addBlock>[1],
+      );
+      if (!added.ok) throw new Error(added.message);
+      const written = await cmsRepo.updateBlock(added.data.id, block.data);
+      if (!written.ok) throw new Error(`${slug} ${block.type}: ${written.message}`);
+    }
+    const published = await cmsRepo.publishPage(created.data.id);
+    if (!published.ok) throw new Error(published.message);
+    return created.data.id;
+  }
+  const aanbodId = await publishPage('aanbod', 'Aanbod', [
+    { type: 'hero', data: { ...defaultDataFor('hero'), variant: 'pageHead', title: 'Ons aanbod' } },
+    { type: 'offerCatalogue', data: { ...defaultDataFor('offerCatalogue'), extraCards: [] } },
+  ]);
+  const voucherId = await publishPage('aanbod/cadeaubon', 'Cadeaubon', [
+    { type: 'giftVoucher', data: defaultDataFor('giftVoucher') },
+  ]);
+  check(
+    'migration fixture: three legacy offer pages, /aanbod and /aanbod/cadeaubon',
+    Boolean(legacyId && draftId && aanbodId && voucherId),
+  );
+
   const lines: string[] = [];
   const context = {
     db,
@@ -200,207 +360,358 @@ export async function offeringsSection(ctx: {
     cookieJar,
     log: (symbol: string, message: string) => lines.push(`${symbol} ${message}`),
   };
+  const writeCalls: string[] = [];
+  const watchedDb = new Proxy(db, {
+    get(target, property, receiver) {
+      const writes = ['insert', 'update', 'delete', 'execute', 'transaction', 'batch'];
+      if (typeof property === 'string' && writes.includes(property)) writeCalls.push(property);
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+  const auditBefore = (await db.select().from(schema.cmsAuditLog)).length;
   const previousCookie = cookieJar.get('cms_session');
-  await runOfferingMigration({ apply: false }, context);
+  await runAanbodMigration({ apply: false, backupDir }, { ...context, db: watchedDb });
   check(
-    'cms:migrate-offerings dry run: plans both pages, writes nothing (no row, no audit, no session)',
-    lines.some((line) => line.startsWith('+ /aanbod/selftest-direct')) &&
-      lines.some((line) => line.startsWith('+ /aanbod/selftest-aanvraag')) &&
-      (await offeringRows()).length === rowsBefore.size &&
+    'cms:migrate-aanbod dry run: plans the pages, the voucher move and the card; writes nothing',
+    writeCalls.length === 0 &&
+      lines.some((line) => line.startsWith('+ page /aanbod/selftest-legacy')) &&
+      lines.some(
+        (line) =>
+          line.startsWith('+ page /aanbod/selftest-stored') && line.includes('fill the saved'),
+      ) &&
+      lines.some((line) => line.startsWith('~ page /aanbod/cadeaubon — move')) &&
+      lines.some((line) => line.startsWith('~ page /aanbod — add the voucher card')) &&
+      lines.at(-1)?.includes('run again with --apply') === true &&
       (await db.select().from(schema.cmsAuditLog)).length === auditBefore &&
-      (await db.select().from(schema.cmsSessions)).length === sessionsBefore,
-    lines.join(' | '),
-  );
-  lines.length = 0;
-  const applied = await runOfferingMigration({ apply: true }, context);
-  const afterApply = await offeringRows();
-  check(
-    'cms:migrate-offerings --apply: rows for both pages, guard counts unchanged, session revoked',
-    applied.created.includes(directPageId) &&
-      applied.created.includes(enquiryPageId) &&
-      lines.some((line) => line.includes('unchanged')) &&
       cookieJar.get('cms_session') === previousCookie,
-    lines.join(' | '),
-  );
-  const storedDirect = afterApply.find((row) => row.pageId === directPageId);
-  const storedVariants = storedDirect
-    ? await db
-        .select()
-        .from(cmsOfferingVariants)
-        .where(eq(cmsOfferingVariants.offeringId, storedDirect.id))
-    : [];
-  check(
-    'migration: the linked page is saved as direct, Volwassene → adult service, Jeugd → youth, no price',
-    storedDirect?.bookingMode === 'direct' &&
-      storedDirect.variantMode === 'audience' &&
-      storedVariants.length === 2 &&
-      storedVariants.some((v) => v.audience === 'adult' && v.serviceId === adult.data.id) &&
-      storedVariants.some((v) => v.audience === 'youth' && v.serviceId === youth.data.id) &&
-      storedVariants.every((v) => v.priceCents === null),
-    JSON.stringify(storedVariants),
+    writeCalls.join() || lines.filter((line) => /^[~!+-]/.test(line)).join(' | '),
   );
   lines.length = 0;
-  const again = await runOfferingMigration({ apply: true }, context);
-  check('cms:migrate-offerings: a second apply creates nothing', again.created.length === 0);
-  const storedCard = await card('selftest-direct');
+  const guardsBefore = JSON.stringify(
+    await db.select({ id: schema.cmsBookings.id }).from(schema.cmsBookings),
+  );
+  const applied = await runAanbodMigration({ apply: true, backupDir }, context);
+  const catalogueAfter = await loadOfferCatalogue(locale);
+  const migrated = catalogueAfter.bySlug['selftest-legacy'];
+  const stored = catalogueAfter.bySlug['selftest-stored'];
+  const concept = catalogueAfter.bySlug['selftest-concept'];
   check(
-    'migration: the public card is the same before and after',
-    JSON.stringify({ ...storedCard, variants: [] }) ===
-      JSON.stringify({ ...legacyDirect, variants: [] }),
-    JSON.stringify(storedCard),
+    'apply: the published page became a shown, directly bookable offering with its text; the pages are gone',
+    applied.changed &&
+      applied.backupPath !== null &&
+      migrated?.offering.status === 'bookable' &&
+      migrated.offering.variantMode === 'audience' &&
+      migrated.content.title === 'Selftest legacy' &&
+      migrated.content.contents.join('|') === 'Punt één.|Punt twee.' &&
+      migrated.content.metaDescription === 'Meta van Selftest legacy' &&
+      migrated.content.image.url === '/images/editorial/bikefit-studio-v1.webp' &&
+      migrated.content.ctaLabel === '' &&
+      (await pageRow('aanbod/selftest-legacy')) === null &&
+      (await pageRow('aanbod/selftest-concept')) === null,
+    JSON.stringify({ changed: applied.changed, migrated: migrated?.offer, lines: lines.slice(-3) }),
+  );
+  check(
+    'apply: the saved settings kept their price and got the text; the draft page is a hidden offering',
+    stored?.offering.bookingMode === 'enquiry' &&
+      stored.offer.priceLabel === formatPrice(9900) &&
+      stored.content.title === 'Selftest stored' &&
+      concept?.offering.isListed === false &&
+      catalogueAfter.hiddenSlugs.includes('selftest-concept'),
+    JSON.stringify({ stored: stored?.offer, concept: concept?.offering }),
+  );
+  const voucherNew = await getPublishedPage(locale, 'cadeaubon');
+  const redirect = await findRedirect('/aanbod/cadeaubon');
+  const aanbodLive = await getPublishedPage(locale, 'aanbod');
+  const cards = (
+    aanbodLive?.snapshot.blocks.find((block) => block.type === 'offerCatalogue')?.data as
+      { extraCards?: { href: string }[] } | undefined
+  )?.extraCards;
+  check(
+    'apply: /aanbod/cadeaubon moved to /cadeaubon with a 301; /aanbod shows the voucher card; audited once',
+    voucherNew !== null &&
+      (await pageRow('aanbod/cadeaubon')) === null &&
+      redirect?.toPath === '/cadeaubon' &&
+      redirect.statusCode === 301 &&
+      cards?.length === 1 &&
+      cards[0].href === '/cadeaubon' &&
+      (
+        await db
+          .select()
+          .from(schema.cmsAuditLog)
+          .where(eq(schema.cmsAuditLog.action, 'migrate.aanbod.apply'))
+      ).length === 1 &&
+      JSON.stringify(await db.select({ id: schema.cmsBookings.id }).from(schema.cmsBookings)) ===
+        guardsBefore,
+    lines.filter((line) => /^[~!+-✓]/.test(line)).join(' | '),
+  );
+  lines.length = 0;
+  const second = await runAanbodMigration({ apply: true, backupDir }, context);
+  check(
+    'cms:migrate-aanbod: a second apply finds nothing to do',
+    !second.changed && lines.some((line) => line.includes('nothing to do')),
   );
 
   // --- 3: permissions --------------------------------------------------------
-  const settings = (overrides: Record<string, unknown> = {}) => ({
-    isListed: true,
-    bookingMode: 'direct',
-    variantMode: 'audience',
-    variants: [
-      { audience: 'adult', serviceId: adult.data.id, priceCents: null },
-      { audience: 'youth', serviceId: youth.data.id, priceCents: null },
-    ],
+  const newOffering = (overrides: Record<string, unknown> = {}) => ({
+    content: {
+      slug: 'selftest-nieuw',
+      category: 'begeleiding',
+      sortOrder: 80,
+      title: 'Selftest nieuw',
+      summary: 'Een nieuw aanbod uit de selftest.',
+      contents: ['Eerste stap.'],
+      metaDescription: 'Selftest nieuw.',
+    },
+    settings: {
+      isListed: true,
+      bookingMode: 'direct',
+      variantMode: 'audience',
+      variants: [
+        {
+          audience: 'adult',
+          serviceId: null,
+          priceCents: 14950,
+          service: {
+            durationMinutes: 75,
+            bufferAfterMinutes: null,
+            locationId: null,
+            requiresGuardian: false,
+          },
+        },
+        {
+          audience: 'youth',
+          serviceId: null,
+          priceCents: null,
+          service: {
+            durationMinutes: 45,
+            bufferAfterMinutes: 10,
+            locationId: null,
+            requiresGuardian: true,
+          },
+        },
+      ],
+    },
     ...overrides,
   });
   await signInAs(provider.userId);
   const snapshot = JSON.stringify(await offeringRows());
-  check(
-    'provider: saveOffering and listOfferingsForAdmin are refused, nothing written',
-    (await refused(() => offersRepo.saveOffering(directPageId, settings({ isListed: false })))) &&
-      (await refused(() => offersRepo.listOfferingsForAdmin())) &&
-      JSON.stringify(await offeringRows()) === snapshot,
-  );
-  const groups = await offersRepo.listOfferingSubscriptionGroups();
-  check(
-    'provider: sees the offering with its variants to subscribe to (service.read)',
-    groups.some(
-      (group) =>
-        group.title === 'Selftest direct' &&
-        group.variants.map((v) => v.label).join('/') === 'Volwassene/Jeugd',
-    ),
-    JSON.stringify(groups),
-  );
-
   const [editor] = await db
     .insert(schema.cmsUsers)
     .values({
-      email: EDITOR_EMAIL,
+      email: 'aanbod-redacteur@selftest.local',
       name: 'Aanbod redacteur',
       role: 'editor',
       passwordHash: 'no-login',
       mustChangePassword: false,
     })
     .returning({ id: schema.cmsUsers.id });
+  const providerRefused =
+    (await refused(() => offersRepo.createOffering(newOffering()))) &&
+    (await refused(() => offersRepo.listOfferingsForAdmin()));
   await signInAs(editor.id);
-  const priced = await offersRepo.saveOffering(
-    directPageId,
-    settings({
-      variants: [
-        { audience: 'adult', serviceId: adult.data.id, priceCents: 14950 },
-        { audience: 'youth', serviceId: youth.data.id, priceCents: null },
-      ],
-    }),
-  );
-  const overview = await offersRepo.listOfferingsForAdmin();
+  const editorRefused =
+    (await refused(() => offersRepo.createOffering(newOffering()))) &&
+    (await refused(() => offersRepo.listOfferingsForAdmin()));
   check(
-    'editor: saves a price per variant and sees it in Beheer → Aanbod',
-    priced.ok &&
-      overview.offerings.some(
-        (offering) =>
-          offering.pageId === directPageId &&
-          offering.source === 'stored' &&
-          offering.settings.variants[0].priceCents === 14950,
-      ),
+    'provider and editor: createOffering and listOfferingsForAdmin are refused, nothing written',
+    providerRefused && editorRefused && JSON.stringify(await offeringRows()) === snapshot,
   );
-  const missing = await offersRepo.saveOffering(
-    directPageId,
-    settings({
-      variants: [
-        { audience: 'adult', serviceId: adult.data.id, priceCents: null },
-        { audience: 'youth', serviceId: null, priceCents: null },
-      ],
-    }),
+  await signInAs(provider.userId);
+  const groups = await offersRepo.listOfferingSubscriptionGroups();
+  check(
+    'provider: sees the offerings with their variants to subscribe to (service.read)',
+    groups.some(
+      (group) =>
+        group.title === 'Bikefit – huidige fiets' &&
+        group.bookable &&
+        group.variants.map((v) => v.label).join('/') === 'Volwassene/Jeugd',
+    ),
+    JSON.stringify(groups.map((group) => group.title)),
   );
-  check('editor: direct booking without a service for Jeugd is refused', !missing.ok);
 
-  // --- 4: provider self-service and booking eligibility -----------------------
-  const unavailable = await card('selftest-direct');
+  // --- 4: the admin writes an offering with its services ------------------------
+  await signInAs(admin.id);
+  const created = await offersRepo.createOffering(newOffering());
+  const createdServices = created.ok
+    ? await db
+        .select()
+        .from(schema.cmsServices)
+        .where(like(schema.cmsServices.slug, 'selftest-nieuw%'))
+        .orderBy(orm.asc(schema.cmsServices.slug))
+    : [];
+  const adultService = createdServices.find((s) => s.slug === 'selftest-nieuw-volwassene');
+  const youthService = createdServices.find((s) => s.slug === 'selftest-nieuw-jeugd');
   check(
-    'nobody offers it: "unavailable", no booking slugs, the gate holds nothing back',
-    unavailable?.status === 'unavailable' &&
-      unavailable.bookingServiceSlugs.length === 0 &&
-      (await isServiceBookableOnline(adult.data.id, 'nl')),
-    JSON.stringify(unavailable),
+    'admin: createOffering writes the two services (slug, label, name, duration, guardian) and the variants',
+    created.ok &&
+      adultService?.choiceLabel === 'Volwassene' &&
+      adultService.name === 'Selftest nieuw – Volwassene' &&
+      adultService.durationMinutes === 75 &&
+      adultService.isActive &&
+      youthService?.requiresGuardian === true &&
+      youthService.durationMinutes === 45 &&
+      youthService.bufferAfterMinutes === 10 &&
+      (await card('selftest-nieuw'))?.status === 'unavailable',
+    created.ok ? createdServices.map((s) => s.slug).join() : created.message,
+  );
+  if (!created.ok || !adultService || !youthService) return;
+  const offeringId = created.data.id;
+  const admin1 = await offersRepo.getOfferingForAdmin(offeringId);
+  check(
+    'admin: the overview resolves the offering with its variants and no provider yet',
+    admin1?.offering.resolved.status === 'unavailable' &&
+      admin1.offering.settings.variants.map((v) => v.serviceId).join() ===
+        [adultService.id, youthService.id].join() &&
+      admin1.services.find((s) => s.id === adultService.id)?.providerCount === 0,
   );
 
   await signInAs(provider.userId);
   const subscribe = await bookingRepo.setProviderServices(provider.id, [
     ...ownBefore,
-    { serviceId: adult.data.id, locationId: null },
+    { serviceId: adultService.id, locationId: null },
   ]);
-  const bookable = await card('selftest-direct');
+  const bookable = await card('selftest-nieuw');
   check(
-    'provider subscribes their own profile to Volwassene → bookable with that variant only',
+    'provider subscribes their own profile to Volwassene → bookable with that variant only, priced',
     subscribe.ok &&
       bookable?.status === 'bookable' &&
-      bookable.bookingServiceSlugs.join(',') === ADULT_SLUG &&
-      bookable.priceLabel.startsWith('Volwassene €'),
+      bookable.bookingServiceSlugs.join(',') === 'selftest-nieuw-volwassene' &&
+      bookable.priceLabel === `Volwassene ${formatPrice(14950)} · Jeugd op aanvraag` &&
+      bookable.durationLabel === 'Volwassene: 1 u 15 min · Jeugd: 45 min',
     JSON.stringify(bookable),
   );
-  const [otherProvider] = await db
-    .select({ id: schema.cmsProviders.id })
-    .from(schema.cmsProviders)
-    .where(notInArray(schema.cmsProviders.id, [provider.id]))
-    .limit(1);
-  if (otherProvider) {
-    check(
-      "provider: subscribing another provider's profile is refused",
-      await refused(() =>
-        bookingRepo.setProviderServices(otherProvider.id, [
-          { serviceId: youth.data.id, locationId: null },
-        ]),
-      ),
-    );
-  }
 
-  await signInAs(editor.id);
-  await offersRepo.saveOffering(directPageId, settings({ bookingMode: 'enquiry' }));
+  await signInAs(admin.id);
+  const edited = await offersRepo.updateOffering(
+    offeringId,
+    newOffering({
+      settings: {
+        ...newOffering().settings,
+        variants: [
+          {
+            audience: 'adult',
+            serviceId: adultService.id,
+            priceCents: 15000,
+            service: {
+              durationMinutes: 90,
+              bufferAfterMinutes: 15,
+              locationId: null,
+              requiresGuardian: false,
+            },
+          },
+          {
+            audience: 'youth',
+            serviceId: youthService.id,
+            priceCents: null,
+            service: {
+              durationMinutes: 45,
+              bufferAfterMinutes: 10,
+              locationId: null,
+              requiresGuardian: true,
+            },
+          },
+        ],
+      },
+    }),
+  );
+  const [adultAfter] = await db
+    .select()
+    .from(schema.cmsServices)
+    .where(eq(schema.cmsServices.id, adultService.id));
+  check(
+    'admin: an edit updates the service by id (duration, buffer), the subscription survives',
+    edited.ok &&
+      adultAfter.durationMinutes === 90 &&
+      adultAfter.bufferAfterMinutes === 15 &&
+      (await card('selftest-nieuw'))?.durationLabel === 'Volwassene: 1 u 30 min · Jeugd: 45 min' &&
+      (await card('selftest-nieuw'))?.status === 'bookable' &&
+      (
+        await db
+          .select()
+          .from(schema.cmsServices)
+          .where(like(schema.cmsServices.slug, 'selftest-nieuw%'))
+      ).length === 2,
+    edited.ok ? '' : edited.message,
+  );
+  const clash = await offersRepo.createOffering(
+    newOffering({ content: { ...newOffering().content, title: 'Dubbel' } }),
+  );
+  check(
+    'admin: a second offering with the same slug is refused',
+    !clash.ok && clash.message.includes('slug'),
+  );
+
+  await offersRepo.updateOffering(
+    offeringId,
+    newOffering({
+      settings: {
+        ...newOffering().settings,
+        bookingMode: 'enquiry',
+        variants: newOffering().settings.variants.map((v, i) => ({
+          ...v,
+          serviceId: i === 0 ? adultService.id : youthService.id,
+        })),
+      },
+    }),
+  );
   const window = { fromYmd: '2026-11-02', toYmd: '2026-11-08' };
   const heldBack = await availabilityAction({
-    serviceId: adult.data.id,
+    serviceId: adultService.id,
     providerId: null,
     ...window,
   });
   check(
     'switched to enquiry: card "enquiry", the gate and availabilityAction refuse its service',
-    (await card('selftest-direct'))?.status === 'enquiry' &&
-      !(await isServiceBookableOnline(adult.data.id, 'nl')) &&
+    (await card('selftest-nieuw'))?.status === 'enquiry' &&
+      !(await isServiceBookableOnline(adultService.id, locale)) &&
       !heldBack.ok &&
       heldBack.message === 'Deze dienst kun je niet online boeken.',
     JSON.stringify(heldBack),
   );
-
-  await offersRepo.saveOffering(directPageId, settings({ isListed: false }));
-  const catalogue = await loadOfferCatalogue('nl');
+  await offersRepo.updateOffering(
+    offeringId,
+    newOffering({
+      settings: {
+        ...newOffering().settings,
+        isListed: false,
+        variants: newOffering().settings.variants.map((v, i) => ({
+          ...v,
+          serviceId: i === 0 ? adultService.id : youthService.id,
+        })),
+      },
+    }),
+  );
   check(
     'hidden: left out of the overviews, its page 404s, its services held back',
-    !catalogue.offers.some((offer) => offer.slug === 'selftest-direct') &&
-      catalogue.hiddenPageIds.includes(directPageId) &&
-      (await getStudioPage('nl', DIRECT_PAGE)) === null &&
-      !(await isServiceBookableOnline(youth.data.id, 'nl')),
+    (await card('selftest-nieuw')) === undefined &&
+      (await getPublishedOffer(locale, 'selftest-nieuw')) === null &&
+      !(await isServiceBookableOnline(youthService.id, locale)),
   );
-  await offersRepo.saveOffering(directPageId, settings());
+  await offersRepo.updateOffering(
+    offeringId,
+    newOffering({
+      settings: {
+        ...newOffering().settings,
+        variants: newOffering().settings.variants.map((v, i) => ({
+          ...v,
+          serviceId: i === 0 ? adultService.id : youthService.id,
+        })),
+      },
+    }),
+  );
   check(
     'shown and direct again: bookable, the page is served, the gate allows the service',
-    (await card('selftest-direct'))?.status === 'bookable' &&
-      (await getStudioPage('nl', DIRECT_PAGE)) !== null &&
-      (await isServiceBookableOnline(adult.data.id, 'nl')),
+    (await card('selftest-nieuw'))?.status === 'bookable' &&
+      (await getPublishedOffer(locale, 'selftest-nieuw'))?.content.title === 'Selftest nieuw' &&
+      (await isServiceBookableOnline(adultService.id, locale)),
   );
 
   // --- 5: the enquiry form on the real store (no outbound mail) ---------------
   const sent: Array<{ to: string; subject: string; replyTo: string }> = [];
   const deps = {
     store: enquiry.offerEnquiryStore(db),
-    findOffer: (slug: string) => enquiry.findEnquiryOffer(slug, 'nl'),
+    findOffer: (slug: string) => enquiry.findEnquiryOffer(slug, locale),
     send: async (mail: { to: string; subject: string; replyTo: string }) => {
       sent.push(mail);
       return { sent: true as const, id: 'selftest' };
@@ -411,15 +722,15 @@ export async function offeringsSection(ctx: {
     log: silentLog,
   };
   const form = {
-    offerSlug: 'selftest-aanvraag',
+    offerSlug: 'lactaattest',
     name: 'Aanvrager Test',
     email: 'aanvrager@selftest.local',
     message: 'Kan ik dit in november doen?',
     requestId: '7c0c6f0e-3f8e-4c1b-9c86-0a3e2b5d9f11',
   };
-  const first = await deliverOfferEnquiry(form, deps);
+  const firstSend = await deliverOfferEnquiry(form, deps);
   const repeat = await deliverOfferEnquiry(form, deps);
-  const direct = await deliverOfferEnquiry({ ...form, offerSlug: 'selftest-direct' }, deps);
+  const direct = await deliverOfferEnquiry({ ...form, offerSlug: 'bikefit-huidige-fiets' }, deps);
   const keys = (
     await db
       .select({ scope: schema.cmsRateLimits.scope })
@@ -427,19 +738,17 @@ export async function offeringsSection(ctx: {
       .where(like(schema.cmsRateLimits.scope, 'aanvraag%'))
   ).map((row) => row.scope);
   check(
-    'enquiry: sent once to the inbox (Reply-To the visitor); a repeat is not sent again',
-    first.ok &&
+    'enquiry: sent once to the inbox (Reply-To the visitor); a repeat is not sent again; a direct offering refuses',
+    firstSend.ok &&
       repeat.ok &&
       repeat.duplicate &&
       sent.length === 1 &&
       sent[0].to === 'orders@selftest.local' &&
       sent[0].replyTo === form.email &&
-      sent[0].subject.startsWith('Aanvraag: Selftest aanvraag'),
-    JSON.stringify({ first, repeat, sent: sent.length }),
-  );
-  check(
-    'enquiry: a directly booked offering does not take enquiries',
-    !direct.ok && direct.code === 'unavailable',
+      sent[0].subject.startsWith('Aanvraag: Lactaattest') &&
+      !direct.ok &&
+      direct.code === 'unavailable',
+    JSON.stringify({ firstSend, repeat, direct, sent: sent.length }),
   );
   check(
     'enquiry: rate-limit keys (IP, hashed e-mail, sent marker) hold no address',
@@ -471,47 +780,90 @@ export async function offeringsSection(ctx: {
     );
   }
 
-  // --- 6: clean-up ------------------------------------------------------------
+  // --- 6: the provider profile comes with the Aanbieder role -------------------
   await signInAs(admin.id);
+  const roleUser = await users.createUser({
+    email: 'rol-aanbieder@selftest.local',
+    name: 'Rol Aanbieder',
+    role: 'provider',
+  });
+  const profile1 = roleUser.ok ? await ensureProviderProfile(roleUser.data.user.id) : null;
+  const profile2 = roleUser.ok ? await ensureProviderProfile(roleUser.data.user.id) : null;
+  check(
+    'ensureProviderProfile: an admin creates the profile of a new Aanbieder once; a second call keeps it',
+    roleUser.ok &&
+      profile1?.ok === true &&
+      profile1.data.created &&
+      profile2?.ok === true &&
+      !profile2.data.created &&
+      profile2.data.providerId === profile1.data.providerId,
+    roleUser.ok ? JSON.stringify([profile1, profile2]) : roleUser.message,
+  );
+  if (roleUser.ok) {
+    // Test-only shortcut: a new account replaces its temporary password at the
+    // first sign-in (section 5b); here the guard would refuse it otherwise.
+    await db
+      .update(schema.cmsUsers)
+      .set({ mustChangePassword: false })
+      .where(eq(schema.cmsUsers.id, roleUser.data.user.id));
+    await signInAs(roleUser.data.user.id);
+    const own = await ensureProviderProfile(roleUser.data.user.id);
+    check(
+      'ensureProviderProfile: the Aanbieder may complete their own account, never another one',
+      own.ok && !own.data.created && (await refused(() => ensureProviderProfile(admin.id))),
+    );
+  }
+
+  // --- 7: clean-up ------------------------------------------------------------
+  await signInAs(admin.id);
+  const removed = await offersRepo.deleteOffering(offeringId);
+  const leftActive = await db
+    .select({ id: schema.cmsServices.id })
+    .from(schema.cmsServices)
+    .where(
+      and(like(schema.cmsServices.slug, 'selftest-nieuw%'), eq(schema.cmsServices.isActive, true)),
+    );
+  check(
+    'admin: deleteOffering removes the offering and deactivates its services',
+    removed.ok && leftActive.length === 0,
+  );
   await db
     .delete(cmsOfferings)
-    .where(rowsBefore.size ? notInArray(cmsOfferings.pageId, [...rowsBefore]) : sql`true`);
-  for (const pageId of [directPageId, enquiryPageId]) {
-    await cmsRepo.unpublishPage(pageId);
-    await cmsRepo.deletePage(pageId);
+    .where(rowsBefore.size ? orm.notInArray(cmsOfferings.id, [...rowsBefore]) : sql`true`);
+  for (const slug of ['aanbod', 'cadeaubon']) {
+    const row = await pageRow(slug);
+    if (row) {
+      await cmsRepo.unpublishPage(row.id);
+      await cmsRepo.deletePage(row.id);
+    }
   }
+  await db.delete(schema.cmsRedirects).where(eq(schema.cmsRedirects.fromPath, '/aanbod/cadeaubon'));
   await signInAs(provider.userId);
   await bookingRepo.setProviderServices(provider.id, ownBefore);
   await signInAs(admin.id);
-  await bookingRepo.deleteService(adult.data.id);
-  await bookingRepo.deleteService(youth.data.id);
+  await db
+    .delete(schema.cmsProviderServices)
+    .where(inArray(schema.cmsProviderServices.serviceId, [adultService.id, youthService.id]));
+  await db
+    .delete(schema.cmsServices)
+    .where(inArray(schema.cmsServices.id, [adultService.id, youthService.id]));
   await db.delete(schema.cmsSessions).where(eq(schema.cmsSessions.userId, editor.id));
   await db.delete(schema.cmsUsers).where(eq(schema.cmsUsers.id, editor.id));
+  if (roleUser.ok) {
+    await db.delete(schema.cmsSessions).where(eq(schema.cmsSessions.userId, roleUser.data.user.id));
+    await db.delete(schema.cmsUsers).where(eq(schema.cmsUsers.id, roleUser.data.user.id));
+  }
   await db.delete(schema.cmsRateLimits).where(like(schema.cmsRateLimits.scope, 'aanvraag%'));
-  const leftPages = await db
-    .select({ id: schema.cmsPages.id })
-    .from(schema.cmsPages)
-    .where(inArray(schema.cmsPages.slug, [DIRECT_PAGE, ENQUIRY_PAGE]));
   const ownAfter = await db
     .select()
     .from(schema.cmsProviderServices)
     .where(eq(schema.cmsProviderServices.providerId, provider.id));
   check(
-    'clean-up: offering rows, pages and editor removed; subscriptions as before; test services inactive',
-    leftPages.length === 0 &&
-      (await offeringRows()).length === rowsBefore.size &&
+    'clean-up: offerings, pages, redirect, services and users removed; subscriptions as before',
+    (await offeringRows()).length === rowsBefore.size &&
+      (await pageRow('aanbod')) === null &&
+      (await pageRow('cadeaubon')) === null &&
       ownAfter.length === ownBefore.length &&
-      ownAfter.every((row) => ownBefore.some((entry) => entry.serviceId === row.serviceId)) &&
-      (
-        await db
-          .select()
-          .from(schema.cmsServices)
-          .where(
-            and(
-              inArray(schema.cmsServices.id, [adult.data.id, youth.data.id]),
-              eq(schema.cmsServices.isActive, true),
-            ),
-          )
-      ).length === 0,
+      ownAfter.every((row) => ownBefore.some((entry) => entry.serviceId === row.serviceId)),
   );
 }

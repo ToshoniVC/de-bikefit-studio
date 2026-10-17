@@ -5,19 +5,22 @@ import {
   offersInCategory,
   showsOfferPrices,
   type CatalogueOffer,
+  type OfferCategory,
 } from '@/lib/offers/catalogue';
-import { OFFERING_STATUS_LABELS } from '@/lib/offers/offering';
+import { OFFERING_STATUS_LABELS, type OfferingStatus } from '@/lib/offers/offering';
 import { StudioButtonLink, splitArrow } from '../link';
 import { StudioSection } from './section';
 import type { BlockProps } from './types';
 
 /**
- * `offerCatalogue` — the offer, grouped (Bikefit, Begeleiding).
+ * `offerCatalogue` — the offer, grouped (Bikefit, Begeleiding, Overige).
  *
- * The cards are read from the published offer pages at render time
+ * The cards are read from the offerings in Beheer → Aanbod at render time
  * (`listPublishedOffers`, tag-cached), so there is exactly one place where an
- * offer's title, summary and price live: its own page. A group with no
- * published offers is left out; a catalogue with none at all renders nothing.
+ * offer's title, summary, price and status live. `extraCards` on the block
+ * (the gift voucher) are fixed cards after the offerings of their category.
+ * A group with nothing in it is left out; a catalogue with none at all
+ * renders nothing.
  *
  * Each card is one link (the title), stretched over the card with CSS, so the
  * whole card is clickable while the link's accessible name stays the title.
@@ -26,11 +29,32 @@ import type { BlockProps } from './types';
  * (`showsOfferPrices`): the home page and `/bikefit` never show prices, also
  * when older published content still has the switch on.
  *
- * Every service card names how it is booked (Beheer → Aanbod): "Online te
- * boeken", "Op aanvraag", or — greyed out — "Tijdelijk niet online te boeken"
- * for a directly bookable offering nobody offers right now. The card still
- * links to its page, which says the same; hidden offerings are not listed.
+ * Every offering card names how it is booked: "Online te boeken", "Op
+ * aanvraag", or — greyed out — "Tijdelijk niet online te boeken" for a
+ * directly bookable offering nobody offers right now. Hidden offerings are not
+ * listed.
  */
+
+type Card = {
+  key: string;
+  href: string;
+  title: string;
+  summary: string;
+  priceLabel: string;
+  status: OfferingStatus | null;
+};
+
+function offerCard(offer: CatalogueOffer): Card {
+  return {
+    key: `offer-${offer.slug}`,
+    href: offer.path,
+    title: offer.title,
+    summary: offer.summary,
+    priceLabel: offer.priceLabel,
+    status: offer.status,
+  };
+}
+
 export async function OfferCatalogueBlock({
   data,
   anchor,
@@ -46,9 +70,23 @@ export async function OfferCatalogueBlock({
     console.error('[aanbod] catalogue_unavailable');
   }
 
+  const extra = (category: OfferCategory): Card[] =>
+    data.extraCards
+      .filter((card) => card.category === category)
+      .map((card, index) => ({
+        key: `extra-${category}-${index}`,
+        href: card.href,
+        title: card.title,
+        summary: card.summary,
+        priceLabel: card.priceLabel,
+        status: null,
+      }));
   const groups = data.groups
-    .map((group) => ({ ...group, offers: offersInCategory(offers, group.category) }))
-    .filter((group) => group.offers.length > 0);
+    .map((group) => ({
+      ...group,
+      cards: [...offersInCategory(offers, group.category).map(offerCard), ...extra(group.category)],
+    }))
+    .filter((group) => group.cards.length > 0);
   if (groups.length === 0) return null;
 
   // Group headings sit one level under the section title (or directly under
@@ -83,30 +121,30 @@ export async function OfferCatalogueBlock({
                 {group.lede ? <p className="studio-offer-group__lede">{group.lede}</p> : null}
               </div>
               <ul className="studio-offer-list">
-                {group.offers.map((offer) => (
+                {group.cards.map((card) => (
                   <li
-                    key={offer.slug}
+                    key={card.key}
                     className={`studio-offer-card${
-                      offer.status === 'unavailable' ? ' studio-offer-card--unavailable' : ''
+                      card.status === 'unavailable' ? ' studio-offer-card--unavailable' : ''
                     }`}
-                    data-offer-status={offer.status ?? undefined}
+                    data-offer-status={card.status ?? undefined}
                   >
                     <CardHeading className="studio-offer-card__title">
-                      <Link href={offer.path} className="studio-offer-card__link">
-                        {offer.title}
+                      <Link href={card.href} className="studio-offer-card__link">
+                        {card.title}
                       </Link>
                     </CardHeading>
-                    {offer.summary ? (
-                      <p className="studio-offer-card__body">{offer.summary}</p>
+                    {card.summary ? (
+                      <p className="studio-offer-card__body">{card.summary}</p>
                     ) : null}
-                    {offer.status ? (
+                    {card.status ? (
                       <p className="studio-offer-card__status">
-                        {OFFERING_STATUS_LABELS[offer.status]}
+                        {OFFERING_STATUS_LABELS[card.status]}
                       </p>
                     ) : null}
                     <p className="studio-offer-card__foot">
-                      {showPrices ? (
-                        <span className="studio-offer-card__price">{offer.priceLabel}</span>
+                      {showPrices && card.priceLabel ? (
+                        <span className="studio-offer-card__price">{card.priceLabel}</span>
                       ) : null}
                       <span className="studio-offer-card__more" aria-hidden="true">
                         Meer info &rarr;

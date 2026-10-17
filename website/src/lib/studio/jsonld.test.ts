@@ -1,90 +1,67 @@
 import { describe, expect, it } from 'vitest';
 import { defaultSiteSettings } from '@/lib/cms/blocks';
-import { offerSchema } from '@/lib/cms/blocks-aanbod';
-import { offerServiceJsonLd } from './jsonld';
+import { DEFAULT_OFFERS } from '@/lib/offers/defaults';
+import type { ResolvedOffering } from '@/lib/offers/offering';
+import { offeringServiceJsonLd } from './jsonld';
 
 const settings = defaultSiteSettings();
 const origin = 'https://studio.test';
 const canonical = `${origin}/aanbod/bikefit-huidige-fiets`;
+const content = DEFAULT_OFFERS.find(
+  (entry) => entry.content.slug === 'bikefit-huidige-fiets',
+)!.content;
 
-function offerBlock(bookingServiceSlugs: string[]) {
-  return [
-    {
-      id: 'offer',
-      type: 'offer' as const,
-      data: offerSchema.parse({
-        title: 'Bikefit – huidige fiets',
-        priceCents: 12000,
-        bookingServiceSlugs,
-      }),
-    },
-  ];
-}
+const variant = (audience: 'adult' | 'youth' | 'all', priceCents: number | null) => ({
+  audience,
+  label: audience === 'adult' ? 'Volwassene' : audience === 'youth' ? 'Jeugd' : '',
+  serviceId: null,
+  serviceSlug: null,
+  serviceName: null,
+  durationMinutes: null,
+  requiresGuardian: false,
+  priceCents,
+  bookable: true,
+});
+const offering = (variants: ReturnType<typeof variant>[]): ResolvedOffering => ({
+  source: 'stored',
+  isListed: true,
+  bookingMode: 'direct',
+  variantMode: variants.length > 1 ? 'audience' : 'single',
+  status: 'bookable',
+  variants,
+});
+const node = (variants: ReturnType<typeof variant>[]) =>
+  offeringServiceJsonLd({ content, offering: offering(variants), settings, origin, canonical });
 
-describe('offer Service JSON-LD', () => {
-  it('does not publish an independent editorial price for a linked offer', () => {
-    const node = offerServiceJsonLd(
-      offerBlock(['volwassenenfit', 'jeugdfit']),
-      settings,
-      origin,
-      canonical,
-    );
-    expect(node).toMatchObject({ '@type': 'Service', name: 'Bikefit – huidige fiets' });
-    expect(node).not.toHaveProperty('offers');
+describe('offering Service JSON-LD', () => {
+  it('names the offering, its category and the organisation; no price while "Prijs op aanvraag"', () => {
+    const service = node([variant('all', null)]);
+    expect(service).toMatchObject({
+      '@type': 'Service',
+      '@id': `${canonical}#dienst`,
+      name: 'Bikefit – huidige fiets',
+      serviceType: 'Bikefit',
+      url: canonical,
+      provider: { '@id': `${origin}/#organization` },
+    });
+    expect(service).not.toHaveProperty('offers');
   });
 
-  it('retains an approved editorial price for an unlinked enquiry offer', () => {
-    const node = offerServiceJsonLd(offerBlock([]), settings, origin, canonical);
-    expect(node?.offers).toEqual({ '@type': 'Offer', price: '120.00', priceCurrency: 'EUR' });
-  });
-
-  it('with a resolved offering: only prices set in Beheer → Aanbod, never the editorial cents', () => {
-    const variant = (audience: 'adult' | 'youth' | 'all', priceCents: number | null) => ({
-      audience,
-      label: audience === 'adult' ? 'Volwassene' : audience === 'youth' ? 'Jeugd' : '',
-      serviceId: null,
-      serviceSlug: null,
-      serviceName: null,
-      durationMinutes: null,
-      requiresGuardian: false,
-      priceCents,
-      bookable: true,
+  it('mirrors the prices set in Beheer → Aanbod: one amount, or one Offer per priced variant', () => {
+    expect(node([variant('all', 9900)]).offers).toEqual({
+      '@type': 'Offer',
+      price: '99.00',
+      priceCurrency: 'EUR',
     });
-    const offering = (variants: ReturnType<typeof variant>[]) => ({
-      source: 'stored' as const,
-      isListed: true,
-      bookingMode: 'direct' as const,
-      variantMode: variants.length > 1 ? ('audience' as const) : ('single' as const),
-      status: 'bookable' as const,
-      variants,
+    expect(node([variant('adult', 15000), variant('youth', null)]).offers).toEqual({
+      '@type': 'Offer',
+      name: 'Volwassene',
+      price: '150.00',
+      priceCurrency: 'EUR',
     });
-    // The block carries 12000 editorial cents; the offering has no price → no offers.
-    expect(
-      offerServiceJsonLd(
-        offerBlock([]),
-        settings,
-        origin,
-        canonical,
-        offering([variant('all', null)]),
-      ),
-    ).not.toHaveProperty('offers');
-    expect(
-      offerServiceJsonLd(
-        offerBlock([]),
-        settings,
-        origin,
-        canonical,
-        offering([variant('all', 9900)]),
-      )?.offers,
-    ).toEqual({ '@type': 'Offer', price: '99.00', priceCurrency: 'EUR' });
-    expect(
-      offerServiceJsonLd(
-        offerBlock(['volwassenenfit', 'jeugdfit']),
-        settings,
-        origin,
-        canonical,
-        offering([variant('adult', 15000), variant('youth', null)]),
-      )?.offers,
-    ).toEqual({ '@type': 'Offer', name: 'Volwassene', price: '150.00', priceCurrency: 'EUR' });
+    expect(node([variant('adult', 15000), variant('youth', 9000)]).offers).toEqual([
+      { '@type': 'Offer', name: 'Volwassene', price: '150.00', priceCurrency: 'EUR' },
+      { '@type': 'Offer', name: 'Jeugd', price: '90.00', priceCurrency: 'EUR' },
+    ]);
   });
 });

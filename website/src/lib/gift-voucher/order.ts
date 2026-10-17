@@ -15,8 +15,8 @@ import { z } from 'zod';
 /** The exact label of the submit button (work block 2026-10-13). */
 export const GIFT_VOUCHER_SUBMIT_LABEL = 'Bestel nu';
 
-/** The voucher page lives at `/aanbod/cadeaubon`. */
-export const GIFT_VOUCHER_PAGE_SLUG = 'aanbod/cadeaubon';
+/** The voucher page lives at `/cadeaubon` (until 17 Oct 2026: `/aanbod/cadeaubon`, now a redirect). */
+export const GIFT_VOUCHER_PAGE_SLUG = 'cadeaubon';
 
 /** Technical bounds, not voucher terms: a positive amount, and a sanity cap. */
 export const GIFT_VOUCHER_MIN_CENTS = 100;

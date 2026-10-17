@@ -3,40 +3,36 @@ import { asc, eq, inArray } from 'drizzle-orm';
 import { unstable_cache } from 'next/cache';
 import { getCmsDb } from '@/db/cms';
 import { cmsOfferings, cmsOfferingVariants } from '@/db/cms-offering-schema';
-import { cmsPages, cmsServices, DEFAULT_LOCALE } from '@/db/cms-schema';
+import { cmsServices, DEFAULT_LOCALE } from '@/db/cms-schema';
 import { BOOKING_TAG } from '@/lib/booking/content';
 import { CMS_TAGS } from '@/lib/cms/content';
-import { settingsFromRows, type OfferingServiceInfo, type OfferingSettings } from './offering';
+import { settingsFromRows, type OfferingServiceInfo } from './offering';
+import { contentFromRow, type OfferingRecord } from './offering-content';
 
 /**
- * Cached read of the offering settings (`cms_offerings` + variants) and of the
- * service facts they need, for the public site. The admin screen reads the
- * same tables through `./repo.ts` (uncached, permission-checked).
+ * Cached read of the offerings (`cms_offerings` + variants: copy and
+ * settings) and of the service facts they need, for the public site. The
+ * admin screen reads the same tables through `./repo.ts` (uncached,
+ * permission-checked).
  *
  * Tags: `cms` (every CMS write), {@link OFFERING_TAG} (Beheer → Aanbod) and
- * `booking` (a service edited in Beheer → Diensten). Values crossing the cache
+ * `booking` (a provider changing what they offer). Values crossing the cache
  * boundary are plain JSON.
  *
- * Read failures are separate on purpose: without migration 0010 the offering
- * tables are missing, and every offer page then simply derives its settings
- * from its block as before (`storeAvailable: false`).
+ * A failed read is reported with a fixed code and answered with an empty
+ * catalogue (`storeAvailable: false`): the overviews then list nothing and the
+ * booking actions refuse every service (fail closed), which is what a missing
+ * migration 0010/0011 should look like, never a crash of the page.
  */
 
 export const OFFERING_TAG = 'cms:offerings';
 
 const REVALIDATE_SECONDS = 300;
 
-export type StoredOffering = {
-  pageId: string;
-  pageSlug: string;
-  pagePublished: boolean;
-  settings: OfferingSettings;
-};
-
 export type OfferingStore = {
-  stored: StoredOffering[];
+  offerings: OfferingRecord[];
   services: OfferingServiceInfo[];
-  /** `false` when the offering tables could not be read (e.g. before migration 0010). */
+  /** `false` when the offering tables could not be read (e.g. before migration 0011). */
   storeAvailable: boolean;
 };
 
@@ -59,22 +55,14 @@ async function readServices(locale: string): Promise<OfferingServiceInfo[]> {
     .orderBy(asc(cmsServices.sortOrder), asc(cmsServices.name));
 }
 
-/** Every stored offering of a locale (draft and published pages), uncached. */
-export async function readStoredOfferings(locale: string): Promise<StoredOffering[]> {
+/** Every offering of a locale (shown or not), uncached. */
+export async function readStoredOfferings(locale: string): Promise<OfferingRecord[]> {
   const db = await getCmsDb();
   const rows = await db
-    .select({
-      id: cmsOfferings.id,
-      pageId: cmsOfferings.pageId,
-      isListed: cmsOfferings.isListed,
-      bookingMode: cmsOfferings.bookingMode,
-      variantMode: cmsOfferings.variantMode,
-      pageSlug: cmsPages.slug,
-      pageStatus: cmsPages.status,
-    })
+    .select()
     .from(cmsOfferings)
-    .innerJoin(cmsPages, eq(cmsPages.id, cmsOfferings.pageId))
-    .where(eq(cmsPages.locale, locale));
+    .where(eq(cmsOfferings.locale, locale))
+    .orderBy(asc(cmsOfferings.sortOrder), asc(cmsOfferings.title));
   if (rows.length === 0) return [];
   const variants = await db
     .select()
@@ -86,26 +74,30 @@ export async function readStoredOfferings(locale: string): Promise<StoredOfferin
       ),
     );
   return rows.map((row) => ({
-    pageId: row.pageId,
-    pageSlug: row.pageSlug,
-    pagePublished: row.pageStatus === 'published',
+    id: row.id,
+    locale: row.locale,
+    content: contentFromRow(row),
     settings: settingsFromRows(
       row,
       variants.filter((variant) => variant.offeringId === row.id),
     ),
+    updatedAt: new Date(row.updatedAt).toISOString(),
   }));
 }
 
 export async function getOfferingStore(locale: string = DEFAULT_LOCALE): Promise<OfferingStore> {
   const load = unstable_cache(
     async (): Promise<OfferingStore> => {
-      const services = await readServices(locale);
       try {
-        return { stored: await readStoredOfferings(locale), services, storeAvailable: true };
+        const [offerings, services] = await Promise.all([
+          readStoredOfferings(locale),
+          readServices(locale),
+        ]);
+        return { offerings, services, storeAvailable: true };
       } catch {
         // A fixed code, never the error: a failed query's message holds its SQL.
         console.error('[aanbod] offerings_unavailable');
-        return { stored: [], services, storeAvailable: false };
+        return { offerings: [], services: [], storeAvailable: false };
       }
     },
     ['cms-offering-store', locale],

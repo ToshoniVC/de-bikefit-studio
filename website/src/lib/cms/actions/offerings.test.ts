@@ -1,21 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cmsOfferings, cmsOfferingVariants } from '@/db/cms-offering-schema';
-import {
-  cmsAuditLog,
-  cmsBlocks,
-  cmsPages,
-  cmsServices,
-  type CmsRole,
-  type CmsUserPublic,
-} from '@/db/cms-schema';
+import { cmsAuditLog, cmsServices, type CmsRole, type CmsUserPublic } from '@/db/cms-schema';
 import { saveOfferingAction } from './offerings';
 import type { ActionState } from './state';
 
 /**
  * Beheer → Aanbod, called directly as a forged POST would: the guard is the
- * real one in `src/lib/offers/repo.ts` (`offering.manage`), the session lookup
- * and the database are doubles (as in `services.test.ts`). On a real database
- * the same flows run in `npm run cms:selftest`, section 14d.
+ * real one in `src/lib/offers/repo.ts` (`offering.manage`, admin), the
+ * session lookup and the database are doubles (as in `services.test.ts`). On
+ * a real database the same flows run in `npm run cms:selftest`, section 14d.
  */
 
 const session = vi.hoisted(() => ({
@@ -29,10 +22,19 @@ const session = vi.hoisted(() => ({
   toPublicUser: vi.fn((user: unknown) => user),
 }));
 
+/** A thrown `redirect()` as Next signals it; `unstable_rethrow` passes it on. */
+class RedirectSignal extends Error {
+  constructor(readonly url: string) {
+    super(`NEXT_REDIRECT ${url}`);
+  }
+}
+
 const fake = vi.hoisted(() => {
-  const rows = new Map<unknown, unknown[]>();
+  /** Rows per table; a function answers per call (e.g. a row that exists, then no clash). */
+  const rows = new Map<unknown, unknown[] | (() => unknown[])>();
   const reads: unknown[] = [];
   const writes: Array<{ kind: string; table: unknown; values?: unknown }> = [];
+  let inserted = 0;
   const chain = (result: () => unknown[]) => {
     const query: Record<string, unknown> = {};
     for (const method of ['where', 'limit', 'orderBy', 'groupBy', 'leftJoin', 'innerJoin']) {
@@ -46,13 +48,18 @@ const fake = vi.hoisted(() => {
     select: () => ({
       from: (table: unknown) => {
         reads.push(table);
-        return chain(() => rows.get(table) ?? []);
+        return chain(() => {
+          const entry = rows.get(table);
+          return typeof entry === 'function' ? entry() : (entry ?? []);
+        });
       },
     }),
     insert: (table: unknown) => ({
       values: (values: unknown) => {
         writes.push({ kind: 'insert', table, values });
-        const returning = async () => [{ ...(values as object), id: 'offering-1' }];
+        inserted += 1;
+        const id = `row-${inserted}`;
+        const returning = async () => [{ ...(values as object), id }];
         return Object.assign(Promise.resolve(), {
           returning,
           onConflictDoUpdate: () => Object.assign(Promise.resolve(), { returning }),
@@ -70,7 +77,7 @@ const fake = vi.hoisted(() => {
       return { where: async () => {} };
     },
   };
-  return { rows, reads, writes, db };
+  return { rows, reads, writes, db, reset: () => void (inserted = 0) };
 });
 
 vi.mock('@/lib/cms/session', () => session);
@@ -93,13 +100,20 @@ vi.mock('next/cache', () => ({
   updateTag: vi.fn(),
   unstable_cache: (fn: unknown) => fn,
 }));
-vi.mock('next/navigation', () => ({ unstable_rethrow: () => {} }));
+vi.mock('next/navigation', () => ({
+  redirect: (url: string) => {
+    throw new RedirectSignal(url);
+  },
+  unstable_rethrow: (error: unknown) => {
+    if (error instanceof RedirectSignal) throw error;
+  },
+}));
 
 const FORBIDDEN = 'Je hebt geen toestemming voor deze actie.';
 const IDLE: ActionState = { ok: null, message: '' };
 
 function cmsUser(role: CmsRole): CmsUserPublic {
-  const at = new Date('2026-10-16T08:00:00Z');
+  const at = new Date('2026-10-17T08:00:00Z');
   return {
     id: `user-${role}`,
     email: `${role}@example.com`,
@@ -133,25 +147,24 @@ function form(fields: Record<string, string>): FormData {
   return data;
 }
 
-const PAGE = {
-  id: 'page-bikefit',
-  slug: 'aanbod/bikefit-huidige-fiets',
-  locale: 'nl',
-  status: 'draft',
-  publishedSnapshot: null,
-  title: 'Bikefit – huidige fiets',
-};
-const service = (id: string, isActive = true) => ({ id, isActive, locale: 'nl' });
-
-/** Volwassene/Jeugd, booked directly, a price for Volwassene only. */
+/** A new offering: Volwassene/Jeugd, booked directly, a price for Volwassene only. */
 const DIRECT = {
-  pageId: PAGE.id,
+  offeringId: '',
+  title: 'Bikefit – huidige fiets',
+  slug: '',
+  category: 'bikefit',
+  sortOrder: '20',
+  summary: 'Comfortabeler fietsen.',
+  contents: 'Een intake.\nEen analyse.',
   isListed: 'on',
   variantMode: 'audience',
   bookingMode: 'direct',
-  'service:adult': 'svc-adult',
+  'duration:adult': '90',
+  'buffer:adult': '',
   'price:adult': '149,50',
-  'service:youth': 'svc-youth',
+  'duration:youth': '60',
+  'buffer:youth': '10',
+  'guardian:youth': 'on',
   'price:youth': '',
 };
 
@@ -162,19 +175,20 @@ beforeEach(() => {
   fake.rows.clear();
   fake.reads.length = 0;
   fake.writes.length = 0;
-  fake.rows.set(cmsPages, [PAGE]);
-  fake.rows.set(cmsBlocks, [{ data: { title: 'Bikefit – huidige fiets' } }]);
-  fake.rows.set(cmsServices, [service('svc-adult'), service('svc-youth')]);
+  fake.reset();
 });
 
-describe('saveOfferingAction: who may change the offering', () => {
+describe('saveOfferingAction: who may change the offer', () => {
   it('a provider is refused before anything is read or written', async () => {
     signIn(cmsUser('provider'));
-    expect(await saveOfferingAction(IDLE, form(DIRECT))).toEqual({
-      ok: false,
-      message: FORBIDDEN,
-    });
-    expect(fake.reads).not.toContain(cmsPages);
+    expect(await saveOfferingAction(IDLE, form(DIRECT))).toEqual({ ok: false, message: FORBIDDEN });
+    expect(fake.reads).toEqual([]);
+    expect(fake.writes).toEqual([]);
+  });
+
+  it('an editor is refused too: the offer writes the booking catalogue', async () => {
+    signIn(cmsUser('editor'));
+    expect(await saveOfferingAction(IDLE, form(DIRECT))).toEqual({ ok: false, message: FORBIDDEN });
     expect(fake.writes).toEqual([]);
   });
 
@@ -183,85 +197,76 @@ describe('saveOfferingAction: who may change the offering', () => {
     expect(fake.writes).toEqual([]);
   });
 
-  it.each(['editor', 'admin'] as const)(
-    '%s saves: settings, both variants, an audit entry',
-    async (role) => {
-      signIn(cmsUser(role));
-      const result = await saveOfferingAction(IDLE, form(DIRECT));
-      expect(result.ok).toBe(true);
-      expect(writesTo(cmsOfferings)).toEqual([
-        {
-          kind: 'insert',
-          table: cmsOfferings,
-          values: expect.objectContaining({
-            pageId: PAGE.id,
-            isListed: true,
-            bookingMode: 'direct',
-            variantMode: 'audience',
-            updatedBy: `user-${role}`,
-          }),
-        },
-      ]);
-      expect(writesTo(cmsOfferingVariants).map((write) => write.values ?? write.kind)).toEqual([
-        { offeringId: 'offering-1', audience: 'adult', serviceId: 'svc-adult', priceCents: 14950 },
-        { offeringId: 'offering-1', audience: 'youth', serviceId: 'svc-youth', priceCents: null },
-        'delete',
-      ]);
-      expect(writesTo(cmsAuditLog)).toEqual([
-        expect.objectContaining({
-          values: expect.objectContaining({
-            action: 'offering.update',
-            entityType: 'cms_offering',
-          }),
+  it('the admin creates: the offering row, a service per variant, the variants, an audit entry, then the edit screen', async () => {
+    signIn(cmsUser('admin'));
+    await expect(saveOfferingAction(IDLE, form(DIRECT))).rejects.toMatchObject({
+      url: '/admin/aanbod/row-1?created=1',
+    });
+    expect(writesTo(cmsOfferings)).toEqual([
+      {
+        kind: 'insert',
+        table: cmsOfferings,
+        values: expect.objectContaining({
+          locale: 'nl',
+          slug: 'bikefit-huidige-fiets',
+          title: 'Bikefit – huidige fiets',
+          contents: ['Een intake.', 'Een analyse.'],
+          isListed: true,
+          bookingMode: 'direct',
+          variantMode: 'audience',
+          updatedBy: 'user-admin',
         }),
-      ]);
-      // Never the booking catalogue or the subscriptions.
-      expect(writesTo(cmsServices)).toEqual([]);
-    },
-  );
+      },
+    ]);
+    expect(writesTo(cmsServices).map((write) => write.values)).toEqual([
+      expect.objectContaining({
+        slug: 'bikefit-huidige-fiets-volwassene',
+        name: 'Bikefit – huidige fiets – Volwassene',
+        choiceLabel: 'Volwassene',
+        durationMinutes: 90,
+        bufferAfterMinutes: null,
+        requiresGuardian: false,
+        isActive: true,
+        createdBy: 'user-admin',
+      }),
+      expect.objectContaining({
+        slug: 'bikefit-huidige-fiets-jeugd',
+        choiceLabel: 'Jeugd',
+        durationMinutes: 60,
+        bufferAfterMinutes: 10,
+        requiresGuardian: true,
+      }),
+    ]);
+    expect(writesTo(cmsOfferingVariants).map((write) => write.values ?? write.kind)).toEqual([
+      expect.objectContaining({ audience: 'adult', priceCents: 14950 }),
+      expect.objectContaining({ audience: 'youth', priceCents: null }),
+      'delete',
+    ]);
+    expect(
+      writesTo(cmsAuditLog).map((write) => (write.values as { action: string }).action),
+    ).toEqual(['service.create', 'service.create', 'offering.create']);
+  });
 });
 
-describe('saveOfferingAction: what it refuses (editor)', () => {
-  beforeEach(() => signIn(cmsUser('editor')));
+describe('saveOfferingAction: what it refuses (admin)', () => {
+  beforeEach(() => signIn(cmsUser('admin')));
 
-  it('direct booking without a service for every variant', async () => {
-    const result = await saveOfferingAction(IDLE, form({ ...DIRECT, 'service:youth': '' }));
+  it('direct booking without a duration for every variant', async () => {
+    const result = await saveOfferingAction(IDLE, form({ ...DIRECT, 'duration:youth': '' }));
     expect(result).toEqual({
       ok: false,
-      message: 'Kies voor Jeugd de dienst waarmee het online geboekt wordt.',
+      message: 'Vul voor Jeugd de duur in om het online te boeken.',
     });
     expect(fake.writes).toEqual([]);
   });
 
-  it('an inactive service for direct booking', async () => {
-    fake.rows.set(cmsServices, [service('svc-adult'), service('svc-youth', false)]);
-    const result = await saveOfferingAction(IDLE, form(DIRECT));
-    expect(result).toEqual({
-      ok: false,
-      message: 'Kies een actieve dienst om online te boeken (Beheer → Diensten).',
-    });
-    expect(fake.writes).toEqual([]);
-  });
-
-  it('a service that does not exist', async () => {
-    fake.rows.set(cmsServices, [service('svc-adult')]);
-    expect(await saveOfferingAction(IDLE, form(DIRECT))).toEqual({
-      ok: false,
-      message: 'Een gekozen dienst bestaat niet (meer).',
-    });
-    expect(fake.writes).toEqual([]);
-  });
-
-  it('a page that is not an offer page, or has no offer block', async () => {
-    fake.rows.set(cmsPages, [{ ...PAGE, slug: 'bikefit' }]);
-    expect((await saveOfferingAction(IDLE, form(DIRECT))).message).toBe(
-      'Dit aanbod bestaat niet (meer).',
-    );
-    fake.rows.set(cmsPages, [PAGE]);
-    fake.rows.set(cmsBlocks, []);
-    expect((await saveOfferingAction(IDLE, form(DIRECT))).message).toBe(
-      'Deze pagina heeft geen blok “Dienst (aanbod)”.',
-    );
+  it('a duration or buffer out of range', async () => {
+    expect(
+      (await saveOfferingAction(IDLE, form({ ...DIRECT, 'duration:adult': '3' }))).message,
+    ).toContain('tussen 5 en 720');
+    expect(
+      (await saveOfferingAction(IDLE, form({ ...DIRECT, 'buffer:youth': '999' }))).message,
+    ).toContain('tussen 0 en 240');
     expect(fake.writes).toEqual([]);
   });
 
@@ -275,25 +280,60 @@ describe('saveOfferingAction: what it refuses (editor)', () => {
     expect(fake.writes).toEqual([]);
   });
 
-  it('an enquiry needs no service and may be hidden', async () => {
+  it('a missing title or a malformed slug', async () => {
+    expect((await saveOfferingAction(IDLE, form({ ...DIRECT, title: '' }))).message).toBe(
+      'Geef het aanbod een titel.',
+    );
+    expect(
+      (await saveOfferingAction(IDLE, form({ ...DIRECT, slug: 'Geen Slug!' }))).message,
+    ).toContain('slug');
+    expect(fake.writes).toEqual([]);
+  });
+
+  it('a slug another offering uses', async () => {
+    fake.rows.set(cmsOfferings, [{ id: 'other', slug: 'bikefit-huidige-fiets', locale: 'nl' }]);
+    expect((await saveOfferingAction(IDLE, form(DIRECT))).message).toBe(
+      'Er bestaat al een aanbod met de slug “bikefit-huidige-fiets”.',
+    );
+    expect(fake.writes).toEqual([]);
+  });
+
+  it('an enquiry needs no duration and may be hidden; an edit keeps the row', async () => {
+    const existing = { id: 'off-1', slug: 'coaching', locale: 'nl' };
+    let calls = 0;
+    // The first read finds the row being edited; the slug check must find no other.
+    fake.rows.set(cmsOfferings, () => (calls++ === 0 ? [existing] : []));
     const result = await saveOfferingAction(
       IDLE,
       form({
-        pageId: PAGE.id,
+        offeringId: 'off-1',
+        title: 'Coaching',
+        slug: 'coaching',
+        category: 'begeleiding',
         variantMode: 'single',
         bookingMode: 'enquiry',
-        'service:all': '',
+        duration: 'Traject in overleg',
         'price:all': '95',
       }),
     );
-    expect(result.ok).toBe(true);
-    expect(writesTo(cmsOfferings)[0].values).toMatchObject({
-      isListed: false,
-      bookingMode: 'enquiry',
-      variantMode: 'single',
+    expect(result).toEqual({
+      ok: true,
+      message: 'Aanbod opgeslagen. De website toont het meteen zo.',
     });
+    expect(writesTo(cmsOfferings)).toEqual([
+      {
+        kind: 'update',
+        table: cmsOfferings,
+        values: expect.objectContaining({
+          isListed: false,
+          bookingMode: 'enquiry',
+          duration: 'Traject in overleg',
+        }),
+      },
+    ]);
+    expect(writesTo(cmsServices)).toEqual([]);
     expect(writesTo(cmsOfferingVariants)[0].values).toEqual({
-      offeringId: 'offering-1',
+      offeringId: 'off-1',
       audience: 'all',
       serviceId: null,
       priceCents: 9500,

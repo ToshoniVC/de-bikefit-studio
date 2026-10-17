@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Field, SectionCard, StatusMessage, SubmitButton } from '@/components/admin/form';
-import { locationOptionLabel, type LocationOption } from '@/components/admin/services-manager';
+import { locationOptionLabel, type LocationOption } from '@/components/admin/booking-labels';
 import { badgeTone } from '@/components/admin/tones';
 import { createProviderAction } from '@/lib/cms/actions/providers';
 import { IDLE_STATE } from '@/lib/cms/actions/state';
@@ -49,7 +49,7 @@ export function ProvidersManager({
       {canManage ? (
         <SectionCard
           title="Nieuwe aanbieder"
-          description="Koppel een bestaande gebruiker of maak meteen een login aan met de rol Aanbieder."
+          description="Een gebruiker met de rol Aanbieder krijgt zijn profiel vanzelf (Gebruikers). Hier maak je een aanbieder van een bestaande beheerder of redacteur, of maak je login en profiel in één keer aan."
         >
           <form action={formAction} className="flex flex-col gap-3">
             <input type="hidden" name="mode" value={mode} />
