@@ -8,8 +8,11 @@
  *
  * Options
  *   --apply                  write: backup first, then the offerings, the
- *                            gift voucher's move and redirect, the voucher
- *                            card on /aanbod; the offer pages are deleted last;
+ *                            retirement of the older services (their hidden
+ *                            offerings deleted, the services deactivated;
+ *                            existing bookings keep them), the gift voucher's
+ *                            move and redirect, the voucher card on /aanbod;
+ *                            the offer pages are deleted last;
  *                            the audit entry `migrate.aanbod.apply` is written
  *                            before the final check decides the exit code
  *   --verify                 only the final check (every stored offering in

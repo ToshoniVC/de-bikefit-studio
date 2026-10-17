@@ -11,15 +11,23 @@
  *                    that page) or, without a row, what the page derived
  *                    (`deriveLegacyOffering()`). The page is then deleted
  *                    (`repo.deletePage()`, backed up first).
- *   orphan services  an active `cms_services` row no offering books through
- *                    (Gezinspakket, Fit aan huis, Inspanningstest) becomes a
- *                    hidden offering, so it stays manageable in Beheer → Aanbod.
+ *   retired services the older services that are not part of the offer
+ *                    (`RETIRED_SERVICE_SLUGS`: Gezinspakket, Fit aan huis,
+ *                    Inspanningstest; Toshoni, 17 Oct 2026): a hidden offering
+ *                    that stands in for one is deleted (`deleteOffering()`),
+ *                    the service is deactivated (`deleteService()`, soft:
+ *                    existing bookings keep it). A shown offering that books
+ *                    through one of them is left alone, service included.
+ *   orphan services  any other active `cms_services` row no offering books
+ *                    through becomes a hidden offering, so it stays
+ *                    manageable in Beheer → Aanbod.
  *   /aanbod/cadeaubon  moves to /cadeaubon (the page keeps everything else)
  *                    and gets a 301; the gift voucher card is written onto the
  *                    catalogue block of /aanbod (`extraCards`), then published.
  *
- * Never touched: `cms_services`, `cms_provider_services`, `cms_bookings`
- * (`guardCounts()` before and after), menus, settings, users, other pages.
+ * Never touched: `cms_provider_services`, `cms_bookings`, menus, settings,
+ * users, other pages; `cms_services` only as described (`guardCounts()`
+ * before and after, the after one predicted with the retired ids inactive).
  * Dry run (default) is read-only: no session, no audit entry, a database
  * handle that refuses writes. The apply writes a JSON backup of every page it
  * deletes or changes FIRST, acts as the CLIs' admin in a short-lived session,
@@ -27,6 +35,7 @@
  */
 import type { DefaultOffering } from '@/lib/offers/defaults';
 import { GIFT_VOUCHER_PAGE_SLUG } from '@/lib/gift-voucher/order';
+import { RETIRED_SERVICE_SLUGS } from '@/lib/booking/defaults';
 import { isOfferCategory, OFFER_CTA_LABEL, OFFER_PAGE_PREFIX } from '@/lib/offers/catalogue';
 import {
   settingsFromRows,
@@ -81,6 +90,10 @@ export type AanbodMigrationPlan = {
   locale: string;
   offerPages: OfferPageMigration[];
   orphanServices: { id: string; slug: string; name: string; description: string }[];
+  /** Hidden offerings standing in for a retired service: deleted (their service deactivated). */
+  retiredOfferings: { id: string; slug: string; title: string; serviceIds: string[] }[];
+  /** Retired services still active and not booked through a shown offering: deactivated. */
+  retiredServices: { id: string; slug: string; name: string }[];
   voucher: { pageId: string | null; action: 'move' | 'unchanged' | 'absent' };
   redirect: {
     redirectId: string | null;
@@ -96,6 +109,8 @@ export type AanbodMigrationPlan = {
     nextData: Record<string, unknown> | null;
   };
   guards: GuardCounts;
+  /** `guards` as they must read after the apply: the retired services inactive. */
+  guardsAfter: GuardCounts;
 };
 
 /** JSON with sorted object keys: Postgres `jsonb` does not keep key order. */
@@ -262,15 +277,42 @@ export async function planAanbodMigration(deps: PlanDeps): Promise<AanbodMigrati
     for (const variant of page.settings.variants)
       if (variant.serviceId) used.add(variant.serviceId);
   }
+  const retired = new Set<string>(RETIRED_SERVICE_SLUGS);
   const orphanServices = services
     .filter((service) => service.isActive && !used.has(service.id) && !slugsTaken.has(service.slug))
     .filter((service) => !offerPages.some((page) => page.offerSlug === service.slug))
+    .filter((service) => !retired.has(service.slug))
     .map((service) => ({
       id: service.id,
       slug: service.slug,
       name: service.name,
       description: descriptions.get(service.id) ?? '',
     }));
+
+  // --- the retired services ------------------------------------------------------
+  // A hidden offering standing in for one goes; a shown one is the admin's choice.
+  const retiredOfferings = stored
+    .filter((row) => retired.has(row.slug) && !row.isListed)
+    .map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      title: row.title,
+      serviceIds: settingsOf(row)
+        .variants.map((variant) => variant.serviceId)
+        .filter((id): id is string => Boolean(id)),
+    }));
+  const keptByShownOffering = new Set<string>();
+  for (const row of stored) {
+    if (!row.isListed) continue;
+    for (const variant of settingsOf(row).variants)
+      if (variant.serviceId) keptByShownOffering.add(variant.serviceId);
+  }
+  const retiredServices = services
+    .filter(
+      (service) =>
+        retired.has(service.slug) && service.isActive && !keptByShownOffering.has(service.id),
+    )
+    .map((service) => ({ id: service.id, slug: service.slug, name: service.name }));
 
   // --- the gift voucher page and its redirect ------------------------------------
   const oldVoucher = await pageRow(deps, OLD_VOUCHER_SLUG);
@@ -373,10 +415,15 @@ export async function planAanbodMigration(deps: PlanDeps): Promise<AanbodMigrati
     locale,
     offerPages,
     orphanServices,
+    retiredOfferings,
+    retiredServices,
     voucher,
     redirect,
     aanbod,
     guards: await guardCounts(deps),
+    guardsAfter: await guardCounts(deps, {
+      deactivated: new Set(retiredServices.map((service) => service.id)),
+    }),
   };
 }
 
@@ -384,6 +431,8 @@ export function aanbodMigrationHasChanges(plan: AanbodMigrationPlan): boolean {
   return (
     plan.offerPages.length > 0 ||
     plan.orphanServices.length > 0 ||
+    plan.retiredOfferings.length > 0 ||
+    plan.retiredServices.length > 0 ||
     plan.voucher.action === 'move' ||
     plan.redirect.action === 'create' ||
     plan.redirect.action === 'enable' ||
@@ -423,6 +472,15 @@ export function printAanbodMigrationPlan(plan: AanbodMigrationPlan, log: PlanDep
   }
   for (const service of plan.orphanServices) {
     log('+', `service ${service.slug} (${service.name}) — hidden offering, booked as that service`);
+  }
+  for (const offering of plan.retiredOfferings) {
+    log('-', `offering ${offering.slug} (${offering.title}) — retired: delete the hidden offering`);
+  }
+  for (const service of plan.retiredServices) {
+    log(
+      '-',
+      `service ${service.slug} (${service.name}) — retired: deactivate (existing bookings keep it)`,
+    );
   }
   log(
     plan.voucher.action === 'move' ? '~' : '=',
@@ -636,6 +694,29 @@ export async function applyAanbodMigration(
     log('+', `offering ${service.slug} — hidden, booked as service ${service.slug}`);
   }
 
+  // 2b. The retired services: their hidden offerings go, the services are
+  // deactivated through the same repo functions the admin screens use.
+  if (plan.retiredOfferings.length || plan.retiredServices.length) {
+    const offersRepo = await import('@/lib/offers/repo');
+    const bookingRepo = await import('@/lib/booking/repo');
+    for (const offering of plan.retiredOfferings) {
+      const result = await offersRepo.deleteOffering(offering.id);
+      if (!result.ok) throw new Error(`offering ${offering.slug}: ${result.message}`);
+      log('-', `offering ${offering.slug} — retired: hidden offering deleted`);
+    }
+    for (const service of plan.retiredServices) {
+      const [row] = await deps.db
+        .select({ isActive: deps.schema.cmsServices.isActive })
+        .from(deps.schema.cmsServices)
+        .where(deps.orm.eq(deps.schema.cmsServices.id, service.id))
+        .limit(1);
+      if (row && !row.isActive) continue; // deleteOffering() already did it
+      const result = await bookingRepo.deleteService(service.id);
+      if (!result.ok) throw new Error(`service ${service.slug}: ${result.message}`);
+      log('-', `service ${service.slug} — retired: deactivated`);
+    }
+  }
+
   // 3. The gift voucher: the redirect before the move, so the old path never answers 404.
   if (plan.redirect.action === 'create') {
     const result = await repo.createRedirect(VOUCHER_REDIRECT);
@@ -676,11 +757,17 @@ export async function applyAanbodMigration(
     log('-', `page ${page.path} — deleted (in the backup)`);
   }
 
-  // 6. The booking tables were not touched (a data concern: stop before anything else).
-  if (stable(await guardCounts(deps)) !== stable(plan.guards)) {
+  // 6. The booking tables were not touched beyond the retirement (a data
+  // concern: stop before anything else).
+  if (stable(await guardCounts(deps)) !== stable(plan.guardsAfter)) {
     throw new Error('booking tables changed during the migration!');
   }
-  log('✓', 'bookings, services and providers unchanged');
+  log(
+    '✓',
+    plan.retiredServices.length
+      ? `bookings and providers unchanged; services unchanged apart from the ${plan.retiredServices.length} retired`
+      : 'bookings, services and providers unchanged',
+  );
 
   // 7. Verify on what visitors get. Every write is done and stands, so the
   // audit entry is written first, with the outcome; only then does a problem
@@ -695,6 +782,7 @@ export async function applyAanbodMigration(
       pages: plan.offerPages.map((page) => page.path),
       offerings: converted,
       services: plan.orphanServices.map((service) => service.slug),
+      retired: plan.retiredServices.map((service) => service.slug),
       voucher: plan.voucher.action,
       redirect: plan.redirect.action,
       aanbod: plan.aanbod.action,
@@ -755,6 +843,50 @@ export async function verifyAanbodMigration(
     const catalogue = await loadOfferCatalogue(locale);
     for (const slug of convertedSlugs) {
       if (!catalogue.bySlug[slug]) problems.push(`offering ${slug} is not in the catalogue`);
+    }
+  }
+  // The retired services: no hidden offering left for them, and inactive
+  // unless a shown offering books through them.
+  const { cmsOfferings, cmsOfferingVariants } = await import('@/db/cms-offering-schema');
+  const retiredRows = await db
+    .select({ id: cmsOfferings.id, slug: cmsOfferings.slug, isListed: cmsOfferings.isListed })
+    .from(cmsOfferings)
+    .where(
+      and(
+        eq(cmsOfferings.locale, locale),
+        orm.inArray(cmsOfferings.slug, [...RETIRED_SERVICE_SLUGS]),
+      ),
+    );
+  for (const row of retiredRows) {
+    if (!row.isListed) problems.push(`offering ${row.slug} is retired but still exists hidden`);
+  }
+  const shownIds = retiredRows.filter((row) => row.isListed).map((row) => row.id);
+  const keptServiceIds = new Set(
+    shownIds.length
+      ? (
+          await db
+            .select({ serviceId: cmsOfferingVariants.serviceId })
+            .from(cmsOfferingVariants)
+            .where(orm.inArray(cmsOfferingVariants.offeringId, shownIds))
+        ).map((variant) => variant.serviceId)
+      : [],
+  );
+  const retiredServiceRows = await db
+    .select({
+      id: schema.cmsServices.id,
+      slug: schema.cmsServices.slug,
+      isActive: schema.cmsServices.isActive,
+    })
+    .from(schema.cmsServices)
+    .where(
+      and(
+        eq(schema.cmsServices.locale, locale),
+        orm.inArray(schema.cmsServices.slug, [...RETIRED_SERVICE_SLUGS]),
+      ),
+    );
+  for (const row of retiredServiceRows) {
+    if (row.isActive && !keptServiceIds.has(row.id)) {
+      problems.push(`service ${row.slug} is retired but still active`);
     }
   }
   const leftovers = await db
@@ -819,7 +951,7 @@ export async function runAanbodMigration(
     if (problems.length > 0) throw new Error('verification found problems (above)');
     context.log(
       '✓',
-      `verified: ${slugs.length} offerings in the catalogue, no offer page left, /${GIFT_VOUCHER_PAGE_SLUG} renders, /${OFFER_PAGE_PREFIX} has the voucher card`,
+      `verified: ${slugs.length} offerings in the catalogue, the retired services inactive, no offer page left, /${GIFT_VOUCHER_PAGE_SLUG} renders, /${OFFER_PAGE_PREFIX} has the voucher card`,
     );
     return { changed: false, backupPath: null, problems };
   }

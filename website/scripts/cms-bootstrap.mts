@@ -10,9 +10,11 @@
  *   3. empty `main` and `footer` navigation menus for `nl`
  *   4. booking: the `booking` setting (defaults), the default studio location
  *      "De Bikefit Studio, Ninove", the "Bij jou thuis" location (kind
- *      `customer`, for Fit aan huis) and the five initial services
- *   5. the offer (Beheer → Aanbod): the seven offerings of 13 Oct 2026 plus the
- *      three older services as hidden offerings, each linked to its services
+ *      `customer`, for hours at the customer's) and the two initial services
+ *      (Volwassenenfit, Jeugdfit; the older Gezinspakket, Fit aan huis and
+ *      Inspanningstest are retired since 17 Oct 2026, `RETIRED_SERVICE_SLUGS`)
+ *   5. the offer (Beheer → Aanbod): the seven offerings of 13 Oct 2026, each
+ *      linked to its services
  *      (`src/lib/offers/defaults.ts`, `scripts/lib/offerings-bootstrap.mts`)
  *
  * Running it twice changes nothing and exits 0. It never overwrites an

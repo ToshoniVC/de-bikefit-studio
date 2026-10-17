@@ -71,38 +71,16 @@ export const DEFAULT_SERVICES: DefaultService[] = [
     location: null,
     sortOrder: 1,
   },
-  {
-    slug: 'gezinspakket',
-    name: 'Gezinspakket',
-    choiceLabel: '',
-    description:
-      'Mama, papa, kinderen — één sessie in de studio, alle fietsen gepast. Iedereen rijdt beter naar huis.',
-    durationMinutes: 150,
-    requiresGuardian: false,
-    location: null,
-    sortOrder: 2,
-  },
-  {
-    slug: 'fit-aan-huis',
-    name: 'Fit aan huis',
-    choiceLabel: '',
-    description: 'Voor groepen, clubs en gezinnen komen we op locatie.',
-    durationMinutes: 120,
-    requiresGuardian: false,
-    location: 'customer',
-    sortOrder: 3,
-  },
-  {
-    slug: 'inspanningstest',
-    name: 'Inspanningstest',
-    choiceLabel: '',
-    description: '',
-    durationMinutes: 60,
-    requiresGuardian: false,
-    location: null,
-    sortOrder: 4,
-  },
 ];
+
+/**
+ * The older services that are not part of the offer (Toshoni, 17 Oct 2026:
+ * "only keep what was originally in the offering"). `cms:bootstrap` no longer
+ * creates them; `cms:migrate-aanbod` deactivates them on an existing database
+ * (soft, like Beheer → Aanbod's delete: existing bookings keep their service)
+ * and removes the hidden offerings that stood in for them.
+ */
+export const RETIRED_SERVICE_SLUGS = ['gezinspakket', 'fit-aan-huis', 'inspanningstest'] as const;
 
 /** Mon–Fri 09:00–18:00, Sat 09:00–13:00 (weekday 0 = Sunday). */
 export const DEFAULT_PROVIDER_HOURS = [

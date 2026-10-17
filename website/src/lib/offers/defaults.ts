@@ -1,4 +1,3 @@
-import { DEFAULT_SERVICES } from '@/lib/booking/defaults';
 import { editorialImage, type EditorialSlot } from '@/lib/studio/editorial-images';
 import { OFFER_DURATION_FALLBACK, OFFER_EXTRAS_NOTE, type OfferCategory } from './catalogue';
 import type { OfferingAudience, OfferingBookingMode, OfferingVariantMode } from './offering';
@@ -42,8 +41,6 @@ export type DefaultOffering = {
   variantMode: OfferingVariantMode;
   variants: DefaultOfferingVariant[];
 };
-
-const noImage = { mediaId: null, url: null, alt: '', decorative: false };
 
 /** The three temporary AI images (`docs/editorial-images.md`): one per category, the lactate test apart. */
 function offerImage(slug: string, category: Exclude<OfferCategory, 'overige'>) {
@@ -261,39 +258,9 @@ export const DEFAULT_OFFERS: DefaultOffering[] = [
   ),
 ];
 
-/** The booking services used by {@link DEFAULT_OFFERS}. */
-const OFFERED_SERVICE_SLUGS = new Set(
-  DEFAULT_OFFERS.flatMap((entry) => entry.variants.map((variant) => variant.serviceSlug)),
-);
-
 /**
- * The older services that are not part of the offer: kept as hidden offerings
- * (not shown, hence not bookable) so they stay manageable in Beheer → Aanbod.
+ * Everything the bootstrap writes: the seven offers of the brief. The older
+ * services (`RETIRED_SERVICE_SLUGS` in `@/lib/booking/defaults`) are no
+ * longer written, not even hidden (17 Oct 2026).
  */
-export const LEGACY_OFFERINGS: DefaultOffering[] = DEFAULT_SERVICES.filter(
-  (service) => !OFFERED_SERVICE_SLUGS.has(service.slug),
-).map((service, index) => ({
-  content: {
-    slug: service.slug,
-    category: service.slug === 'inspanningstest' ? 'begeleiding' : 'bikefit',
-    sortOrder: 100 + index * 10,
-    title: service.name,
-    summary: service.description,
-    intro: '',
-    goal: '',
-    contents: [],
-    extras: [],
-    extrasNote: '',
-    duration: '',
-    ctaLabel: '',
-    image: noImage,
-    metaDescription: '',
-  },
-  isListed: false,
-  bookingMode: 'direct',
-  variantMode: 'single',
-  variants: [{ audience: 'all', serviceSlug: service.slug }],
-}));
-
-/** Everything the bootstrap writes, in order. */
-export const DEFAULT_OFFERINGS: DefaultOffering[] = [...DEFAULT_OFFERS, ...LEGACY_OFFERINGS];
+export const DEFAULT_OFFERINGS: DefaultOffering[] = DEFAULT_OFFERS;

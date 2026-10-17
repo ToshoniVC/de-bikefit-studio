@@ -36,10 +36,10 @@ datum).
 | E | Inhoud, extra's, pakketten | 8 | 1 | 7 | 0 | 0 |
 | T | Team | 13 | 10 | 2 | 1 | 0 |
 | B | AI-beelden en lege beeldvakken | 5 | 5 | 0 | 0 | 0 |
-| K | Online boeken per dienst | 6 | 5 | 1 | 0 | 0 |
+| K | Online boeken per dienst | 6 | 3 | 1 | 0 | 2 |
 | G | Bestaande hiaten in aangeraakte inhoud | 7 | 2 | 1 | 2 | 2 |
 | C | Cadeaubon (bestelformulier) | 4 | 3 | 1 | 0 | 0 |
-| | **Totaal** | **57** | **39** | **12** | **3** | **3** |
+| | **Totaal** | **57** | **37** | **12** | **3** | **5** |
 
 ## 1. Prijzen (P)
 
@@ -183,15 +183,16 @@ vinken zelf aan wat ze aanbieden (**Mijn agenda → Mijn aanbod**). Zonder aanbi
 te boeken aanbod grijs als "Tijdelijk niet online te boeken"; een aanbod op aanvraag toont een
 aanvraagformulier op zijn pagina (naar de ontvanger uit **Beheer → E-mail**, C-02). Zie
 [`booking-architecture.md`](./booking-architecture.md) §14. Een aanbod dat niet getoond wordt, is
-ook niet boekbaar: zo staan Gezinspakket, Fit aan huis en Inspanningstest sinds 17 okt 2026 als
-verborgen aanbod klaar (K-03, K-04).
+ook niet boekbaar. Gezinspakket, Fit aan huis en Inspanningstest zijn op 17 okt 2026 op beslissing
+van Toshoni **uitgezet** (gedeactiveerd door `cms:migrate-aanbod`, bestaande boekingen behouden hun
+dienst; K-03, K-04).
 
 | ID | Onderwerp | Nu | Nodig | Status |
 | --- | --- | --- | --- | --- |
 | K-01 | *Bikefit – huidige fiets* | gekoppeld aan de bestaande diensten `volwassenenfit` (90 min) en `jeugdfit` (60 min). Sinds 16 okt 2026 toont `/afspraak` dit aanbod **één keer**, met daaronder "Voor wie?": **Volwassene** en **Jeugd** (veld **Keuzelabel onder een aanbod** in **Diensten**); de gekozen dienst bepaalt duur, beschikbaarheid, formulier (ouder bij Jeugd) en wat geboekt wordt | bevestigen dat dit dezelfde dienst is | te bevestigen |
 | K-02 | De andere zes diensten | op aanvraag: aanvraagformulier op de dienstpagina, niet online boekbaar | per dienst: echte duur (D-rij) en aanbieder(s) die het zelf bevestigen (K-05); dan dienst aanmaken in **Diensten** en in **Beheer → Aanbod** op *Rechtstreeks online boeken* zetten met die dienst | open |
-| K-03 | *Lactaattest* vs. bestaande dienst Inspanningstest | niet gekoppeld (niet bevestigd dat het dezelfde meting is) | beslissen: koppelen, of Inspanningstest uitzetten | open |
-| K-04 | Bestaande diensten Gezinspakket, Fit aan huis (en Inspanningstest, K-03) | actief en rechtstreeks te kiezen op `/afspraak`, naast *Bikefit – huidige fiets* (beslissing Toshoni 16 okt 2026: behouden tot Max of Toshoni anders beslist); niet in het aanbod | beslissen: behouden of uitzetten (zacht, door een beheerder; bestaande boekingen blijven). Raakt G-07 | open |
+| K-03 | *Lactaattest* vs. bestaande dienst Inspanningstest | Inspanningstest uitgezet (17 okt 2026); *Lactaattest* blijft op aanvraag | als de Lactaattest online boekbaar moet worden: in **Beheer → Aanbod** op *Rechtstreeks online boeken* zetten met een echte duur | afgerond 2026-10-17 |
+| K-04 | Bestaande diensten Gezinspakket, Fit aan huis (en Inspanningstest, K-03) | uitgezet op 17 okt 2026 (beslissing Toshoni: enkel wat in het aanbod stond blijft); niet meer op `/afspraak`; bestaande boekingen behouden hun dienst | niets; wie een van deze weer wil aanbieden, maakt een nieuw aanbod in **Beheer → Aanbod** | afgerond 2026-10-17 |
 | K-05 | Aanbieders per dienst | ongewijzigd: enkel de bestaande aanbieder op de vijf oude diensten. Sinds 16 okt 2026 maakt een aanbieder geen diensten meer aan en past ze niet aan; hij of zij schrijft zich enkel in voor actieve diensten (**Mijn agenda** → **Mijn aanbod**, per aanbod en variant) | wie biedt welke nieuwe dienst aan, enkel door de persoon zelf bevestigd; een nieuwe dienst maakt een beheerder aan | open |
 | K-06 | Prijzen in de boekingswidget | geen bedrag: **Prijs (euro)** leeg en **Prijs tonen op de website** uit bij alle diensten. Onder *Bikefit – huidige fiets* toont de widget per keuze "Prijs op aanvraag"; zodra een beheerder voor **die dienst** een bedrag invult en toont, staat dat bedrag er (Volwassene en Jeugd elk hun eigen prijs, nooit gekopieerd of per aanbieder) | goedgekeurde bedragen voor Volwassenenfit en Jeugdfit (vast of "vanaf"?) van Toshoni (geblokkeerd tot hij beslist); dan per dienst **Prijs (euro)** + **Prijs tonen** | open |
 

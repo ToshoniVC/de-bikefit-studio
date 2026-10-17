@@ -756,9 +756,10 @@ PROVIDER_EMAIL=x@y.be PROVIDER_NAME='X' npm run cms:seed-booking   # another pro
 Bootstrap adds (idempotent, never overwrites): the `booking` setting, the
 default location **"De Bikefit Studio, Ninove"** (studio, no street address,
 `is_default`), a second location **"Bij jou thuis"** (kind `customer`, which
-the Fit aan huis service needs) and the five services (Volwassenenfit 90,
-Jeugdfit 60 + guardian, Gezinspakket 150, Fit aan huis 120 → "Bij jou thuis",
-Inspanningstest 60; prices null and hidden, buffer 15). Choice labels "Volwassene" and
+hours at the customer's need) and the two services (Volwassenenfit 90,
+Jeugdfit 60 + guardian; prices null and hidden, buffer 15). Gezinspakket, Fit aan
+huis and Inspanningstest are retired since 17 Oct 2026 (`RETIRED_SERVICE_SLUGS`):
+not created here, deactivated on an existing database by `cms:migrate-aanbod`. Choice labels "Volwassene" and
 "Jeugd" go on the first two; on a database that already has them (migration 0009 added the
 column empty), bootstrap fills only a label that is still empty and touches nothing else on
 the row (`~ service nl/jeugdfit: empty choice label set to “Jeugd”`).
@@ -993,8 +994,8 @@ widget leaves it out (also as a standalone choice and for `?dienst=<service slug
 gets the "niet teruggevonden" notice), and both booking actions refuse it before anything else
 (`isServiceBookableOnline()` in `availabilityAction` and `bookAction`: "Deze dienst kun je niet
 online boeken.", no rate-limit hit, no booking). After `cms:bootstrap` / `cms:migrate-aanbod`
-every service belongs to an offering, the three older ones (Gezinspakket, Fit aan huis,
-Inspanningstest) to hidden offerings — so they are not bookable until an admin shows them. The
+every service belongs to an offering; the three older ones (Gezinspakket, Fit aan huis,
+Inspanningstest) are retired — deactivated, so not public at all (Toshoni, 17 Oct 2026). The
 gate fails closed when the offering tables cannot be read.
 
 **Preselection and the service step.** The offer page's button goes to
