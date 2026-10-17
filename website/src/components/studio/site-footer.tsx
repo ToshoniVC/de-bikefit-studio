@@ -4,12 +4,14 @@ import type { StudioChrome } from '@/lib/studio/site';
 import { studioMeasurementId } from './analytics';
 import { ConsentSettingsLink } from './consent-banner';
 import { StudioLink } from './link';
+import { StudioLogo } from './logo';
 
 /**
  * The burgundy footer from `prototype/index.html`.
  *
- * `logo.svg` is dark ink on a light ground, so the brand column uses the CSS
- * wordmark instead — same text, same meaning for assistive technology.
+ * The brand column shows the lockup in its inverted colours (the cream mark
+ * and the wordmark in the display face, `./logo.tsx`): the same text and
+ * meaning for assistive technology as the header.
  *
  * Columns come from the `footer` menu's `group` field, in the order the editor
  * arranged them. The contact column is not a menu: it is rendered from
@@ -51,7 +53,7 @@ export function StudioSiteFooter({ chrome }: { chrome: StudioChrome }) {
     <footer className="studio-footer">
       <div className="studio-footer__grid">
         <div className="studio-footer__col studio-footer__brand">
-          <span className="studio-wordmark">{site.name}</span>
+          <StudioLogo siteName={site.name} tone="dark" />
           {site.mission ? <p>{site.mission}</p> : null}
         </div>
 

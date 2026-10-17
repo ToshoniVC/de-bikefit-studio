@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="2 2 48 48" width="48" height="48" fill="none" role="img" aria-label="De Bikefit Studio">
+  <!-- The stamp of debikefitstudiologo-horizontal.svg on its own (burgundy, for light grounds). -->
+  <rect x="2" y="2" width="48" height="48" fill="#3B1821" />
+  <circle cx="15" cy="34" r="7.5" stroke="#D5C7BC" stroke-width="2.5" />
+  <circle cx="37" cy="34" r="7.5" stroke="#D5C7BC" stroke-width="2.5" />
+  <path d="M15 34 L22 22 L34 22 L25 34 L19 17 C23 12 29 12 33 17 L37 34" stroke="#FBF9F5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="32" cy="11" r="3" fill="#FBF9F5" />
+</svg>

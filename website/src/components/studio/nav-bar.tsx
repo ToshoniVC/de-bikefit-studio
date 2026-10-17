@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useId, useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import type { NavigationItem } from '@/lib/cms/blocks';
 import { StudioLink, splitArrow } from './link';
+import { StudioLogo } from './logo';
 
 /**
  * Primary navigation.
@@ -49,7 +49,7 @@ export function StudioNavBar({
   return (
     <nav className="studio-nav" aria-label="Hoofdnavigatie">
       <Link href="/" className="studio-nav__logo" aria-label={`${siteName} — naar de homepagina`}>
-        <Image src="/logo.svg" alt={siteName} width={64} height={48} priority />
+        <StudioLogo siteName={siteName} tone="light" priority />
       </Link>
 
       <button

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 52" width="250" height="52" fill="none">
+  <!-- Cream Architectural Stamp -->
+  <rect x="2" y="2" width="48" height="48" fill="#FBF9F5" />
+  
+  <!-- Minimalist Cyclist & Wheels in Burgundy & Taupe -->
+  <circle cx="15" cy="34" r="7.5" stroke="#7A6467" stroke-width="2.5" />
+  <circle cx="37" cy="34" r="7.5" stroke="#7A6467" stroke-width="2.5" />
+  <!-- Flowing Rider + Frame Line -->
+  <path d="M15 34 L22 22 L34 22 L25 34 L19 17 C23 12 29 12 33 17 L37 34" stroke="#3B1821" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Cyclist Head -->
+  <circle cx="32" cy="11" r="3" fill="#3B1821" />
+
+  <!-- Wordmark in Cream & Warm Taupe -->
+  <text x="62" y="27" fill="#FBF9F5" font-family="&#39;Bebas Neue&#39;, &#39;Oswald&#39;, &#39;Impact&#39;, sans-serif" font-size="24" font-weight="800" letter-spacing="1.5">DE BIKEFIT</text>
+  <text x="62" y="43" fill="#D5C7BC" font-family="&#39;Bebas Neue&#39;, &#39;Oswald&#39;, &#39;Impact&#39;, sans-serif" font-size="14" font-weight="700" font-style="italic" letter-spacing="5">STUDIO</text>
+</svg>

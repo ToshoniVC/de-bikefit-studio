@@ -26,7 +26,9 @@ export default async function StudioLayout({ children }: { children: React.React
   const origin = absoluteUrl('/').replace(/\/+$/, '');
 
   const logo = await resolveMedia(chrome.settings.site.logoMediaId, locale);
-  const logoUrl = logo ? absoluteUrl(logo.url) : absoluteUrl('/logo.svg');
+  const logoUrl = logo
+    ? absoluteUrl(logo.url)
+    : absoluteUrl('/brand/debikefitstudiologo-icon-512.png');
 
   const siteGraph = jsonLdDocument([
     organizationJsonLd(chrome.settings, origin, { logoUrl }),

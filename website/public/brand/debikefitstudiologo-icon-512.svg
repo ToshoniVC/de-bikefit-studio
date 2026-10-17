@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+  <!-- Full-bleed Burgundy Background -->
+  <rect width="512" height="512" fill="#3B1821" />
+  
+  <!-- Subtle Inner Architectural Frame (Optional boutique detail, safe inside circular crop) -->
+  <rect x="36" y="36" width="440" height="440" stroke="#7A6467" stroke-width="2" stroke-opacity="0.35" />
+
+  <!-- Centered Cyclist Mark -->
+  <circle cx="165" cy="340" r="68" stroke="#D5C7BC" stroke-width="24" />
+  <circle cx="355" cy="340" r="68" stroke="#D5C7BC" stroke-width="24" />
+  <path d="M165 340 L226 234 L330 234 L252 340 L200 190 C235 145 288 145 322 190 L355 340" stroke="#FBF9F5" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="312" cy="136" r="28" fill="#FBF9F5" />
+</svg>
